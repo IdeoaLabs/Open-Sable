@@ -1,0 +1,92 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Runtime Data (never commit)
+.opensable/
+data/memory.json
+data/vectordb/
+
+# Node modules
+node_modules/
+venom-bot/node_modules/
+venom-bot/tokens/
+package-lock.json
+
+# Skills runtime data
+opensable/skills/installed/
+opensable/skills/created/
+opensable/skills/marketplace/cache.json
+
+# Environment & Secrets
+.env
+.env.local
+.env.production
+*.lock
+gateway.lock
+
+# Logs
+*.log
+logs/
+
+# Testing
+.coverage
+.pytest_cache/
+htmlcov/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# AI Models (can be gigabytes)
+*.gguf
+*.safetensors
+*.onnx
+*.pt
+*.pth
+*.h5
+*.tflite
+*.ckpt
+*.pkl
+*.pickle
+*.bin
+!requirements*.txt
+models/
+*.model
+
+# Temp / Debug files
+*.bak
+*.backup
+*_fix.txt
+*_check.txt
+discord_clean_check.txt

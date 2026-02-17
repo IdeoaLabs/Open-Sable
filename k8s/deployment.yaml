@@ -1,0 +1,173 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opensable
+  namespace: opensable
+  labels:
+    app: opensable
+    component: gateway
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: opensable
+      component: gateway
+  template:
+    metadata:
+      labels:
+        app: opensable
+        component: gateway
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: opensable
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      
+      initContainers:
+      - name: init-storage
+        image: busybox:1.35
+        command: ['sh', '-c', 'mkdir -p /data/workflows /data/images /data/sessions && chown -R 1000:1000 /data']
+        volumeMounts:
+        - name: data
+          mountPath: /data
+      
+      containers:
+      - name: opensable
+        image: opensable:latest
+        imagePullPolicy: Always
+        
+        ports:
+        - name: gateway
+          containerPort: 18789
+          protocol: TCP
+        - name: metrics
+          containerPort: 9090
+          protocol: TCP
+        
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        
+        envFrom:
+        - configMapRef:
+            name: opensable-config
+        - secretRef:
+            name: opensable-secrets
+        
+        resources:
+          requests:
+            cpu: 500m
+            memory: 1Gi
+          limits:
+            cpu: 2
+            memory: 4Gi
+        
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: gateway
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: gateway
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 2
+        
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        - name: tmp
+          mountPath: /tmp
+      
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: opensable-data
+      - name: tmp
+        emptyDir: {}
+      
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - opensable
+              topologyKey: kubernetes.io/hostname
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: opensable-gateway
+  namespace: opensable
+  labels:
+    app: opensable
+    component: gateway
+spec:
+  type: ClusterIP
+  ports:
+  - name: gateway
+    port: 18789
+    targetPort: gateway
+    protocol: TCP
+  - name: metrics
+    port: 9090
+    targetPort: metrics
+    protocol: TCP
+  selector:
+    app: opensable
+    component: gateway
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 3600
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: opensable
+  namespace: opensable
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: opensable-data
+  namespace: opensable
+spec:
+  accessModes:
+  - ReadWriteMany
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: standard

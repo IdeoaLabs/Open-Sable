@@ -1,0 +1,340 @@
+"""
+Open-Sable CLI - Command Line Interface
+
+Provides commands for managing the gateway, agents, and channels.
+"""
+
+import click
+import asyncio
+import sys
+import os
+from pathlib import Path
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+@click.group()
+@click.version_option(version="0.2.0")
+def cli():
+    """Open-Sable - Lightweight AI Agent Platform"""
+    pass
+
+
+@cli.command()
+@click.option('--host', default='127.0.0.1', help='Gateway host')
+@click.option('--port', default=18789, help='Gateway port')
+@click.option('--verbose', is_flag=True, help='Enable verbose logging')
+def gateway(host, port, verbose):
+    """Start the Gateway control plane"""
+    if verbose:
+        logging.basicConfig(level=logging.DEBUG)
+    else:
+        logging.basicConfig(level=logging.INFO)
+    
+    click.echo("🚀 Starting Open-Sable Gateway...")
+    click.echo(f"   Host: {host}")
+    click.echo(f"   Port: {port}")
+    click.echo(f"   Dashboard: http://{host}:{port}")
+    click.echo(f"   WebSocket: ws://{host}:{port}/ws")
+    click.echo()
+    
+    try:
+        from core.config import load_config
+        from core.gateway import Gateway
+        
+        config = load_config()
+        gateway_instance = Gateway(config)
+        
+        asyncio.run(gateway_instance.start(host, port))
+        
+    except KeyboardInterrupt:
+        click.echo("\n👋 Gateway stopped by user")
+    except Exception as e:
+        click.echo(f"❌ Error starting gateway: {e}", err=True)
+        sys.exit(1)
+
+
+@cli.command()
+@click.argument('message', required=False)
+@click.option('--thinking', default='medium', help='Thinking level (off|minimal|low|medium|high|xhigh)')
+@click.option('--model', help='Override model')
+def agent(message, thinking, model):
+    """Send a message directly to the agent"""
+    try:
+        from core.config import load_config
+        from core.agent import SableAgent
+        
+        config = load_config()
+        agent_instance = SableAgent(config)
+        
+        async def run_agent():
+            await agent_instance.initialize()
+            
+            if message:
+                # Single message mode
+                response = await agent_instance.run(message)
+                click.echo(response)
+            else:
+                # Interactive mode
+                click.echo("🤖 Open-Sable Agent (type 'exit' to quit)")
+                click.echo()
+                
+                while True:
+                    try:
+                        user_input = click.prompt("You", type=str)
+                        
+                        if user_input.lower() in ['exit', 'quit', 'q']:
+                            break
+                        
+                        response = await agent_instance.run(user_input)
+                        click.echo(f"\nSable: {response}\n")
+                        
+                    except (EOFError, KeyboardInterrupt):
+                        break
+                
+                click.echo("\n👋 Goodbye!")
+        
+        asyncio.run(run_agent())
+        
+    except Exception as e:
+        click.echo(f"❌ Error: {e}", err=True)
+        sys.exit(1)
+
+
+@cli.command()
+def onboard():
+    """Interactive setup wizard"""
+    click.echo("🎉 Welcome to Open-Sable!")
+    click.echo()
+    click.echo("This wizard will help you set up your AI agent.")
+    click.echo()
+    
+    # Check for existing .env
+    env_file = Path(".env")
+    if env_file.exists():
+        if not click.confirm("Found existing .env file. Overwrite?"):
+            click.echo("Keeping existing configuration.")
+            return
+    
+    click.echo("📝 Configuration")
+    click.echo()
+    
+    # Agent name
+    agent_name = click.prompt("Agent name", default="Sable")
+    
+    # LLM configuration
+    click.echo("\n🤖 AI Model Configuration")
+    default_model = click.prompt("Default model", default="llama3.1:8b")
+    
+    # Telegram
+    click.echo("\n📱 Telegram Bot (optional)")
+    enable_telegram = click.confirm("Enable Telegram bot?", default=True)
+    telegram_token = ""
+    if enable_telegram:
+        telegram_token = click.prompt("Telegram bot token (from @BotFather)")
+    
+    # Discord
+    click.echo("\n💬 Discord Bot (optional)")
+    enable_discord = click.confirm("Enable Discord bot?", default=False)
+    discord_token = ""
+    if enable_discord:
+        discord_token = click.prompt("Discord bot token")
+    
+    # WhatsApp
+    click.echo("\n💚 WhatsApp (optional)")
+    enable_whatsapp = click.confirm("Enable WhatsApp?", default=False)
+    
+    # Voice
+    click.echo("\n🎤 Voice Support (optional)")
+    enable_voice = click.confirm("Enable voice support?", default=False)
+    tts_provider = "local"
+    if enable_voice:
+        tts_provider = click.prompt(
+            "TTS provider",
+            type=click.Choice(['local', 'elevenlabs', 'openai']),
+            default='local'
+        )
+    
+    # Generate .env file
+    env_content = f"""# Open-Sable Configuration
+# Generated by onboard wizard
+
+# Agent settings
+AGENT_NAME={agent_name}
+DEFAULT_MODEL={default_model}
+AUTO_SELECT_MODEL=true
+
+# Telegram
+TELEGRAM_BOT_TOKEN={telegram_token if enable_telegram else ''}
+TELEGRAM_USERBOT_ENABLED=false
+
+# Discord
+DISCORD_BOT_TOKEN={discord_token if enable_discord else ''}
+
+# WhatsApp
+WHATSAPP_ENABLED={str(enable_whatsapp).lower()}
+
+# Voice
+VOICE_ENABLED={str(enable_voice).lower()}
+TTS_PROVIDER={tts_provider}
+STT_PROVIDER=local
+
+# Gateway
+GATEWAY_HOST=127.0.0.1
+GATEWAY_PORT=18789
+
+# Skills
+EMAIL_ENABLED=false
+CALENDAR_ENABLED=false
+BROWSER_ENABLED=true
+"""
+    
+    with open(".env", "w") as f:
+        f.write(env_content)
+    
+    click.echo("\n✅ Configuration saved to .env")
+    click.echo()
+    click.echo("🎯 Next steps:")
+    click.echo("   1. Install dependencies: pip install -r requirements.txt")
+    click.echo("   2. Start gateway: sable gateway")
+    click.echo("   3. Test agent: sable agent")
+    click.echo()
+    click.echo("📚 Documentation: https://github.com/yourusername/Open-Sable")
+
+
+@cli.command()
+def doctor():
+    """Run system diagnostics"""
+    click.echo("🔍 Open-Sable Doctor - System Diagnostics")
+    click.echo()
+    
+    checks = []
+    
+    # Check Python version
+    import sys
+    py_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    py_ok = sys.version_info >= (3, 11)
+    checks.append(("Python version", py_version, py_ok))
+    
+    # Check dependencies
+    deps = [
+        ('langgraph', 'LangGraph'),
+        ('langchain', 'LangChain'),
+        ('aiogram', 'Telegram'),
+        ('discord', 'Discord'),
+        ('chromadb', 'ChromaDB'),
+        ('fastapi', 'Gateway'),
+    ]
+    
+    for module, name in deps:
+        try:
+            __import__(module)
+            checks.append((f"{name} installed", "✓", True))
+        except ImportError:
+            checks.append((f"{name} installed", "✗", False))
+    
+    # Check .env file
+    env_exists = Path(".env").exists()
+    checks.append((".env file", "✓" if env_exists else "✗", env_exists))
+    
+    # Check Ollama
+    try:
+        import httpx
+        response = httpx.get("http://localhost:11434/api/tags", timeout=2)
+        ollama_ok = response.status_code == 200
+        checks.append(("Ollama running", "✓" if ollama_ok else "✗", ollama_ok))
+    except:
+        checks.append(("Ollama running", "✗", False))
+    
+    # Print results
+    for check, status, ok in checks:
+        color = 'green' if ok else 'red'
+        click.echo(f"  {click.style(status, fg=color)} {check}")
+    
+    click.echo()
+    
+    # Summary
+    passed = sum(1 for _, _, ok in checks if ok)
+    total = len(checks)
+    
+    if passed == total:
+        click.echo(click.style(f"✅ All checks passed ({passed}/{total})", fg='green'))
+    else:
+        click.echo(click.style(f"⚠️  Some checks failed ({passed}/{total})", fg='yellow'))
+        click.echo()
+        click.echo("💡 To fix issues:")
+        click.echo("   • Install dependencies: pip install -r requirements.txt")
+        click.echo("   • Create .env file: sable onboard")
+        click.echo("   • Start Ollama: ollama serve")
+
+
+@cli.command()
+@click.argument('channel', type=click.Choice(['telegram', 'discord', 'whatsapp']))
+def login(channel):
+    """Authenticate a messaging channel"""
+    click.echo(f"🔐 Authenticating {channel.title()}...")
+    click.echo()
+    
+    if channel == 'whatsapp':
+        click.echo("WhatsApp authentication will show a QR code.")
+        click.echo("Scan it with your phone to link your account.")
+        click.echo()
+        
+        try:
+            from interfaces.whatsapp_bot import WhatsAppInterface
+            from core.config import load_config
+            
+            config = load_config()
+            whatsapp = WhatsAppInterface(None, config)
+            
+            asyncio.run(whatsapp.start())
+            
+        except Exception as e:
+            click.echo(f"❌ Error: {e}", err=True)
+            sys.exit(1)
+    else:
+        click.echo(f"{channel.title()} uses token authentication.")
+        click.echo(f"Add your token to .env file:")
+        click.echo(f"   {channel.upper()}_BOT_TOKEN=your_token_here")
+
+
+@cli.command()
+@click.option('--format', type=click.Choice(['table', 'json']), default='table')
+def sessions(format):
+    """List active sessions"""
+    try:
+        from core.sessions import SessionManager
+        from core.config import load_config
+        
+        config = load_config()
+        manager = SessionManager(config)
+        manager.load_from_disk()
+        
+        sessions_list = manager.get_all_sessions()
+        
+        if format == 'json':
+            import json
+            data = [s.to_dict() for s in sessions_list]
+            click.echo(json.dumps(data, indent=2))
+        else:
+            if not sessions_list:
+                click.echo("No active sessions.")
+                return
+            
+            click.echo(f"\n📊 Active Sessions ({len(sessions_list)}):\n")
+            
+            for session in sessions_list:
+                click.echo(f"  ID: {session.id[:12]}...")
+                click.echo(f"  Channel: {session.channel}")
+                click.echo(f"  Messages: {session.message_count}")
+                click.echo(f"  Model: {session.config.model or 'default'}")
+                click.echo()
+        
+    except Exception as e:
+        click.echo(f"❌ Error: {e}", err=True)
+        sys.exit(1)
+
+
+if __name__ == '__main__':
+    cli()

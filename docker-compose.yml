@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  opensable:
+    build: .
+    container_name: opensable
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config
+      - ./logs:/app/logs
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+    env_file:
+      - .env
+    depends_on:
+      - ollama
+    networks:
+      - opensable-network
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: opensable-ollama
+    restart: unless-stopped
+    volumes:
+      - ollama-data:/root/.ollama
+    ports:
+      - "11434:11434"
+    networks:
+      - opensable-network
+
+volumes:
+  ollama-data:
+
+networks:
+  opensable-network:
+    driver: bridge

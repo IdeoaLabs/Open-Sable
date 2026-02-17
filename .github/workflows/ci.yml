@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          pip install ruff black mypy
+      
+      - name: Lint with ruff
+        run: ruff check .
+      
+      - name: Check formatting with black
+        run: black --check .
+      
+      - name: Type check with mypy
+        run: mypy core/ --ignore-missing-imports
+        continue-on-error: true
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.12']
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      
+      - name: Install core dependencies
+        run: |
+          pip install -e .
+          pip install pytest pytest-asyncio pytest-cov
+      
+      - name: Run tests
+        run: pytest tests/ -v --cov=core --cov-report=xml
+      
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: false
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          pip install -e .
+          pip install pip-audit safety
+      
+      - name: Security audit with pip-audit
+        run: pip-audit
+        continue-on-error: true
+      
+      - name: Check dependencies with safety
+        run: safety check --json
+        continue-on-error: true
+      
+      - name: Run sandbox security tests
+        run: python3 core/sandbox_runner.py

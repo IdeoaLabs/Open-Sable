@@ -1,0 +1,15 @@
+[Unit]
+Description=SableCore AI Agent
+After=network.target
+
+[Service]
+Type=simple
+User=YOUR_USERNAME
+WorkingDirectory=/path/to/SableCore
+Environment="PATH=/usr/bin:/usr/local/bin"
+ExecStart=/usr/bin/python3 /path/to/SableCore/main.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

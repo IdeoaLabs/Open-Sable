@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: opensable
+  labels:
+    name: opensable
+    app: ai-assistant
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: opensable-quota
+  namespace: opensable
+spec:
+  hard:
+    requests.cpu: "8"
+    requests.memory: 16Gi
+    limits.cpu: "16"
+    limits.memory: 32Gi
+    persistentvolumeclaims: "10"
+    services.loadbalancers: "2"
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: opensable-limits
+  namespace: opensable
+spec:
+  limits:
+  - max:
+      cpu: "4"
+      memory: 8Gi
+    min:
+      cpu: "100m"
+      memory: 128Mi
+    default:
+      cpu: "1"
+      memory: 2Gi
+    defaultRequest:
+      cpu: "500m"
+      memory: 1Gi
+    type: Container
