@@ -201,7 +201,7 @@ graph TB
 ### Communication & Interfaces (13 platforms)
 - ✅ **Telegram** (primary — bot + userbot)
 - ✅ **Discord** (full bot with slash commands)
-- ✅ **WhatsApp** (Venom.js bridge)
+- ✅ **WhatsApp** (whatsapp-web.js bridge)
 - ✅ **Slack** (Bolt SDK)
 - ✅ **Matrix** (nio client)
 - ✅ **IRC** (asyncio protocol)
@@ -1442,7 +1442,7 @@ Open-Sable/
 │   │   ├── telegram_userbot.py # Telegram Userbot (Telethon)
 │   │   ├── telegram_progress.py # Live progress bars
 │   │   ├── discord_bot.py      # Discord (discord.py)
-│   │   ├── whatsapp_bot.py     # WhatsApp (Venom.js bridge)
+│   │   ├── whatsapp_bot.py     # WhatsApp (whatsapp-web.js bridge)
 │   │   ├── slack_bot.py        # Slack (Bolt SDK)
 │   │   ├── matrix_bot.py       # Matrix (nio)
 │   │   ├── irc_bot.py          # IRC (asyncio)
@@ -1490,7 +1490,7 @@ Open-Sable/
 │   ├── dependencies.yaml
 │   └── namespace.yaml
 │
-├── venom-bot/                  # WhatsApp bridge (Node.js)
+├── whatsapp-bridge/            # WhatsApp bridge (Node.js, wwebjs)
 │   ├── bridge.js
 │   └── package.json
 │

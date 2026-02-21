@@ -162,8 +162,8 @@ async def test_file_structure():
         "opensable/core/onboarding.py",
         "static/dashboard_modern.html",
         "sable.py",
-        "venom-bot/bridge.js",
-        "venom-bot/package.json",
+        "whatsapp-bridge/bridge.js",
+        "whatsapp-bridge/package.json",
         "WHATS_NEW.md",
     ]
     
@@ -191,7 +191,7 @@ async def test_whatsapp_bridge():
     import subprocess
     
     # Check if bridge.js exists
-    bridge_file = Path(__file__).parent / "venom-bot" / "bridge.js"
+    bridge_file = Path(__file__).parent / "whatsapp-bridge" / "bridge.js"
     if not bridge_file.exists():
         print("   ❌ bridge.js not found")
         return
@@ -199,7 +199,7 @@ async def test_whatsapp_bridge():
     print(f"   ✅ bridge.js exists")
     
     # Check if node_modules exists
-    node_modules = Path(__file__).parent / "venom-bot" / "node_modules"
+    node_modules = Path(__file__).parent / "whatsapp-bridge" / "node_modules"
     if node_modules.exists():
         print("   ✅ Dependencies installed")
     else:

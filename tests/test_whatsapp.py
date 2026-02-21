@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 WhatsApp Integration Test
-Tests sending messages via Venom Bot bridge
+Tests sending messages via whatsapp-web.js bridge
 """
 
 import asyncio

@@ -140,7 +140,6 @@ class MultiMessengerRouter:
             response_text = await self.agent.process_message(
                 message.user_id,
                 message.text or "",
-                metadata=message.metadata
             )
             
             # Create response

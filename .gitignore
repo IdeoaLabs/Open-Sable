@@ -39,8 +39,9 @@ data/vectordb/
 
 # Node modules
 node_modules/
-venom-bot/node_modules/
-venom-bot/tokens/
+whatsapp-bridge/node_modules/
+whatsapp-bridge/tokens/
+whatsapp-bridge/.wwebjs_auth/
 package-lock.json
 
 # Skills runtime data

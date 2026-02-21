@@ -235,8 +235,11 @@ class TelegramInterface:
         self.bot = Bot(token=self.config.telegram_bot_token)
         self.dp = Dispatcher()
 
-        # Register handlers
-        self.dp.message.register(self._h_start,   CommandStart())
+        # Register handlers (order matters — specific filters first, catch-all last)
+        self.dp.message.register(self._h_start, CommandStart())
+        self.dp.message.register(self._h_voice, F.voice)
+        self.dp.message.register(self._h_photo, F.photo)
+        self.dp.message.register(self._h_message)  # catch-all: slash commands + regular text
         
         # Register callback query handler for inline buttons
         self.dp.callback_query.register(self._h_callback)

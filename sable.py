@@ -166,7 +166,7 @@ async def main_menu():
     elif choice == "5":
         print("\n📱 WhatsApp Bot Status:")
         print("Bridge: Check if node bridge.js is running on port 3333")
-        print("Run: cd venom-bot && node bridge.js")
+        print("Run: cd whatsapp-bridge && node bridge.js")
     elif choice == "6":
         show_config()
     elif choice == "7":

@@ -223,7 +223,7 @@ class OnboardingWizard:
         
         platforms = {
             "1": {"name": "Telegram", "enabled": False, "requires": "TELEGRAM_BOT_TOKEN"},
-            "2": {"name": "WhatsApp", "enabled": False, "requires": "Node.js + Venom Bot"},
+            "2": {"name": "WhatsApp", "enabled": False, "requires": "Node.js + whatsapp-web.js"},
             "3": {"name": "Discord", "enabled": False, "requires": "DISCORD_BOT_TOKEN"},
             "4": {"name": "CLI (Terminal)", "enabled": True, "requires": "Nothing (always available)"}
         }

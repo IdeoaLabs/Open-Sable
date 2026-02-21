@@ -17,7 +17,7 @@ source venv/bin/activate
 # Check what to start
 if [ "$1" == "whatsapp" ]; then
     echo "📱 Starting WhatsApp Bridge..."
-    cd venom-bot && node bridge.js
+    cd whatsapp-bridge && node bridge.js
 elif [ "$1" == "skills" ]; then
     echo "🛒 Opening Skills Hub..."
     python sable.py skills

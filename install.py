@@ -138,12 +138,12 @@ def install_playwright():
         return False
 
 
-def install_venom_bot():
-    """Install Venom Bot for WhatsApp integration"""
-    print("\n💬 Install Venom Bot for WhatsApp? (y/n): ", end="")
+def install_whatsapp_bridge():
+    """Install WhatsApp bridge (whatsapp-web.js) for WhatsApp integration"""
+    print("\n💬 Install WhatsApp bridge? (y/n): ", end="")
     choice = input().strip().lower()
     if choice != "y":
-        print("⏭️  Skipping Venom Bot installation")
+        print("⏭️  Skipping WhatsApp bridge installation")
         return
     
     # Check if Node.js is installed
@@ -158,29 +158,29 @@ def install_venom_bot():
         print("❌ Node.js not found - install it first")
         return
     
-    venom_dir = Path("venom-bot")
+    bridge_dir = Path("whatsapp-bridge")
     
     # Check if already exists
-    if venom_dir.exists() and (venom_dir / "package.json").exists():
-        print("✅ Venom Bot already installed")
+    if bridge_dir.exists() and (bridge_dir / "package.json").exists():
+        print("✅ WhatsApp bridge already installed")
         return
     
-    print("📥 Installing Venom Bot dependencies...")
+    print("📥 Installing WhatsApp bridge dependencies...")
     
     try:
         # Install npm dependencies
         subprocess.run(
-            ['npm', 'install', 'venom-bot', 'express', 'dotenv'],
-            cwd=str(venom_dir),
+            ['npm', 'install', 'whatsapp-web.js', 'qrcode-terminal', 'express', 'dotenv'],
+            cwd=str(bridge_dir),
             check=True
         )
-        print("✅ Venom Bot installed successfully")
+        print("✅ WhatsApp bridge installed successfully")
         print("\n📱 To connect WhatsApp:")
-        print("   1. Run: cd venom-bot && node bridge.js")
+        print("   1. Run: cd whatsapp-bridge && node bridge.js")
         print("   2. Scan QR code with WhatsApp")
         print("   3. Start OpenSable with WHATSAPP_ENABLED=true")
     except subprocess.CalledProcessError:
-        print("⚠️  Venom Bot installation failed - install manually")
+        print("⚠️  WhatsApp bridge installation failed - install manually")
     except FileNotFoundError:
         print("❌ npm not found - install Node.js and npm first")
 
@@ -451,8 +451,8 @@ def main():
     # Optional playwright
     install_playwright()
     
-    # Install Venom Bot for WhatsApp
-    install_venom_bot()
+    # Install WhatsApp bridge
+    install_whatsapp_bridge()
     
     # Done
     print_next_steps()

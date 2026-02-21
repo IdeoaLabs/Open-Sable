@@ -27,8 +27,8 @@ def test_file_structure():
         "opensable/interfaces/whatsapp_bot.py",
         "opensable/interfaces/discord_bot.py",
         "opensable/interfaces/telegram_progress.py",
-        "venom-bot/bridge.js",
-        "venom-bot/package.json",
+        "whatsapp-bridge/bridge.js",
+        "whatsapp-bridge/package.json",
         "static/dashboard_modern.html",
         "sable.py",
         "start.sh",
@@ -250,8 +250,8 @@ def test_whatsapp_bridge():
     
     try:
         # Check bridge files exist
-        bridge_js = project_root / "venom-bot" / "bridge.js"
-        package_json = project_root / "venom-bot" / "package.json"
+        bridge_js = project_root / "whatsapp-bridge" / "bridge.js"
+        package_json = project_root / "whatsapp-bridge" / "package.json"
         
         if not bridge_js.exists():
             print("❌ bridge.js not found")

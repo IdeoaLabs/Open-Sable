@@ -1,9 +1,9 @@
-"""
-WhatsApp Bot Interface using Venom Bot
+"""WhatsApp Bot Interface using whatsapp-web.js (wwebjs)
 Provides full WhatsApp Web automation through Node.js bridge
 """
 import asyncio
 import aiohttp
+import aiohttp.web
 import json
 import logging
 from pathlib import Path
@@ -28,22 +28,19 @@ logger = logging.getLogger(__name__)
 
 class WhatsAppBot:
     """
-    WhatsApp bot using Venom Bot for complete WhatsApp Web control.
+    WhatsApp bot using whatsapp-web.js for WhatsApp Web control.
     
-    Features:
-    - QR code authentication
-    - Send/receive messages
-    - Media handling (images, voice, documents)
-    - Group management
-    - Contact sync
-    - Status updates
+    Architecture:
+    - bridge.js (Node.js) runs wwebjs, posts events to Python webhook
+    - Python webhook on :3334 receives messages
+    - Python sends outbound via bridge REST API on :3333
     """
     
     def __init__(self, config: Config, agent):
         self.config = config
         self.agent = agent
         self.running = False
-        self.venom_process = None
+        self.bridge_process = None
         self.session_name = getattr(config, 'whatsapp_session_name', 'opensable')
         
         # Initialize handlers
@@ -52,9 +49,12 @@ class WhatsAppBot:
         self.image_analyzer = ImageAnalyzer(config)
         self.voice_handler = VoiceMessageHandler(config, agent)
         
-        # Venom bot paths
-        self.venom_dir = Path(__file__).parent.parent.parent / "venom-bot"
-        self.bridge_script = self.venom_dir / "bridge.js"
+        self.callback_port = getattr(config, 'whatsapp_callback_port', 3334)
+        self._webhook_runner = None
+        
+        # Bridge paths
+        self.bridge_dir = Path(__file__).parent.parent.parent / "whatsapp-bridge"
+        self.bridge_script = self.bridge_dir / "bridge.js"
         
         logger.info(f"WhatsApp bot initialized (session: {self.session_name})")
     
@@ -64,9 +64,9 @@ class WhatsAppBot:
             logger.warning("WhatsApp bot already running")
             return
         
-        # Check Venom Bot installation
-        if not await self._check_venom_installation():
-            logger.error("Venom Bot not installed. Run: python install.py --setup-whatsapp")
+        # Check bridge installation
+        if not await self._check_bridge_installation():
+            logger.error("WhatsApp bridge not installed. Run: cd whatsapp-bridge && npm install")
             return
         
         logger.info("🚀 Starting WhatsApp bot...")
@@ -74,71 +74,97 @@ class WhatsAppBot:
         
         self.running = True
         
-        # Start Venom Bot bridge
-        await self._start_venom_bridge()
+        # Start webhook server FIRST so bridge can POST to us
+        await self._start_webhook_server()
         
-        # Start message listener
+        # Start wwebjs bridge
+        await self._start_bridge()
+        
+        # Keep alive
         await self._listen_messages()
     
-    async def _check_venom_installation(self) -> bool:
-        """Check if Venom Bot is installed"""
-        if not self.venom_dir.exists():
+    async def _check_bridge_installation(self) -> bool:
+        """Check if WhatsApp bridge (wwebjs) is installed"""
+        if not self.bridge_dir.exists():
             return False
-        
         if not self.bridge_script.exists():
             return False
-        
-        # Check node_modules
-        node_modules = self.venom_dir / "node_modules"
+        node_modules = self.bridge_dir / "node_modules" / "whatsapp-web.js"
         if not node_modules.exists():
             return False
-        
         return True
     
-    async def _start_venom_bridge(self):
-        """Start the Node.js Venom Bot bridge"""
+    async def _start_webhook_server(self):
+        """Start local HTTP server to receive events from bridge via POST"""
+        app = aiohttp.web.Application()
+        app.router.add_post('/whatsapp-event', self._webhook_handler)
+        
+        runner = aiohttp.web.AppRunner(app)
+        await runner.setup()
+        site = aiohttp.web.TCPSite(runner, '127.0.0.1', self.callback_port)
+        await site.start()
+        self._webhook_runner = runner
+        logger.info(f"📡 WhatsApp webhook listening on 127.0.0.1:{self.callback_port}")
+    
+    async def _webhook_handler(self, request: aiohttp.web.Request) -> aiohttp.web.Response:
+        """Handle POST events from bridge.js"""
         try:
-            # Start bridge process
-            self.venom_process = await asyncio.create_subprocess_exec(
+            event = await request.json()
+            await self._handle_bridge_event(event)
+        except Exception as e:
+            logger.error(f"Webhook handler error: {e}")
+        return aiohttp.web.Response(text='ok')
+    
+    async def _start_bridge(self):
+        """Start the Node.js wwebjs bridge"""
+        try:
+            bridge_port = str(getattr(self.config, 'whatsapp_bridge_port', 3333))
+            self.bridge_process = await asyncio.create_subprocess_exec(
                 "node",
                 str(self.bridge_script),
                 "--session", self.session_name,
-                "--port", str(getattr(self.config, 'whatsapp_bridge_port', 3333)),
+                "--port", bridge_port,
+                "--callback-port", str(self.callback_port),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                cwd=str(self.venom_dir),
+                cwd=str(self.bridge_dir),
             )
             
-            logger.info("✅ Venom Bot bridge started")
+            logger.info("✅ WhatsApp bridge started (wwebjs)")
             
-            # Monitor bridge output
-            asyncio.create_task(self._monitor_bridge_output())
+            # Monitor stderr for debug logs + stdout for early boot events
+            asyncio.create_task(self._monitor_bridge_stderr())
+            asyncio.create_task(self._monitor_bridge_stdout())
             
         except Exception as e:
-            logger.error(f"Failed to start Venom bridge: {e}")
+            logger.error(f"Failed to start WhatsApp bridge: {e}")
             raise
     
-    async def _monitor_bridge_output(self):
-        """Monitor Venom Bot bridge output for QR codes and events"""
-        if not self.venom_process:
+    async def _monitor_bridge_stderr(self):
+        """Log bridge stderr for debugging"""
+        if not self.bridge_process or not self.bridge_process.stderr:
             return
-        
-        async for line in self.venom_process.stdout:
+        async for line in self.bridge_process.stderr:
             decoded = line.decode().strip()
-            
+            if decoded:
+                logger.info(f"[wwebjs] {decoded}")
+    
+    async def _monitor_bridge_stdout(self):
+        """Monitor bridge stdout for early events (QR code before webhook ready)"""
+        if not self.bridge_process or not self.bridge_process.stdout:
+            return
+        async for line in self.bridge_process.stdout:
+            decoded = line.decode().strip()
             if not decoded:
                 continue
-            
-            # Parse JSON events from bridge
             try:
                 event = json.loads(decoded)
                 await self._handle_bridge_event(event)
             except json.JSONDecodeError:
-                # Raw log output
-                logger.info(f"[Venom] {decoded}")
+                logger.info(f"[wwebjs] {decoded}")
     
     async def _handle_bridge_event(self, event: Dict[str, Any]):
-        """Handle events from Venom Bot bridge"""
+        """Handle events from WhatsApp bridge"""
         event_type = event.get("type")
         
         if event_type == "qr":
@@ -158,13 +184,24 @@ class WhatsAppBot:
             
         elif event_type == "message":
             # New message received
-            await self._process_message(event.get("data"))
+            msg_data = event.get("data", {})
+            # Handle both {data: message} (old) and message directly (new)
+            if isinstance(msg_data, dict) and "data" in msg_data and "from" not in msg_data:
+                msg_data = msg_data["data"]
+            logger.warning(f"📨 WhatsApp event: keys={list(msg_data.keys()) if isinstance(msg_data, dict) else type(msg_data)}")
+            await self._process_message(msg_data)
+            
+        elif event_type == "heartbeat":
+            logger.debug("💚 WhatsApp bridge heartbeat OK")
             
         elif event_type == "disconnected":
             logger.warning("⚠️ WhatsApp disconnected")
             
         elif event_type == "error":
-            logger.error(f"Venom error: {event.get('error')}")
+            logger.error(f"WhatsApp bridge error: {event.get('data', {}).get('error', event)}")
+        
+        else:
+            logger.debug(f"[wwebjs] Unhandled event: {event_type}")
     
     async def _listen_messages(self):
         """Listen for incoming WhatsApp messages"""
@@ -186,18 +223,22 @@ class WhatsAppBot:
             
             # Skip messages from self
             if msg_data.get("fromMe"):
+                logger.debug(f"Skipping own message: {text[:30]}")
                 return
             
-            logger.info(f"📩 Message from {sender_name}: {text[:50]}...")
+            logger.info(f"📩 WhatsApp from {sender_name} ({sender}): {text[:80]}")
             
             # Create unified message
             unified_msg = UnifiedMessage(
                 platform=MessengerPlatform.WHATSAPP,
                 user_id=sender,
-                username=sender_name,
+                chat_id=msg_data.get("chatId", sender),
                 text=text,
-                is_group=is_group,
-                raw_data=msg_data,
+                metadata={
+                    "username": sender_name,
+                    "is_group": is_group,
+                    "msg_type": msg_type,
+                },
             )
             
             # Handle media messages
@@ -215,7 +256,7 @@ class WhatsAppBot:
     
     async def _handle_message(self, msg: UnifiedMessage) -> str:
         """Handle message routing (called by MultiMessengerRouter)"""
-        return await self.agent.process(msg.text, msg.user_id)
+        return await self.agent.process_message(msg.user_id, msg.text)
     
     async def _handle_image(self, msg: UnifiedMessage, msg_data: Dict[str, Any]):
         """Handle image messages"""
@@ -269,7 +310,7 @@ class WhatsAppBot:
             await self._send_message(msg.user_id, "Sorry, I couldn't process that voice message.")
     
     async def _download_media(self, msg_id: str) -> Optional[bytes]:
-        """Download media from WhatsApp via Venom bridge"""
+        """Download media from WhatsApp via wwebjs bridge"""
         try:
             bridge_port = getattr(self.config, 'whatsapp_bridge_port', 3333)
             url = f"http://localhost:{bridge_port}/download"
@@ -283,7 +324,7 @@ class WhatsAppBot:
         return None
     
     async def _send_message(self, to: str, text: str):
-        """Send message via Venom bridge"""
+        """Send message via wwebjs bridge"""
         try:
             bridge_port = getattr(self.config, 'whatsapp_bridge_port', 3333)
             url = f"http://localhost:{bridge_port}/send"
@@ -299,9 +340,12 @@ class WhatsAppBot:
         logger.info("Stopping WhatsApp bot...")
         self.running = False
         
-        if self.venom_process:
-            self.venom_process.terminate()
-            await self.venom_process.wait()
+        if self._webhook_runner:
+            await self._webhook_runner.cleanup()
+        
+        if self.bridge_process:
+            self.bridge_process.terminate()
+            await self.bridge_process.wait()
         
         logger.info("✅ WhatsApp bot stopped")
 
