@@ -55,14 +55,17 @@ class CommandHandler:
         "help":       "Show this command list",
         "restart":    "Restart the gateway (owner only)",
         "activation": "Group activation mode: mention|always  (groups only)",
+        "plugin":     "Run a plugin command — /plugin <command> [args]",
+        "plugins":    "List loaded plugins and their commands",
     }
 
     THINKING_LEVELS: List[str] = ["off", "minimal", "low", "medium", "high", "xhigh"]
     USAGE_MODES:    List[str] = ["off", "tokens", "full"]
 
-    def __init__(self, session_manager, gateway=None):
+    def __init__(self, session_manager, gateway=None, plugin_manager=None):
         self.session_manager = session_manager
         self.gateway = gateway
+        self.plugin_manager = plugin_manager
 
     # ------------------------------------------------------------------
     # Public helpers
@@ -312,3 +315,45 @@ class CommandHandler:
         session.metadata["activation_mode"] = mode
         self.session_manager._save_session(session)
         return CommandResult(success=True, message=f"✅ Group activation -> **{mode}**")
+
+    # ── plugins ──────────────────────────────────────────────
+
+    async def _cmd_plugins(self, session, args, user_id, is_admin, is_group) -> CommandResult:
+        """List loaded plugins and their commands."""
+        pm = self.plugin_manager
+        if not pm or not pm.plugins:
+            return CommandResult(success=True, message="📦 No plugins loaded.")
+
+        lines = ["📦 **Loaded Plugins**", ""]
+        for info in pm.list_plugins():
+            lines.append(f"**{info['name']}** v{info['version']}")
+            if info.get("description"):
+                lines.append(f"  _{info['description']}_")
+            for cmd in info.get("commands", []):
+                lines.append(f"  • `{cmd}`")
+            lines.append("")
+        return CommandResult(success=True, message="\n".join(lines))
+
+    async def _cmd_plugin(self, session, args, user_id, is_admin, is_group) -> CommandResult:
+        """Execute a plugin command: /plugin <command> [args...]"""
+        pm = self.plugin_manager
+        if not pm:
+            return CommandResult(success=False, message="❌ Plugin system not available.")
+
+        if not args:
+            return CommandResult(
+                success=False,
+                message="Usage: `/plugin <command> [args...]`\nUse `/plugins` to see available commands.",
+            )
+
+        cmd_name = args[0]
+        cmd_args = args[1:]
+
+        try:
+            result = await pm.execute_command(cmd_name, *cmd_args)
+            return CommandResult(success=True, message=str(result))
+        except ValueError:
+            return CommandResult(success=False, message=f"❌ Unknown plugin command: `{cmd_name}`\nUse `/plugins` to see available commands.")
+        except Exception as e:
+            logger.error("Plugin command '%s' failed: %s", cmd_name, e)
+            return CommandResult(success=False, message=f"❌ Plugin error: {e}")

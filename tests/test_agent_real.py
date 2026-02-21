@@ -107,14 +107,18 @@ class TestMessageProcessing:
     def test_conversation_history(self, agent, event_loop):
         """Agent should use conversation history"""
         history = [
-            {"role": "user", "content": "My name is Carlos"},
-            {"role": "assistant", "content": "Nice to meet you, Carlos!"},
+            {"role": "user", "content": "My name is Carlos and I live in Mexico City"},
+            {"role": "assistant", "content": "Nice to meet you, Carlos! Mexico City is a great place."},
         ]
         response = event_loop.run_until_complete(
-            agent.process_message("test_user", "What is my name?", history=history)
+            agent.process_message(
+                "test_user",
+                "Repeat back the name I told you earlier. Just the name, nothing else.",
+                history=history
+            )
         )
         assert isinstance(response, str)
-        assert "Carlos" in response or "carlos" in response.lower()
+        assert "carlos" in response.lower(), f"Expected 'Carlos' in response: {response[:200]}"
 
 
 # ─── Tool Execution Tests ────────────────────────────────────────────

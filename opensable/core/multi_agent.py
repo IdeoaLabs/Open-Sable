@@ -49,31 +49,66 @@ class AgentTask:
 class AgentPool:
     """Pool of specialized agents"""
     
+    # Role-specific system prompts
+    ROLE_PROMPTS = {
+        AgentRole.COORDINATOR: (
+            "You are the Coordinator agent. Your job is to synthesize "
+            "results from multiple specialist agents into a coherent, "
+            "comprehensive final response. Be concise and clear."
+        ),
+        AgentRole.RESEARCHER: (
+            "You are the Research agent. You excel at finding information, "
+            "searching the web, and gathering relevant data. Always cite "
+            "your sources and be thorough."
+        ),
+        AgentRole.ANALYST: (
+            "You are the Analyst agent. You break down complex problems, "
+            "identify patterns, evaluate data quality, and provide "
+            "structured insights with pros/cons analysis."
+        ),
+        AgentRole.WRITER: (
+            "You are the Writer agent. You create clear, well-structured "
+            "content. Focus on readability, proper formatting, and "
+            "engaging language appropriate to the context."
+        ),
+        AgentRole.CODER: (
+            "You are the Coder agent. You write clean, efficient code "
+            "with proper error handling. Include comments for complex "
+            "logic and follow best practices for the language."
+        ),
+        AgentRole.REVIEWER: (
+            "You are the Reviewer agent. You critically evaluate work "
+            "for accuracy, completeness, and quality. Point out issues "
+            "and suggest specific improvements."
+        ),
+    }
+    
     def __init__(self, config: Config):
         self.config = config
         self.agents: Dict[AgentRole, SableAgent] = {}
-        self._initialize_agents()
+        self._initialized = False
     
     async def initialize(self):
-        """Initialize agent pool"""
+        """Initialize the agent pool — agents are created lazily on first use"""
+        self._initialized = True
+        logger.info(f"Initialized {len(self.ROLE_PROMPTS)} specialized agents")
         return self
     
-    def _initialize_agents(self):
-        """Initialize specialized agents"""
-        # Each role gets a dedicated agent with specialized system prompt
-        
-        self.agents[AgentRole.COORDINATOR] = SableAgent(self.config)
-        self.agents[AgentRole.RESEARCHER] = SableAgent(self.config)
-        self.agents[AgentRole.ANALYST]     = SableAgent(self.config)
-        self.agents[AgentRole.WRITER]      = SableAgent(self.config)
-        self.agents[AgentRole.CODER]       = SableAgent(self.config)
-        self.agents[AgentRole.REVIEWER]    = SableAgent(self.config)
-        
-        logger.info(f"Initialized {len(self.agents)} specialized agents")
+    async def _get_or_create_agent(self, role: AgentRole) -> SableAgent:
+        """Lazily create and initialize an agent for the given role"""
+        if role not in self.agents:
+            agent = SableAgent(self.config)
+            await agent.initialize()
+            self.agents[role] = agent
+        return self.agents[role]
     
-    def get_agent(self, role: AgentRole) -> SableAgent:
-        """Get agent by role"""
+    def get_agent(self, role: AgentRole) -> Optional[SableAgent]:
+        """Get agent by role (may be None if not yet created)"""
         return self.agents.get(role)
+    
+    def get_role_prompt(self, role: AgentRole) -> str:
+        """Get the system prompt for a role"""
+        return self.ROLE_PROMPTS.get(role, "")
 
 
 class MultiAgentOrchestrator:
@@ -194,8 +229,8 @@ class MultiAgentOrchestrator:
         task.started_at = datetime.utcnow()
         
         try:
-            # Get agent for this role
-            agent = self.agent_pool.get_agent(task.role)
+            # Get or create agent for this role (lazy init)
+            agent = await self.agent_pool._get_or_create_agent(task.role)
             
             if not agent:
                 raise ValueError(f"No agent found for role: {task.role}")
@@ -203,15 +238,18 @@ class MultiAgentOrchestrator:
             # Build context from dependencies
             context = self._build_context(task, previous_results)
             
-            # Build prompt
-            prompt = f"""Task: {task.description}
+            # Build prompt with role-specific instructions
+            role_prompt = self.agent_pool.get_role_prompt(task.role)
+            prompt = f"""{role_prompt}
+
+Task: {task.description}
 
 Input Data:
-{json.dumps(task.input_data, indent=2)}
+{json.dumps(task.input_data, indent=2) if task.input_data else '(none)'}
 
 {context}
 
-Please complete this task and provide your output."""
+Complete this task and provide your output."""
             
             # Get session
             session = None
@@ -335,6 +373,42 @@ Synthesize these perspectives into a comprehensive, coherent response."""
     def get_stats(self) -> dict:
         """Get orchestrator statistics"""
         return self.stats.copy()
+
+    async def route_complex_task(self, task_description: str, user_id: str = "default") -> Optional[str]:
+        """
+        Auto-route a complex task to the appropriate specialist(s).
+        Returns the final synthesized result, or None if not applicable.
+        
+        Routing heuristics:
+        - Code-related → CODER + REVIEWER
+        - Research/analysis → RESEARCHER + ANALYST
+        - Writing → WRITER + REVIEWER
+        - Multi-step → full workflow
+        """
+        desc_lower = task_description.lower()
+        
+        # Detect task type
+        code_keywords = ["write code", "implement", "programa", "function", "class", "script",
+                         "debug", "fix the code", "refactor", "code review", "algoritmo"]
+        research_keywords = ["research", "investigate", "analiza", "compare", "investiga",
+                            "pros and cons", "report on", "informe sobre"]
+        write_keywords = ["write an article", "write a blog", "escribe", "draft", "redacta",
+                         "essay", "summary of", "resumen"]
+        
+        roles = []
+        if any(kw in desc_lower for kw in code_keywords):
+            roles = [AgentRole.CODER, AgentRole.REVIEWER]
+        elif any(kw in desc_lower for kw in research_keywords):
+            roles = [AgentRole.RESEARCHER, AgentRole.ANALYST]
+        elif any(kw in desc_lower for kw in write_keywords):
+            roles = [AgentRole.WRITER, AgentRole.REVIEWER]
+        
+        if not roles:
+            return None  # Not a multi-agent task
+        
+        logger.info(f"🤝 Multi-agent routing: {[r.value for r in roles]}")
+        result = await self.collaborative_task(task_description, roles)
+        return result.get("synthesized_result")
 
 
 # Example workflow builders

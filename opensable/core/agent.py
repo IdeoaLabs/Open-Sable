@@ -382,6 +382,26 @@ class SableAgent:
         # 2. Detect "search more / again" and reuse last query
         resolved_message = self._resolve_message(message, history or [])
 
+        # ── Multi-agent routing for complex tasks ──────────────────────────
+        if self.multi_agent:
+            try:
+                from .multi_agent import MultiAgentOrchestrator
+                orchestrator = MultiAgentOrchestrator(self.config)
+                orchestrator.agent_pool = self.multi_agent
+                result = await orchestrator.route_complex_task(resolved_message, user_id)
+                if result:
+                    logger.info("🤝 Multi-agent handled this task")
+                    return result
+            except Exception as e:
+                logger.debug(f"Multi-agent routing skipped: {e}")
+
+        # ── Plugin hooks ───────────────────────────────────────────────────
+        if self.plugins:
+            try:
+                await self.plugins.execute_hook("message_received", user_id, resolved_message)
+            except Exception as e:
+                logger.debug(f"Plugin hook failed: {e}")
+
         initial_state = {
             "messages": history or [],
             "user_id": user_id,

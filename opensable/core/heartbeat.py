@@ -124,7 +124,7 @@ class HeartbeatManager:
             return None
             
     async def _send_heartbeat_alerts(self, alerts: List[Dict]):
-        """Send proactive alerts to user"""
+        """Send proactive alerts to user via active interfaces"""
         logger.info(f"🔔 Heartbeat: {len(alerts)} alerts")
         
         # Format alert message
@@ -133,10 +133,18 @@ class HeartbeatManager:
             priority_emoji = "🔴" if alert["priority"] == "urgent" else "🟡"
             message += f"{priority_emoji} **{alert['check']}**: {alert['message']}\n"
         
-        # Send via agent
-        # (This will be picked up by the telegram bot or other interfaces)
-        # For now, log it - in real implementation, this would notify the user
-        logger.info(f"Heartbeat alert:\n{message}")
+        # Try to send via the agent's active interfaces
+        sent = False
+        # Check if agent has a Telegram bot reference
+        if hasattr(self.agent, '_telegram_notify'):
+            try:
+                await self.agent._telegram_notify(message)
+                sent = True
+            except Exception as e:
+                logger.debug(f"Telegram notify failed: {e}")
+        
+        if not sent:
+            logger.info(f"Heartbeat alert (no active notification channel):\n{message}")
 
 
 # ── Built-in Heartbeat Checks ──────────────────────────────────────
@@ -160,13 +168,60 @@ async def check_system_health() -> Dict[str, Any]:
 
 
 async def check_pending_tasks() -> Dict[str, Any]:
-    """Check for pending tasks in memory"""
-    # Placeholder - would check agent's task queue
-    return {"alert": False}
+    """Check for pending goals nearing their deadline"""
+    try:
+        state_file = Path.home() / ".opensable" / "goals.json"
+        if not state_file.exists():
+            return {"alert": False}
+        data = json.loads(state_file.read_text())
+        active = [g for g in data.get("goals", []) if g.get("status") == "active"]
+        overdue = []
+        now = datetime.now().isoformat()
+        for g in active:
+            dl = g.get("deadline")
+            if dl and dl < now:
+                overdue.append(g.get("description", g.get("goal_id", "?")))
+        if overdue:
+            return {
+                "alert": True,
+                "message": f"{len(overdue)} overdue goal(s): {', '.join(overdue[:3])}",
+                "priority": "urgent"
+            }
+        if len(active) > 5:
+            return {
+                "alert": True,
+                "message": f"{len(active)} active goals — consider prioritizing",
+                "priority": "normal"
+            }
+        return {"alert": False}
+    except Exception:
+        return {"alert": False}
 
 
 async def check_idle_time() -> Dict[str, Any]:
-    """Check if user has been idle for too long"""
-    # Placeholder - would check last interaction time
-    # If >8 hours, send friendly check-in
-    return {"alert": False}
+    """Check if no user interaction for a long time"""
+    try:
+        session_dir = Path.home() / ".opensable" / "sessions"
+        if not session_dir.exists():
+            return {"alert": False}
+        latest = None
+        for f in session_dir.glob("*.json"):
+            data = json.loads(f.read_text())
+            msgs = data.get("messages", [])
+            if msgs:
+                ts = msgs[-1].get("timestamp")
+                if ts and (latest is None or ts > latest):
+                    latest = ts
+        if latest:
+            from datetime import datetime as dt
+            last = dt.fromisoformat(latest)
+            hours = (datetime.now() - last).total_seconds() / 3600
+            if hours > 12:
+                return {
+                    "alert": True,
+                    "message": f"No interaction in {int(hours)}h — everything ok?",
+                    "priority": "normal"
+                }
+        return {"alert": False}
+    except Exception:
+        return {"alert": False}

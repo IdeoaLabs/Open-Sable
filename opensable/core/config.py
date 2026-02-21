@@ -42,6 +42,10 @@ class OpenSableConfig(BaseModel):
     discord_guild_id: Optional[str] = None
     whatsapp_enabled: bool = False
     
+    slack_bot_token: Optional[str] = None
+    slack_app_token: Optional[str] = None
+    slack_signing_secret: Optional[str] = None
+    
     # Email & Calendar
     gmail_enabled: bool = True
     gmail_credentials_path: Path = Path("./config/gmail_credentials.json")
@@ -137,6 +141,10 @@ def load_config() -> OpenSableConfig:
         "discord_bot_token": os.getenv("DISCORD_BOT_TOKEN"),
         "discord_guild_id": os.getenv("DISCORD_GUILD_ID"),
         "whatsapp_enabled": os.getenv("WHATSAPP_ENABLED", "false").lower() == "true",
+        
+        "slack_bot_token": os.getenv("SLACK_BOT_TOKEN"),
+        "slack_app_token": os.getenv("SLACK_APP_TOKEN"),
+        "slack_signing_secret": os.getenv("SLACK_SIGNING_SECRET"),
         
         "gmail_enabled": os.getenv("GMAIL_ENABLED", "true").lower() == "true",
         "gmail_credentials_path": Path(os.getenv("GMAIL_CREDENTIALS_PATH", "./config/gmail_credentials.json")),

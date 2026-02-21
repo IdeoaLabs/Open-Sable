@@ -25,11 +25,14 @@ class SlackInterface:
         """Initialize Slack app"""
         try:
             from slack_bolt.async_app import AsyncApp
-            from opensable.core.sessions import SessionManager
+            from opensable.core.session_manager import SessionManager
             from opensable.core.commands import CommandHandler
             
-            self.session_manager = SessionManager(self.config)
-            self.command_handler = CommandHandler(self.session_manager)
+            self.session_manager = SessionManager()
+            self.command_handler = CommandHandler(
+                self.session_manager,
+                plugin_manager=getattr(self.agent, 'plugins', None),
+            )
             
             self.app = AsyncApp(
                 token=self.config.slack_bot_token,
@@ -100,26 +103,22 @@ class SlackInterface:
             
             # Check if it's a command
             if self.command_handler.is_command(text):
-                response = await self.command_handler.handle_command(
+                result = await self.command_handler.handle_command(
                     text=text,
                     session_id=session.id,
                     user_id=user_id,
                     is_admin=False,
                     is_group=message.get("channel_type") != "im"
                 )
+                response = result.message
             else:
-                # Add message to session
-                session.add_message("user", text)
-                
                 # Process through agent
-                response = await self.agent.run(text, session.get_history())
-                
-                # Add response to session
-                session.add_message("assistant", response)
+                response = await self.agent.process_message(user_id, text)
             
             # Send response in thread
+            reply_text = response if isinstance(response, str) else str(response)
             await say(
-                text=response,
+                text=reply_text,
                 thread_ts=thread_ts
             )
             
@@ -127,7 +126,7 @@ class SlackInterface:
             logger.error(f"Error handling Slack message: {e}", exc_info=True)
             await say(
                 text="Sorry, I encountered an error processing your message.",
-                thread_ts=thread_ts
+                thread_ts=message.get("thread_ts", message.get("ts"))
             )
     
     async def handle_slash_command(self, ack, command, say):
@@ -138,16 +137,10 @@ class SlackInterface:
             user_id = command.get("user_id")
             text = command.get("text", "")
             
-            # Get or create session
-            session = self.session_manager.get_or_create_session(
-                user_id=user_id,
-                channel="slack"
-            )
-            
             # Process through agent
-            response = await self.agent.run(text, session.get_history())
+            response = await self.agent.process_message(user_id, text)
             
-            await say(response)
+            await say(str(response))
             
         except Exception as e:
             logger.error(f"Error handling slash command: {e}", exc_info=True)

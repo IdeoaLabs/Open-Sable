@@ -208,7 +208,10 @@ class TelegramInterface:
         self.bot: Optional[Bot] = None
         self.dp: Optional[Dispatcher] = None
         self.session_manager = SessionManager()
-        self.command_handler = CommandHandler(self.session_manager)
+        self.command_handler = CommandHandler(
+            self.session_manager,
+            plugin_manager=getattr(agent, 'plugins', None),
+        )
         self.pairing = PairingStore(config)
         
         # Heartbeat manager for proactive checking
@@ -239,6 +242,21 @@ class TelegramInterface:
         self.dp.callback_query.register(self._h_callback)
         
         # Start heartbeat for proactive checking
+        from opensable.core.heartbeat import check_system_health, check_pending_tasks, check_idle_time
+        self.heartbeat.register_check(check_system_health, "System Health")
+        self.heartbeat.register_check(check_pending_tasks, "Pending Goals")
+        self.heartbeat.register_check(check_idle_time, "Idle Check")
+        
+        # Wire heartbeat alerts to Telegram
+        owner_id = self.pairing.owner_id()
+        if owner_id:
+            async def _tg_notify(msg: str):
+                try:
+                    await self.bot.send_message(int(owner_id), msg)
+                except Exception as e:
+                    logger.debug(f"Heartbeat Telegram notify failed: {e}")
+            self.agent._telegram_notify = _tg_notify
+        
         await self.heartbeat.start()
 
         logger.info("Telegram bot starting (long-polling, no open ports)...")
