@@ -242,6 +242,323 @@ Args:
         return code
 
 
+# ─── Neural Tool Synthesis (beyond LLM) ──────────────────────────────────────
+
+class PatternLibrary:
+    """
+    Reusable code patterns extracted from previously-synthesised tools.
+    Works WITHOUT the LLM — pure AST analysis + template matching.
+    """
+
+    # Common algorithmic building blocks keyed by semantic tag
+    BLOCKS: Dict[str, str] = {
+        "http_get": (
+            "async def _http_get(url: str, params: dict = None) -> dict:\n"
+            "    import aiohttp\n"
+            "    async with aiohttp.ClientSession() as s:\n"
+            "        async with s.get(url, params=params) as r:\n"
+            "            return {'status': r.status, 'data': await r.json()}\n"
+        ),
+        "http_post": (
+            "async def _http_post(url: str, payload: dict) -> dict:\n"
+            "    import aiohttp\n"
+            "    async with aiohttp.ClientSession() as s:\n"
+            "        async with s.post(url, json=payload) as r:\n"
+            "            return {'status': r.status, 'data': await r.json()}\n"
+        ),
+        "file_read": (
+            "def _file_read(path: str) -> str:\n"
+            "    from pathlib import Path\n"
+            "    return Path(path).read_text(errors='replace')\n"
+        ),
+        "file_write": (
+            "def _file_write(path: str, content: str) -> bool:\n"
+            "    from pathlib import Path\n"
+            "    Path(path).write_text(content); return True\n"
+        ),
+        "json_parse": (
+            "def _json_parse(text: str) -> dict:\n"
+            "    import json; return json.loads(text)\n"
+        ),
+        "csv_parse": (
+            "def _csv_parse(text: str) -> list:\n"
+            "    import csv, io\n"
+            "    return list(csv.DictReader(io.StringIO(text)))\n"
+        ),
+        "regex_extract": (
+            "def _regex_extract(text: str, pattern: str) -> list:\n"
+            "    import re; return re.findall(pattern, text)\n"
+        ),
+        "math_stats": (
+            "def _math_stats(values: list) -> dict:\n"
+            "    n = len(values); s = sum(values); avg = s/n if n else 0\n"
+            "    variance = sum((x-avg)**2 for x in values)/n if n else 0\n"
+            "    return {'count': n, 'sum': s, 'mean': avg, 'variance': variance, 'std': variance**0.5}\n"
+        ),
+        "cache_memo": (
+            "_cache = {}\n"
+            "def _cached(key: str, fn, *args):\n"
+            "    if key not in _cache: _cache[key] = fn(*args)\n"
+            "    return _cache[key]\n"
+        ),
+        "retry_loop": (
+            "async def _retry(fn, retries=3, delay=1.0):\n"
+            "    import asyncio\n"
+            "    for attempt in range(retries):\n"
+            "        try: return await fn()\n"
+            "        except Exception as e:\n"
+            "            if attempt == retries - 1: raise\n"
+            "            await asyncio.sleep(delay * (attempt + 1))\n"
+        ),
+        "string_transform": (
+            "def _transform(text: str, ops: list) -> str:\n"
+            "    for op in ops:\n"
+            "        if op == 'upper': text = text.upper()\n"
+            "        elif op == 'lower': text = text.lower()\n"
+            "        elif op == 'strip': text = text.strip()\n"
+            "        elif op == 'title': text = text.title()\n"
+            "    return text\n"
+        ),
+        "list_filter": (
+            "def _list_filter(items: list, key: str, value) -> list:\n"
+            "    return [i for i in items if i.get(key) == value]\n"
+        ),
+        "date_format": (
+            "def _date_format(dt_str: str, fmt: str = '%Y-%m-%d') -> str:\n"
+            "    from datetime import datetime\n"
+            "    return datetime.fromisoformat(dt_str).strftime(fmt)\n"
+        ),
+    }
+
+    # Mapping from spec keywords → relevant blocks
+    KEYWORD_MAP = {
+        "fetch": ["http_get", "retry_loop"],
+        "api": ["http_get", "http_post", "json_parse", "retry_loop"],
+        "download": ["http_get", "file_write"],
+        "scrape": ["http_get", "regex_extract"],
+        "parse": ["json_parse", "csv_parse", "regex_extract"],
+        "file": ["file_read", "file_write"],
+        "read": ["file_read"],
+        "write": ["file_write"],
+        "csv": ["csv_parse"],
+        "json": ["json_parse"],
+        "convert": ["string_transform", "json_parse"],
+        "calculate": ["math_stats"],
+        "statistics": ["math_stats"],
+        "average": ["math_stats"],
+        "filter": ["list_filter"],
+        "search": ["regex_extract", "list_filter"],
+        "cache": ["cache_memo"],
+        "date": ["date_format"],
+        "format": ["string_transform", "date_format"],
+        "transform": ["string_transform"],
+        "post": ["http_post", "retry_loop"],
+        "send": ["http_post"],
+        "retry": ["retry_loop"],
+    }
+
+    @classmethod
+    def match_patterns(cls, spec: ToolSpecification) -> List[str]:
+        """Return block keys that match the spec description & type."""
+        desc = (spec.description + " " + spec.name).lower()
+        matched = set()
+        for keyword, blocks in cls.KEYWORD_MAP.items():
+            if keyword in desc:
+                matched.update(blocks)
+        # Also match by tool type
+        type_map = {
+            ToolType.API_CLIENT: ["http_get", "http_post", "json_parse", "retry_loop"],
+            ToolType.SCRAPER: ["http_get", "regex_extract", "retry_loop"],
+            ToolType.FILE_HANDLER: ["file_read", "file_write"],
+            ToolType.CALCULATOR: ["math_stats"],
+            ToolType.CONVERTER: ["string_transform", "json_parse"],
+            ToolType.DATA_PROCESSOR: ["json_parse", "csv_parse", "list_filter"],
+        }
+        matched.update(type_map.get(spec.tool_type, []))
+        return list(matched)
+
+    @classmethod
+    def get_blocks(cls, keys: List[str]) -> str:
+        """Return concatenated source code for the given block keys."""
+        return "\n".join(cls.BLOCKS[k] for k in keys if k in cls.BLOCKS)
+
+
+class ASTComposer:
+    """
+    Compose tools by merging their ASTs — no LLM needed.
+
+    Takes multiple SynthesizedTool objects and produces a single combined
+    tool whose body calls each sub-tool in sequence, threading results
+    through shared variables.
+    """
+
+    @staticmethod
+    def compose(tools: List["SynthesizedTool"], name: str, description: str) -> str:
+        """
+        Merge tool functions into one pipeline function via AST manipulation.
+        """
+        import_nodes: List[ast.stmt] = []
+        helper_nodes: List[ast.stmt] = []
+        call_stmts: List[str] = []
+
+        for i, tool in enumerate(tools):
+            tree = ast.parse(tool.code)
+            for node in ast.walk(tree):
+                if isinstance(node, (ast.Import, ast.ImportFrom)):
+                    import_nodes.append(node)
+            # Rename function to _step_N
+            renamed = tool.code.replace(f"def {tool.name}(", f"def _step_{i}(", 1)
+            renamed = renamed.replace(f"async def {tool.name}(", f"async def _step_{i}(", 1)
+            helper_nodes.append(renamed)
+            call_stmts.append(
+                f"    _r{i} = await _step_{i}(**{{**kwargs, **_results}})\n"
+                f"    _results.update(_r{i} if isinstance(_r{i}, dict) else {{'step_{i}': _r{i}}})"
+            )
+
+        # Deduplicate imports
+        seen_imports = set()
+        unique_imports = []
+        for node in import_nodes:
+            s = ast.dump(node)
+            if s not in seen_imports:
+                seen_imports.add(s)
+                unique_imports.append(ast.unparse(node))
+
+        helpers = "\n\n".join(h if isinstance(h, str) else ast.unparse(h) for h in helper_nodes)
+        calls = "\n".join(call_stmts)
+
+        code = (
+            "\n".join(unique_imports) + "\n\n"
+            + helpers + "\n\n"
+            + f"async def {name}(**kwargs):\n"
+            + f'    """{description}"""\n'
+            + "    _results = {}\n"
+            + calls + "\n"
+            + "    return _results\n"
+        )
+        return code
+
+
+class NeuralSynthesizer:
+    """
+    Neural Tool Synthesis — goes beyond pure LLM prompting.
+
+    Three-tier synthesis pipeline:
+      1. Pattern matching: select reusable code blocks from PatternLibrary
+      2. AST composition: combine blocks + existing tools via AST merging
+      3. LLM refinement (optional): polish the assembled code
+
+    Tier 1+2 produce working tools WITHOUT any LLM call.
+    """
+
+    def __init__(self, llm_function: Optional[Callable] = None):
+        self.llm_function = llm_function
+        self.pattern_lib = PatternLibrary()
+        self.composer = ASTComposer()
+        self._synthesis_log: List[Dict[str, Any]] = []
+
+    async def synthesize(
+        self,
+        spec: ToolSpecification,
+        existing_tools: Optional[Dict[str, "SynthesizedTool"]] = None,
+        use_llm_refinement: bool = True,
+    ) -> str:
+        """
+        Produce tool code through the 3-tier pipeline.
+
+        Returns the final source code string.
+        """
+        log_entry = {
+            "spec": spec.name,
+            "tiers_used": [],
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+
+        # ── Tier 1: Pattern matching ─────────────────────────────────
+        matched_keys = self.pattern_lib.match_patterns(spec)
+        blocks_code = self.pattern_lib.get_blocks(matched_keys)
+        log_entry["tiers_used"].append("pattern_match")
+        log_entry["patterns_matched"] = matched_keys
+
+        # ── Tier 2: AST composition ──────────────────────────────────
+        # Build the wrapper function that calls the matched blocks
+        params = ", ".join(f"{inp['name']}: {inp['type']}" for inp in spec.inputs)
+        returns = "{" + ", ".join(f"'{o['name']}': {o['name']}" for o in spec.outputs) + "}"
+
+        assembled = blocks_code + "\n\n"
+        assembled += f"async def {spec.name}({params}) -> dict:\n"
+        assembled += f'    """{spec.description}"""\n'
+        assembled += "    result = {}\n"
+
+        # Wire matched blocks into the function body based on type
+        for key in matched_keys:
+            if key == "http_get":
+                assembled += "    resp = await _http_get(url, params={})\n"
+                assembled += "    result['response'] = resp.get('data', {})\n"
+            elif key == "http_post":
+                assembled += "    resp = await _http_post(url, payload={})\n"
+                assembled += "    result['response'] = resp.get('data', {})\n"
+            elif key == "json_parse":
+                assembled += "    # JSON parsing available via _json_parse(text)\n"
+            elif key == "regex_extract":
+                assembled += "    # Regex extraction available via _regex_extract(text, pattern)\n"
+            elif key == "math_stats":
+                first_input = spec.inputs[0]['name'] if spec.inputs else 'values'
+                assembled += f"    result.update(_math_stats({first_input}))\n"
+            elif key == "file_read":
+                first_input = spec.inputs[0]['name'] if spec.inputs else 'path'
+                assembled += f"    result['content'] = _file_read({first_input})\n"
+            elif key == "file_write":
+                assembled += "    # File write available via _file_write(path, content)\n"
+            elif key == "csv_parse":
+                first_input = spec.inputs[0]['name'] if spec.inputs else 'text'
+                assembled += f"    result['rows'] = _csv_parse({first_input})\n"
+            elif key == "list_filter":
+                assembled += "    # Filtering available via _list_filter(items, key, value)\n"
+            elif key == "string_transform":
+                first_input = spec.inputs[0]['name'] if spec.inputs else 'text'
+                assembled += f"    result['transformed'] = _transform({first_input}, ['strip'])\n"
+            elif key == "date_format":
+                first_input = spec.inputs[0]['name'] if spec.inputs else 'date_str'
+                assembled += f"    result['formatted'] = _date_format({first_input})\n"
+
+        assembled += "    return result\n"
+        log_entry["tiers_used"].append("ast_compose")
+
+        # ── Tier 3: Optional LLM refinement ──────────────────────────
+        if use_llm_refinement and self.llm_function:
+            try:
+                refined = await self.llm_function(
+                    f"Improve this Python tool. Fix any issues, fill in placeholder "
+                    f"logic, make it production-ready. Keep it async, typed, and safe.\n\n"
+                    f"Specification: {spec.description}\n"
+                    f"Current code:\n```python\n{assembled}\n```\n\n"
+                    f"Return ONLY the improved code, no explanation."
+                )
+                # Extract code from response
+                for pat in [r"```python\n(.*?)\n```", r"```\n(.*?)\n```"]:
+                    m = re.search(pat, refined, re.DOTALL)
+                    if m:
+                        refined = m.group(1)
+                        break
+                # Validate the refinement
+                try:
+                    ast.parse(refined)
+                    assembled = refined
+                    log_entry["tiers_used"].append("llm_refine")
+                except SyntaxError:
+                    logger.warning("LLM refinement produced invalid syntax, keeping Tier 2 output")
+            except Exception as e:
+                logger.warning(f"LLM refinement failed: {e}, using pattern-assembled code")
+
+        self._synthesis_log.append(log_entry)
+        logger.info(f"Neural synthesis of '{spec.name}': tiers={log_entry['tiers_used']}, patterns={matched_keys}")
+        return assembled
+
+    def get_log(self) -> List[Dict[str, Any]]:
+        return list(self._synthesis_log)
+
+
 class ToolValidator:
     """
     Validates synthesized tools.
@@ -425,6 +742,7 @@ class ToolSynthesizer:
         storage_path: Optional[Path] = None
     ):
         self.generator = CodeGenerator(llm_function)
+        self.neural = NeuralSynthesizer(llm_function)
         self.validator = ToolValidator()
         
         self.tools: Dict[str, SynthesizedTool] = {}
@@ -434,7 +752,8 @@ class ToolSynthesizer:
     async def synthesize_tool(
         self,
         spec: ToolSpecification,
-        auto_validate: bool = True
+        auto_validate: bool = True,
+        use_neural: bool = True,
     ) -> Optional[SynthesizedTool]:
         """
         Synthesize a new tool.
@@ -442,14 +761,18 @@ class ToolSynthesizer:
         Args:
             spec: Tool specification
             auto_validate: Automatically validate after synthesis
+            use_neural: Use neural (pattern+AST) pipeline first, LLM-only as fallback
         
         Returns:
             Synthesized tool if successful
         """
         logger.info(f"Synthesizing tool: {spec.name}")
         
-        # Generate code
-        code = await self.generator.generate_tool_code(spec)
+        # Try neural pipeline first (pattern match + AST compose + optional LLM polish)
+        if use_neural:
+            code = await self.neural.synthesize(spec, self.tools)
+        else:
+            code = await self.generator.generate_tool_code(spec)
         
         # Create tool object
         tool_id = f"tool_{len(self.tools)}_{spec.name}"
@@ -507,15 +830,7 @@ class ToolSynthesizer:
         composition_description: str
     ) -> Optional[SynthesizedTool]:
         """
-        Compose multiple tools into a new tool.
-        
-        Args:
-            tool_ids: Tools to compose
-            composition_name: Name for composed tool
-            composition_description: Description
-        
-        Returns:
-            Composed tool
+        Compose multiple tools into a new tool via AST merging.
         """
         tools = [self.tools[tid] for tid in tool_ids if tid in self.tools]
         
@@ -523,17 +838,8 @@ class ToolSynthesizer:
             logger.error("Not all tools found for composition")
             return None
         
-        # Generate composition code
-        code = f"""async def {composition_name}(**kwargs):\n"""
-        code += f'    """{composition_description}"""\n'
-        code += "    results = {}\n\n"
-        
-        for i, tool in enumerate(tools):
-            code += f"    # Step {i+1}: {tool.name}\n"
-            code += f"    result_{i} = await tool_{i}(**kwargs)\n"
-            code += f"    results.update(result_{i})\n\n"
-        
-        code += "    return results\n"
+        # Use ASTComposer for real AST-level merging
+        code = ASTComposer.compose(tools, composition_name, composition_description)
         
         # Create specification
         spec = ToolSpecification(

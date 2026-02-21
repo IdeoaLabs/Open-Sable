@@ -2,7 +2,8 @@
 Open-Sable Multi-Agent Orchestration
 
 Coordinates multiple AI agents working together on complex tasks.
-Supports agent delegation, parallel execution, and result aggregation.
+Supports agent delegation, parallel execution, result aggregation,
+and distributed coordination across network nodes via the Gateway.
 """
 
 import asyncio
@@ -12,6 +13,7 @@ from datetime import datetime
 from enum import Enum
 from dataclasses import dataclass, field
 import json
+import uuid as _uuid
 
 from opensable.core.agent import SableAgent
 from opensable.core.config import Config
@@ -482,6 +484,257 @@ class WorkflowBuilder:
         )
         
         return [analysis_task, coding_task, review_task]
+
+
+# ─── Distributed Multi-Agent Coordination ────────────────────────────────────
+
+@dataclass
+class RemoteNode:
+    """Represents a remote agent node reachable over the Gateway."""
+    node_id: str
+    capabilities: List[str]
+    host: str = "local"          # "local" | hostname/IP
+    last_seen: float = 0.0
+    latency_ms: float = 0.0
+    active_tasks: int = 0
+
+
+class DistributedCoordinator:
+    """
+    Extends the local MultiAgentOrchestrator with distributed coordination.
+
+    Nodes register via the Gateway's node.register protocol (Unix socket
+    or TCP). The coordinator can delegate tasks to remote nodes, monitor
+    health, and aggregate results.
+
+    Architecture:
+      Coordinator (this)
+          │
+          ├── Local AgentPool   (in-process agents for fast tasks)
+          │
+          └── Gateway node bus  (remote nodes on same machine or LAN)
+                 ├── Node A  [coder, reviewer]
+                 ├── Node B  [researcher]
+                 └── Node C  [analyst, writer]
+    """
+
+    def __init__(self, config: Config, orchestrator: MultiAgentOrchestrator):
+        self.config = config
+        self.orchestrator = orchestrator
+        self._nodes: Dict[str, RemoteNode] = {}
+        self._pending: Dict[str, asyncio.Future] = {}  # request_id → Future
+        self._gateway = None   # set when gateway is available
+        self._heartbeat_task: Optional[asyncio.Task] = None
+
+    # ── Node registry ─────────────────────────────────────────────────────────
+
+    def register_node(self, node_id: str, capabilities: List[str], host: str = "local"):
+        """Register a node (called when Gateway receives node.register)."""
+        import time
+        node = RemoteNode(
+            node_id=node_id,
+            capabilities=capabilities,
+            host=host,
+            last_seen=time.time(),
+        )
+        self._nodes[node_id] = node
+        logger.info(f"🌐 Distributed: node '{node_id}' registered, caps={capabilities}")
+        return node
+
+    def unregister_node(self, node_id: str):
+        self._nodes.pop(node_id, None)
+        logger.info(f"🌐 Distributed: node '{node_id}' removed")
+
+    def list_nodes(self) -> List[Dict[str, Any]]:
+        import time
+        now = time.time()
+        return [
+            {
+                "node_id": n.node_id,
+                "capabilities": n.capabilities,
+                "host": n.host,
+                "alive": (now - n.last_seen) < 120,
+                "active_tasks": n.active_tasks,
+                "latency_ms": round(n.latency_ms, 1),
+            }
+            for n in self._nodes.values()
+        ]
+
+    # ── Task routing ──────────────────────────────────────────────────────────
+
+    def _find_node_for_capability(self, capability: str) -> Optional[RemoteNode]:
+        """Find the best node for a given capability (least loaded + alive)."""
+        import time
+        now = time.time()
+        candidates = [
+            n for n in self._nodes.values()
+            if capability in n.capabilities and (now - n.last_seen) < 120
+        ]
+        if not candidates:
+            return None
+        # Pick least loaded
+        return min(candidates, key=lambda n: n.active_tasks)
+
+    async def delegate_to_node(
+        self,
+        node_id: str,
+        capability: str,
+        args: Dict[str, Any],
+        timeout: float = 60.0,
+    ) -> Any:
+        """
+        Send a task to a remote node via the Gateway and wait for the result.
+        """
+        node = self._nodes.get(node_id)
+        if not node:
+            raise ValueError(f"Node '{node_id}' not found")
+
+        request_id = str(_uuid.uuid4())
+        future: asyncio.Future = asyncio.get_event_loop().create_future()
+        self._pending[request_id] = future
+        node.active_tasks += 1
+
+        # Send invocation via gateway
+        if self._gateway:
+            # Broadcast to the node through the gateway's dispatch
+            for client in self._gateway._clients:
+                if getattr(client, 'node_id', None) == node_id:
+                    await client.send({
+                        "type": "node.invoke",
+                        "capability": capability,
+                        "args": args,
+                        "request_id": request_id,
+                    })
+                    break
+
+        try:
+            result = await asyncio.wait_for(future, timeout=timeout)
+            import time
+            node.last_seen = time.time()
+            return result
+        except asyncio.TimeoutError:
+            logger.error(f"Node '{node_id}' timed out on '{capability}'")
+            raise
+        finally:
+            node.active_tasks -= 1
+            self._pending.pop(request_id, None)
+
+    def receive_result(self, request_id: str, output: Any):
+        """Called by Gateway when a node.result arrives."""
+        future = self._pending.get(request_id)
+        if future and not future.done():
+            future.set_result(output)
+
+    # ── Distributed workflow execution ────────────────────────────────────────
+
+    async def execute_distributed(
+        self,
+        tasks: List[AgentTask],
+        session_id: Optional[str] = None,
+        prefer_remote: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Execute a workflow, distributing tasks to remote nodes when possible.
+
+        Falls back to local execution when no remote node matches.
+        """
+        logger.info(f"🌐 Distributed workflow: {len(tasks)} tasks, "
+                     f"{len(self._nodes)} nodes available")
+
+        # Map roles to capabilities
+        role_to_cap = {
+            AgentRole.RESEARCHER: "research",
+            AgentRole.ANALYST: "analyze",
+            AgentRole.CODER: "code",
+            AgentRole.WRITER: "write",
+            AgentRole.REVIEWER: "review",
+            AgentRole.EXECUTOR: "execute",
+            AgentRole.COORDINATOR: "coordinate",
+        }
+
+        results = {}
+        dependency_graph = self.orchestrator._build_dependency_graph(tasks)
+
+        for level in dependency_graph:
+            level_tasks = [self.orchestrator.tasks.get(tid) or
+                          next(t for t in tasks if t.task_id == tid)
+                          for tid in level]
+
+            coros = []
+            for task in level_tasks:
+                cap = role_to_cap.get(task.role, task.role.value)
+                node = self._find_node_for_capability(cap) if prefer_remote else None
+
+                if node:
+                    # Remote execution
+                    logger.info(f"🌐 Delegating '{task.task_id}' to node '{node.node_id}'")
+                    coros.append(
+                        self.delegate_to_node(
+                            node.node_id, cap,
+                            {"description": task.description, "input": task.input_data,
+                             "context": self.orchestrator._build_context(task, results)},
+                        )
+                    )
+                else:
+                    # Local execution
+                    logger.info(f"💻 Executing '{task.task_id}' locally")
+                    coros.append(
+                        self.orchestrator._execute_task(task, results, session_id)
+                    )
+
+            level_results = await asyncio.gather(*coros, return_exceptions=True)
+            for task, result in zip(level_tasks, level_results):
+                if isinstance(result, Exception):
+                    task.status = "failed"
+                    task.error = str(result)
+                    results[task.task_id] = None
+                else:
+                    results[task.task_id] = result
+
+        successful = sum(1 for t in tasks if t.status == "completed")
+        failed = sum(1 for t in tasks if t.status == "failed")
+        remote_count = sum(1 for n in self._nodes.values() if n.active_tasks >= 0)
+
+        return {
+            'success': failed == 0,
+            'total_tasks': len(tasks),
+            'successful_tasks': successful,
+            'failed_tasks': failed,
+            'nodes_used': remote_count,
+            'results': results,
+        }
+
+    # ── Health monitoring ─────────────────────────────────────────────────────
+
+    async def start_health_monitor(self, interval: float = 30.0):
+        """Periodically ping nodes and remove dead ones."""
+        self._heartbeat_task = asyncio.create_task(self._health_loop(interval))
+
+    async def _health_loop(self, interval: float):
+        import time
+        while True:
+            try:
+                await asyncio.sleep(interval)
+                now = time.time()
+                dead = [nid for nid, n in self._nodes.items()
+                        if (now - n.last_seen) > interval * 4]
+                for nid in dead:
+                    logger.warning(f"🌐 Node '{nid}' presumed dead, removing")
+                    self.unregister_node(nid)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Health monitor error: {e}")
+
+    def get_cluster_status(self) -> Dict[str, Any]:
+        """Return cluster-wide status."""
+        return {
+            "total_nodes": len(self._nodes),
+            "alive_nodes": sum(1 for n in self._nodes.values()),
+            "total_capabilities": list({c for n in self._nodes.values() for c in n.capabilities}),
+            "nodes": self.list_nodes(),
+            "orchestrator_stats": self.orchestrator.get_stats() if self.orchestrator else {},
+        }
 
 
 if __name__ == "__main__":

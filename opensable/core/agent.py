@@ -137,6 +137,13 @@ class SableAgent:
             logger.info("✅ Multi-agent system initialized")
         except Exception as e:
             logger.warning(f"Multi-agent init failed: {e}")
+
+        try:
+            from .emotional_intelligence import EmotionalIntelligence
+            self.emotional_intelligence = EmotionalIntelligence()
+            logger.info("✅ Emotional intelligence initialized")
+        except Exception as e:
+            logger.warning(f"Emotional intelligence init failed: {e}")
     
     def _build_graph(self) -> StateGraph:
         """Build the LangGraph workflow"""
@@ -189,6 +196,14 @@ class SableAgent:
             "Only use tools when the task specifically requires reading files, "
             "executing code, searching the web, or interacting with the system."
         )
+
+        # Emotional intelligence: adapt tone to user's emotional state
+        ei = getattr(self, 'emotional_intelligence', None)
+        if ei:
+            adaptation = ei.process(user_id, task)
+            ei_addon = adaptation.get("system_prompt_addon", "")
+            if ei_addon:
+                base_system += f"\n\n[Emotional context] {ei_addon}"
 
         # ── FAST PATH: Forced search for obvious queries ──────────────
         task_lower = task.lower().strip()

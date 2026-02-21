@@ -218,6 +218,202 @@ def {func_name}({params}) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Cross-platform templates: JavaScript and Rust
+# ---------------------------------------------------------------------------
+
+JS_TEMPLATES = {
+    "api_fetcher": '''// {name} — {description}
+
+/**
+ * {description}
+ * @param {{{param_type}}} {first_param}
+ * @returns {{Promise<Object>}}
+ */
+async function {func_name}({params}) {{
+  try {{
+    const resp = await fetch("{api_url}" + "?" + new URLSearchParams({{ {first_param} }}));
+    if (!resp.ok) return {{ success: false, status: resp.status }};
+    const data = await resp.json();
+    return {{ success: true, data }};
+  }} catch (err) {{
+    return {{ error: err.message }};
+  }}
+}}
+
+module.exports = {{ {func_name} }};
+''',
+
+    "data_processor": '''// {name} — {description}
+
+/**
+ * {description}
+ * @param {{*}} {first_param}
+ * @returns {{Object}}
+ */
+function {func_name}({params}) {{
+  try {{
+    const result = {processing_logic};
+    return {{ success: true, result }};
+  }} catch (err) {{
+    return {{ error: err.message }};
+  }}
+}}
+
+module.exports = {{ {func_name} }};
+''',
+
+    "file_handler": '''// {name} — {description}
+const fs = require("fs");
+const path = require("path");
+
+/**
+ * {description}
+ * @param {{string}} filePath
+ * @returns {{Object}}
+ */
+function {func_name}(filePath) {{
+  try {{
+    if (!fs.existsSync(filePath)) return {{ error: `Not found: ${{filePath}}` }};
+    const content = fs.readFileSync(filePath, "utf-8");
+    const stats = fs.statSync(filePath);
+    return {{ success: true, path: filePath, content, size: stats.size }};
+  }} catch (err) {{
+    return {{ error: err.message }};
+  }}
+}}
+
+module.exports = {{ {func_name} }};
+''',
+
+    "cli_wrapper": '''// {name} — {description}
+const {{ execSync }} = require("child_process");
+
+/**
+ * {description}
+ * @param {{string}} command
+ * @returns {{Object}}
+ */
+function {func_name}(command) {{
+  try {{
+    const stdout = execSync(command, {{ timeout: 30000 }}).toString().trim();
+    return {{ success: true, stdout }};
+  }} catch (err) {{
+    return {{ success: false, stderr: err.stderr?.toString() || err.message }};
+  }}
+}}
+
+module.exports = {{ {func_name} }};
+''',
+
+    "generic": '''// {name} — {description}
+
+/**
+ * {description}
+ * @param {{*}} {first_param}
+ * @returns {{Object}}
+ */
+function {func_name}({params}) {{
+  try {{
+    {implementation}
+    return {{ success: true, result }};
+  }} catch (err) {{
+    return {{ error: err.message }};
+  }}
+}}
+
+module.exports = {{ {func_name} }};
+''',
+}
+
+
+RUST_TEMPLATES = {
+    "api_fetcher": '''//! {name} — {description}
+
+use reqwest;
+use serde_json::Value;
+use std::error::Error;
+
+/// {description}
+pub async fn {func_name}({params}) -> Result<Value, Box<dyn Error>> {{
+    let url = format!("{api_url}?{first_param}={{}}", {first_param});
+    let resp = reqwest::get(&url).await?;
+    let data: Value = resp.json().await?;
+    Ok(data)
+}}
+''',
+
+    "data_processor": '''//! {name} — {description}
+
+use serde_json::{{json, Value}};
+use std::error::Error;
+
+/// {description}
+pub fn {func_name}({params}) -> Result<Value, Box<dyn Error>> {{
+    // Process the input
+    let result = {processing_logic};
+    Ok(json!({{ "success": true, "result": result }}))
+}}
+''',
+
+    "file_handler": '''//! {name} — {description}
+
+use std::fs;
+use std::path::Path;
+use serde_json::{{json, Value}};
+use std::error::Error;
+
+/// {description}
+pub fn {func_name}(file_path: &str) -> Result<Value, Box<dyn Error>> {{
+    let path = Path::new(file_path);
+    if !path.exists() {{
+        return Err(format!("Not found: {{}}", file_path).into());
+    }}
+    let content = fs::read_to_string(path)?;
+    let size = fs::metadata(path)?.len();
+    Ok(json!({{
+        "success": true,
+        "path": file_path,
+        "content": content,
+        "size": size
+    }}))
+}}
+''',
+
+    "cli_wrapper": '''//! {name} — {description}
+
+use std::process::Command;
+use serde_json::{{json, Value}};
+use std::error::Error;
+
+/// {description}
+pub fn {func_name}(cmd: &str, args: &[&str]) -> Result<Value, Box<dyn Error>> {{
+    let output = Command::new(cmd).args(args).output()?;
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    Ok(json!({{
+        "success": output.status.success(),
+        "stdout": stdout,
+        "stderr": stderr
+    }}))
+}}
+''',
+
+    "generic": '''//! {name} — {description}
+
+use serde_json::{{json, Value}};
+use std::error::Error;
+
+/// {description}
+pub fn {func_name}({params}) -> Result<Value, Box<dyn Error>> {{
+    // Implementation
+    {implementation}
+    Ok(json!({{ "success": true, "result": result }}))
+}}
+''',
+}
+
+
+# ---------------------------------------------------------------------------
 # Validation helpers
 # ---------------------------------------------------------------------------
 
@@ -540,8 +736,26 @@ class SkillFactory:
     # Code generation — generate the actual skill code
     # -------------------------------------------------------------------
 
-    def generate_code(self, blueprint: SkillBlueprint) -> str:
-        """Generate Python code for the skill based on the blueprint."""
+    def generate_code(self, blueprint: SkillBlueprint, language: str = "python") -> str:
+        """
+        Generate code for the skill based on the blueprint.
+
+        Args:
+            blueprint: Skill blueprint describing what to build.
+            language: Target language — "python" (default), "javascript", or "rust".
+
+        Returns:
+            Generated source code string.
+        """
+        if language == "javascript":
+            return self._generate_js(blueprint)
+        elif language == "rust":
+            return self._generate_rust(blueprint)
+        else:
+            return self._generate_python(blueprint)
+
+    def _generate_python(self, blueprint: SkillBlueprint) -> str:
+        """Generate Python code (original path)."""
         func_name = blueprint.name.lower().replace(" ", "_").replace("-", "_")
         template_key = self.select_template(blueprint)
 
@@ -742,6 +956,108 @@ def {func_name}({params}) -> dict:
 '''
 
     # -------------------------------------------------------------------
+    # Cross-platform code generation: JavaScript
+    # -------------------------------------------------------------------
+
+    def _generate_js(self, blueprint: SkillBlueprint) -> str:
+        """Generate JavaScript (Node.js) code for the skill."""
+        func_name = blueprint.name.lower().replace(" ", "_").replace("-", "_")
+        template_key = self.select_template(blueprint)
+
+        if blueprint.inputs:
+            params = ", ".join(i["name"] for i in blueprint.inputs)
+            first_param = blueprint.inputs[0]["name"]
+            param_type = blueprint.inputs[0].get("type", "string")
+        else:
+            params = "inputData"
+            first_param = "inputData"
+            param_type = "string"
+
+        templates = JS_TEMPLATES
+        tmpl = templates.get(template_key, templates["generic"])
+
+        try:
+            return tmpl.format(
+                name=blueprint.name,
+                description=blueprint.description,
+                func_name=func_name,
+                params=params,
+                first_param=first_param,
+                param_type=param_type,
+                api_url="https://api.example.com/v1",
+                processing_logic=f"JSON.parse(JSON.stringify({first_param}))",
+                implementation=f"const result = {first_param};",
+            )
+        except KeyError:
+            # Fallback generic
+            return templates["generic"].format(
+                name=blueprint.name,
+                description=blueprint.description,
+                func_name=func_name,
+                params=params,
+                first_param=first_param,
+                implementation=f"const result = {first_param};",
+            )
+
+    # -------------------------------------------------------------------
+    # Cross-platform code generation: Rust
+    # -------------------------------------------------------------------
+
+    def _generate_rust(self, blueprint: SkillBlueprint) -> str:
+        """Generate Rust code for the skill."""
+        func_name = blueprint.name.lower().replace(" ", "_").replace("-", "_")
+        template_key = self.select_template(blueprint)
+
+        if blueprint.inputs:
+            # Rust-style parameters
+            params = ", ".join(
+                f"{i['name']}: &{self._rust_type(i.get('type', 'str'))}"
+                for i in blueprint.inputs
+            )
+            first_param = blueprint.inputs[0]["name"]
+        else:
+            params = "input: &str"
+            first_param = "input"
+
+        templates = RUST_TEMPLATES
+        tmpl = templates.get(template_key, templates["generic"])
+
+        try:
+            return tmpl.format(
+                name=blueprint.name,
+                description=blueprint.description,
+                func_name=func_name,
+                params=params,
+                first_param=first_param,
+                api_url="https://api.example.com/v1",
+                processing_logic=f'serde_json::to_value({first_param})?',
+                implementation=f'let result = serde_json::to_value({first_param})?;',
+            )
+        except KeyError:
+            return templates["generic"].format(
+                name=blueprint.name,
+                description=blueprint.description,
+                func_name=func_name,
+                params=params,
+                first_param=first_param,
+                implementation=f'let result = serde_json::to_value({first_param})?;',
+            )
+
+    @staticmethod
+    def _rust_type(python_type: str) -> str:
+        """Map Python type hints to Rust types."""
+        mapping = {
+            "str": "str",
+            "int": "i64",
+            "float": "f64",
+            "bool": "bool",
+            "list": "Vec<serde_json::Value>",
+            "dict": "serde_json::Value",
+            "Any": "serde_json::Value",
+        }
+        return mapping.get(python_type, "str")
+
+    # -------------------------------------------------------------------
     # Full skill creation pipeline
     # -------------------------------------------------------------------
 
@@ -754,11 +1070,12 @@ def {func_name}({params}) -> dict:
         examples: Optional[List[str]] = None,
         inputs: Optional[List[Dict[str, str]]] = None,
         custom_code: Optional[str] = None,
+        language: str = "python",
     ) -> Dict[str, Any]:
         """
         Full skill creation pipeline:
         1. Create blueprint
-        2. Generate code (or use custom)
+        2. Generate code (or use custom) in target language (python/javascript/rust)
         3. Validate (syntax, safety, sandbox)
         4. Create SKILL.md directory
         5. Register in JSON catalog
@@ -766,7 +1083,7 @@ def {func_name}({params}) -> dict:
 
         Returns a detailed result dict.
         """
-        logger.info(f"🏭 SkillFactory: Creating skill '{name}'...")
+        logger.info(f"🏭 SkillFactory: Creating skill '{name}' [{language}]...")
 
         # Step 1: Blueprint
         blueprint = self.create_blueprint(
@@ -784,8 +1101,8 @@ def {func_name}({params}) -> dict:
             code = custom_code
             logger.info("  📝 Using custom code provided by user")
         else:
-            code = self.generate_code(blueprint)
-            logger.info(f"  📝 Generated {len(code)} chars of code")
+            code = self.generate_code(blueprint, language=language)
+            logger.info(f"  📝 Generated {len(code)} chars of {language} code")
 
         # Step 3: Validate
         validation = self.validator.full_validate(code)

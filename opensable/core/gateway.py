@@ -124,6 +124,24 @@ class _WS:
             writer.close()
             return None
 
+        # ── Token auth: check ?token= in URL or Sec-WebSocket-Protocol ───────
+        import urllib.parse
+        parts = req.split(" ")
+        url_path = parts[1] if len(parts) > 1 else "/"
+        parsed = urllib.parse.urlparse(url_path)
+        qs = urllib.parse.parse_qs(parsed.query)
+        url_token = qs.get("token", [None])[0]
+        proto_token = headers.get("sec-websocket-protocol", "")
+
+        if webchat_token:
+            supplied = url_token or proto_token
+            if not hmac.compare_digest(str(supplied or ""), webchat_token):
+                writer.write(b"HTTP/1.1 401 Unauthorized\r\nContent-Type: text/html\r\n\r\n")
+                writer.write(b"<html><body><h1>401 Unauthorized</h1><p>Invalid or missing token.</p></body></html>")
+                await writer.drain()
+                writer.close()
+                return None
+
         # ── Serve plain HTML (no Upgrade header) ──────────────────────────────
         if "upgrade" not in headers:
             await cls._serve_html(writer, webchat_path)
@@ -275,6 +293,11 @@ class Gateway:
             Path(__file__).resolve().parent.parent.parent / "static" / "dashboard.html"
         )
 
+        # Rate limiting: per-client message counters
+        self._rate_limits: Dict[str, List[float]] = {}  # cid -> [timestamps]
+        self._rate_window  = 60    # seconds
+        self._rate_max     = 30    # max messages per window
+
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
     async def start(self):
@@ -409,6 +432,13 @@ class Gateway:
 
     async def _dispatch(self, client: _Client, msg: dict):
         t = msg.get("type", "")
+
+        # Rate limiting for message types
+        if t == "message":
+            if not self._check_rate(client.cid):
+                await client.send({"type": "error",
+                                   "text": "Rate limit exceeded. Try again in a moment."})
+                return
 
         if   t == "message":          await self._on_message(client, msg)
         elif t == "command":          await self._on_command(client, msg)
@@ -557,6 +587,20 @@ class Gateway:
         target   = next((c for c in self._clients if c.cid == reply_to), None)
         if target:
             await target.send({**msg, "type": "node.result"})
+
+    # ── Rate limiting ────────────────────────────────────────────────────────
+
+    def _check_rate(self, cid: str) -> bool:
+        """Return True if the client is within rate limits."""
+        now = time.time()
+        stamps = self._rate_limits.setdefault(cid, [])
+        # Prune old entries
+        cutoff = now - self._rate_window
+        self._rate_limits[cid] = [t for t in stamps if t > cutoff]
+        if len(self._rate_limits[cid]) >= self._rate_max:
+            return False
+        self._rate_limits[cid].append(now)
+        return True
 
     # ── Heartbeat ─────────────────────────────────────────────────────────────
 
