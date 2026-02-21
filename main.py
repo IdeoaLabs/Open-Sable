@@ -34,6 +34,17 @@ async def main():
     
     logger = logging.getLogger("opensable")
     logger.info("Configuration loaded successfully")
+
+    # ── Startup wizard: check for missing config ───────────────────
+    from opensable.core.startup_wizard import run_startup_wizard
+
+    can_proceed = await run_startup_wizard(config)
+    if not can_proceed:
+        console.print("[bold red]❌ Cannot start — fix the issues above and try again.[/bold red]")
+        return
+
+    # Reload config in case the wizard wrote new values to .env
+    config = load_config()
     
     # Initialize core agent
     agent = SableAgent(config)
@@ -115,9 +126,9 @@ async def main():
             logger.error(f"Slack init failed: {e}")
     
     if not interfaces:
-        logger.warning("No chat interfaces configured. Check your .env file.")
-        console.print("[yellow]⚠️  No chat interfaces configured. Add tokens to .env[/yellow]")
-        console.print("[dim]Available: Telegram, Discord, WhatsApp, Slack[/dim]")
+        console.print("[yellow]⚠️  No chat interfaces started.[/yellow]")
+        console.print("[dim]The wizard checked your config — run again to reconfigure,[/dim]")
+        console.print("[dim]or add tokens directly to .env (Telegram, Discord, WhatsApp, Slack)[/dim]")
         return
     
     console.print(f"[bold green]✅ Open-Sable is running with {len(interfaces)} interface(s)[/bold green]")
