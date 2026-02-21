@@ -24,6 +24,26 @@ class ComputerTools:
         self.config = config
         self.sandbox_mode = sandbox_mode
         self.command_history: List[Dict] = []
+        # Workspace root for resolving relative file paths
+        self.workspace_root = Path.cwd()
+
+    def _resolve_path(self, path: str) -> Path:
+        """Resolve a file path, trying workspace root if the raw path doesn't exist."""
+        p = Path(path).resolve()
+        if p.exists():
+            return p
+        # Try stripping leading / and resolving relative to workspace
+        relative = path.lstrip("/")
+        workspace_p = (self.workspace_root / relative).resolve()
+        if workspace_p.exists():
+            return workspace_p
+        # Try just the filename in the workspace root (LLM may fabricate dirs)
+        basename = Path(path).name
+        if basename:
+            base_p = (self.workspace_root / basename).resolve()
+            if base_p.exists():
+                return base_p
+        return p
         
     async def execute_command(
         self, 
@@ -52,17 +72,38 @@ class ComputerTools:
         """
         logger.info(f"Executing command: {command}")
         
-        # Security: Blocked dangerous commands in sandbox mode
-        if self.sandbox_mode:
-            dangerous = ['rm -rf /', 'mkfs', 'dd', ':(){:|:&};:', 'chmod -R 777']
-            if any(d in command for d in dangerous):
-                return {
-                    'success': False,
-                    'stdout': '',
-                    'stderr': 'Command blocked by security policy',
-                    'exit_code': 1,
-                    'command': command
-                }
+        # Security: Block dangerous commands
+        dangerous_exact = [
+            'rm -rf /', 'rm -rf /*', 'mkfs', ':(){:|:&};:',
+            'chmod -R 777 /', 'chmod 777 /',
+        ]
+        dangerous_patterns = [
+            'dd if=', 'dd of=/dev',
+            '> /dev/sd', '> /dev/nvme',
+            'wget ', 'curl ', 'nc ', 'ncat ', 'netcat ',  # network exfil
+            'ssh ', 'scp ', 'rsync ',                      # remote access
+            'shutdown', 'reboot', 'halt', 'poweroff', 'init 0', 'init 6',
+            'passwd', 'useradd', 'userdel', 'usermod',
+            'iptables', 'ufw ',
+            'mount ', 'umount ', 'fdisk', 'parted',
+            'systemctl stop', 'systemctl disable',
+            'kill -9 1', 'killall',
+            '/etc/shadow', '/etc/passwd',
+            'crontab',
+            'nohup', 'disown',
+            'eval ', 'exec ',
+        ]
+        cmd_lower = command.lower().strip()
+        if any(d in command for d in dangerous_exact) or \
+           any(p in cmd_lower for p in dangerous_patterns):
+            logger.warning(f"🛡️ BLOCKED dangerous command: {command[:80]}")
+            return {
+                'success': False,
+                'stdout': '',
+                'stderr': 'Command blocked by security policy',
+                'exit_code': 1,
+                'command': command
+            }
         
         try:
             process = await asyncio.create_subprocess_shell(
@@ -128,7 +169,7 @@ class ComputerTools:
             }
         """
         try:
-            file_path = Path(path).resolve()
+            file_path = self._resolve_path(path)
             
             if not file_path.exists():
                 return {
@@ -197,7 +238,7 @@ class ComputerTools:
             }
         """
         try:
-            file_path = Path(path).resolve()
+            file_path = self._resolve_path(path)
             
             # Create parent directories if needed
             if create_dirs and not file_path.parent.exists():
@@ -259,7 +300,7 @@ class ComputerTools:
             }
         """
         try:
-            file_path = Path(path).resolve()
+            file_path = self._resolve_path(path)
             
             if not file_path.exists():
                 return {
@@ -328,7 +369,7 @@ class ComputerTools:
             }
         """
         try:
-            dir_path = Path(path).resolve()
+            dir_path = self._resolve_path(path)
             
             if not dir_path.exists():
                 return {
@@ -437,7 +478,7 @@ class ComputerTools:
             }
         """
         try:
-            file_path = Path(path).resolve()
+            file_path = self._resolve_path(path)
             
             if not file_path.exists():
                 return {

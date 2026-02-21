@@ -157,9 +157,10 @@ class SableAgent:
 
     async def _agentic_loop(self, state: AgentState) -> AgentState:
         """
-        FORCED tool execution before LLM synthesis.
-        Python detects search intent and runs browser_search immediately,
-        then LLM just formats/summarizes the real results.
+        Full agentic loop with:
+        1. Fast path: Forced browser_search for obvious search queries
+        2. Native tool calling: LLM picks from all 28 tools via Ollama
+        3. Direct response: No tools needed, LLM answers directly
         """
         task    = state["task"]
         user_id = state["user_id"]
@@ -171,49 +172,6 @@ class SableAgent:
         from datetime import date
         today = date.today().strftime("%B %d, %Y")
 
-        # ── PYTHON-LEVEL TOOL FORCING ─────────────────────────────────
-        # Detect search intent via keywords and execute browser_search
-        # BEFORE asking the LLM anything. LLM only synthesizes results.
-        
-        task_lower = task.lower()
-        search_keywords = [
-            "search", "busca", "find", "encuentra", "look up", "lookup",
-            "google", "bing", "what is", "who is", "que es", "quien es",
-            "is ", "are ", "reviews", "price", "flight", "movie", "weather",
-            "news", "noticias", "latest", "current", "today", "hoy",
-        ]
-        
-        forced_tool_results = []
-        
-        if any(kw in task_lower for kw in search_keywords):
-            logger.info(f"🔍 [FORCED] Detected search intent, executing browser_search")
-            try:
-                # Extract clean query from the task
-                query = task
-                for filler in ["search for", "busca", "find", "look up", "google", "what is", "who is"]:
-                    query = query.replace(filler, "", 1).strip()
-                
-                result = await self.tools.execute_schema_tool("browser_search", {"query": query, "num_results": 5})
-                forced_tool_results.append(f"**Web Search Results:**\n{result}")
-                logger.info(f"✅ [FORCED] browser_search completed")
-            except Exception as e:
-                forced_tool_results.append(f"⚠️ Search failed: {e}")
-                logger.error(f"Forced search error: {e}")
-        
-        # ── LLM SYNTHESIS (only if we have tool results) ──────────────
-        
-        system_prompt = self._get_personality_prompt() + (
-            f"\n\nRelevant context:\n{memory_ctx}" if memory_ctx else ""
-        ) + (
-            f"\n\nToday's date: {today}."
-            "\n\nYour job: synthesize the tool results below into a clear, helpful answer."
-            "\n\nCRITICAL RULES:"
-            "\n- Use ONLY the information from the tool results"
-            "\n- NEVER invent or add facts not present in the results"
-            "\n- If the results say 'no data found', say that honestly"
-            "\n- Be concise and direct"
-        )
-
         # Build conversation history
         history_for_ollama = []
         for m in state.get("messages", []):
@@ -223,47 +181,176 @@ class SableAgent:
             elif role == "assistant":
                 history_for_ollama.append({"role": "assistant", "content": m.get("content", "")})
 
-        messages = [{"role": "system", "content": system_prompt}]
-        messages += history_for_ollama[-8:]
-        
-        if forced_tool_results:
-            # Add tool results as context, then the user query
-            tool_context = "\n\n".join(forced_tool_results)
-            messages.append({"role": "user", "content": f"[TOOL RESULTS]\n{tool_context}\n\n[USER QUESTION]\n{task}\n\nSynthesize the above tool results to answer the user's question."})
-        else:
+        base_system = self._get_personality_prompt() + (
+            f"\n\nRelevant context from memory:\n{memory_ctx}" if memory_ctx else ""
+        ) + f"\n\nToday's date: {today}." + (
+            "\n\nIMPORTANT: For general knowledge questions (explanations, definitions, "
+            "opinions, coding help), answer directly from your knowledge. "
+            "Only use tools when the task specifically requires reading files, "
+            "executing code, searching the web, or interacting with the system."
+        )
+
+        # ── FAST PATH: Forced search for obvious queries ──────────────
+        task_lower = task.lower().strip()
+        # Only trigger forced search when task clearly IS a search query
+        # (starts with search-intent phrases, not buried in middle)
+        search_start = [
+            "search ", "search for ", "busca ", "buscar ", "google ",
+            "look up ", "lookup ", "find me ", "find out ",
+            "what is ", "what are ", "who is ", "who are ",
+            "que es ", "quien es ", "cuales son ",
+            "weather in ", "weather for ", "climate in ",
+            "price of ", "cost of ", "reviews of ", "reviews for ",
+            "news about ", "noticias de ", "noticias sobre ",
+            "latest news", "current news", "flights from ", "flights to ",
+        ]
+        # Personal/history questions should NOT go to web search
+        personal_indicators = [" my ", " our ", " your ", " mi ", " tu ", " nuestro "]
+        is_personal = any(p in f" {task_lower} " for p in personal_indicators)
+        is_search = (not is_personal) and any(task_lower.startswith(p) for p in search_start)
+
+        tool_results = []
+
+        if is_search:
+            logger.info(f"🔍 [FORCED] Search intent detected")
+            try:
+                query = task
+                for filler in ["search for", "busca", "find", "look up", "google", "what is", "who is"]:
+                    query = query.replace(filler, "", 1).strip()
+                result = await self.tools.execute_schema_tool(
+                    "browser_search", {"query": query, "num_results": 5}
+                )
+                tool_results.append(f"**browser_search:** {result}")
+            except Exception as e:
+                tool_results.append(f"**browser_search:** ⚠️ Failed: {e}")
+
+        # ── NATIVE TOOL CALLING: LLM chooses tools ───────────────────
+        if not tool_results:
+            messages = [{"role": "system", "content": base_system}]
+            messages += history_for_ollama[-8:]
             messages.append({"role": "user", "content": task})
 
-        # Call LLM for synthesis (no tools offered — just text generation)
-        try:
-            response = await self.llm.invoke_with_tools(messages, [])  # empty tools = text-only
-            final_text = response.get("text", "")
-        except Exception as e:
-            logger.error(f"LLM synthesis failed: {e}")
-            final_text = f"I encountered an error: {e}"
+            tool_schemas = self.tools.get_tool_schemas()
 
-        state["results"]["tool_calls"] = {
-            "count": len(forced_tool_results),
-            "summary": forced_tool_results,
-            "success": True,
-            "tool": "forced" if forced_tool_results else "none",
-        }
+            for _round in range(3):
+                try:
+                    response = await self.llm.invoke_with_tools(
+                        messages, tool_schemas if not tool_results else []
+                    )
+                except Exception as e:
+                    logger.error(f"LLM call failed: {e}")
+                    break
+
+                tc = response.get("tool_call")
+
+                # Fallback: LLM sometimes outputs tool calls as JSON in text
+                if not tc and response.get("text"):
+                    tc = self._extract_tool_call_from_text(response["text"])
+
+                if tc:
+                    logger.info(f"🔧 LLM chose tool: {tc['name']}")
+                    try:
+                        result = await self.tools.execute_schema_tool(
+                            tc["name"], tc["arguments"]
+                        )
+                        tool_results.append(f"**{tc['name']}:** {result}")
+                    except Exception as e:
+                        tool_results.append(f"**{tc['name']}:** ❌ {e}")
+                    # Next round: LLM synthesizes results (no tools offered)
+                    messages.append({"role": "assistant", "content": f"Used tool: {tc['name']}"})
+                    messages.append({
+                        "role": "user",
+                        "content": (
+                            f"Tool result:\n{tool_results[-1]}\n\n"
+                            f"Now answer the original question: {task}"
+                        ),
+                    })
+                else:
+                    # LLM responded with text directly — no tool needed
+                    final_text = response.get("text", "")
+                    break
+            else:
+                final_text = None  # max rounds reached
+
+            # If LLM answered directly (no tools used), save and return
+            if not tool_results and final_text:
+                state["messages"].append({
+                    "role": "final_response",
+                    "content": final_text,
+                    "timestamp": datetime.now().isoformat(),
+                })
+                try:
+                    await self.memory.store(
+                        user_id,
+                        f"Task: {task}\nResponse: {final_text}",
+                        {"type": "task_completion", "timestamp": datetime.now().isoformat()},
+                    )
+                except Exception:
+                    pass
+                return state
+
+        # ── SYNTHESIS: Format tool results into final answer ──────────
+        synthesis_prompt = (
+            base_system
+            + "\n\nCRITICAL RULES:"
+            "\n- Use ONLY information from the tool results"
+            "\n- NEVER invent facts not present in the results"
+            "\n- If no data found, say so honestly"
+            "\n- Be concise and direct"
+        )
+        tool_context = "\n\n".join(tool_results)
+        synth_messages = [{"role": "system", "content": synthesis_prompt}]
+        synth_messages += history_for_ollama[-8:]
+        synth_messages.append({
+            "role": "user",
+            "content": f"[TOOL RESULTS]\n{tool_context}\n\n[USER QUESTION]\n{task}",
+        })
+
+        try:
+            resp = await self.llm.invoke_with_tools(synth_messages, [])
+            final_text = resp.get("text", "")
+        except Exception as e:
+            logger.error(f"Synthesis failed: {e}")
+            final_text = f"I found some results but had trouble formatting them:\n\n{tool_context}"
+
         state["messages"].append({
             "role": "final_response",
             "content": final_text,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         })
-
-        # Save to memory
         try:
             await self.memory.store(
                 user_id,
                 f"Task: {task}\nResponse: {final_text}",
-                {"type": "task_completion", "timestamp": datetime.now().isoformat()}
+                {"type": "task_completion", "timestamp": datetime.now().isoformat()},
             )
         except Exception:
             pass
 
         return state
+
+    def _extract_tool_call_from_text(self, text: str) -> Optional[dict]:
+        """Parse tool calls that the LLM outputs as JSON text instead of structured tool_calls."""
+        import json as _json
+        import re as _re
+        # Look for JSON blocks like {"name": "tool_name", "parameters": {...}}
+        patterns = [
+            r'\{[^{}]*"name"\s*:\s*"(\w+)"[^{}]*"(?:parameters|arguments)"\s*:\s*(\{[^{}]*\})',
+        ]
+        for pat in patterns:
+            m = _re.search(pat, text, _re.DOTALL)
+            if m:
+                name = m.group(1)
+                try:
+                    args = _json.loads(m.group(2))
+                except Exception:
+                    args = {}
+                # Verify it's a known tool
+                known = [s["function"]["name"] for s in self.tools.get_tool_schemas()]
+                if name in known:
+                    logger.info(f"🔧 [FALLBACK] Parsed tool call from text: {name}")
+                    return {"name": name, "arguments": args}
+        return None
 
     def _get_personality_prompt(self) -> str:
         """Get system prompt based on personality"""
@@ -415,318 +502,3 @@ class SableAgent:
             await self.memory.close()
         logger.info("Agent shutdown complete")
 
-        """Understand what the user wants"""
-        user_message = state["task"]
-        user_id = state["user_id"]
-        
-        # Get relevant memories
-        memories = await self.memory.recall(user_id, user_message)
-        memory_context = "\n".join([m["content"] for m in memories[:3]]) if memories else ""
-        
-        # Build prompt
-        system_prompt = self._get_personality_prompt()
-        prompt = f"""
-{system_prompt}
-
-User request: {user_message}
-
-Relevant context from memory:
-{memory_context}
-
-What is the user asking for? Break it down into clear objectives.
-"""
-        
-        messages = [
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=prompt)
-        ]
-        
-        response = await self.llm.ainvoke(messages)
-        
-        state["messages"].append({
-            "role": "understanding",
-            "content": response.content,
-            "timestamp": datetime.now().isoformat()
-        })
-        
-        return state
-    
-    async def _plan_execution(self, state: AgentState) -> AgentState:
-        """Create a step-by-step plan"""
-        task = state["task"]  # already resolved by _resolve_message
-
-        prompt = f"""User request: {task}
-
-Available tools: browser (search/scrape), calendar, weather, email, execute_command
-
-RULES:
-- If the user asks to search/find/look up/check something, or asks about a movie/person/place/event/review/opinion/news: plan ONLY 1 step => "search for <SPECIFIC TOPIC>"
-- If the user asks for prices, tickets, flights, showtimes, or booking info: plan 2 steps => 1. search  2. scrape the most relevant result URL for details
-- NEVER use vector_search -- use browser search instead
-- NEVER add extra scrape steps after a plain search -- only add scrape for prices/bookings/showtimes
-- For weather/calendar/email: use those tools directly
-- "is X good?", "reviews of X" => search for "X review"
-- If user asks to write a script AND run it: 2 steps => 1. write the python script to <filename>.py  2. run the script <filename>.py
-- NEVER output raw JSON, code blocks, or function call syntax -- plain English steps only
-
-Respond with ONLY the numbered steps.
-
-Plan:
-1."""
-
-        messages = [HumanMessage(content=prompt)]
-        response = await self.llm.ainvoke(messages)
-
-        plan_lines = [line.strip() for line in response.content.split("\n") if line.strip()]
-        plan = [line for line in plan_lines if line and line[0].isdigit()]
-
-        state["plan"] = plan
-        state["current_step"] = 0
-        state["messages"].append({
-            "role": "planning",
-            "content": response.content,
-            "timestamp": datetime.now().isoformat()
-        })
-
-        return state
-    
-    async def _execute_step(self, state: AgentState) -> AgentState:
-        """Execute current step of the plan"""
-        if state["current_step"] >= len(state["plan"]):
-            return state
-        
-        current_plan = state["plan"][state["current_step"]]
-        
-        try:
-            # Auto-detect if we need special model capabilities
-            task_type = self._detect_task_type(current_plan)
-            
-            # Switch model if needed (AdaptiveLLM will handle this)
-            if hasattr(self.llm, 'auto_switch_model'):
-                switched = await self.llm.auto_switch_model(task_type)
-                if switched:
-                    logger.info(f"Switched to optimal model for {task_type} task")
-            
-            # Determine which tool to use
-            tool_name, tool_input = await self._parse_tool_call(current_plan)
-
-            # If write_file with no content yet: ask LLM to generate the code/content first
-            if tool_name == "write_file" and not tool_input.get("content"):
-                logger.info(f"Generating content for write_file: {tool_input.get('path')}")
-                code_prompt = (
-                    f"Write ONLY the complete, working Python code for this task:\n{state['task']}\n\n"
-                    "Output ONLY the code. No explanation, no markdown, no ```python block. Just raw code."
-                )
-                code_response = await self.llm.ainvoke([HumanMessage(content=code_prompt)])
-                tool_input["content"] = code_response.content.strip()
-
-            # If execute_command with a plain-English step (no real command): generate the command
-            if tool_name == "execute_command":
-                cmd = tool_input.get("command", "")
-                # If the "command" looks like English prose rather than a shell command
-                if not any(c in cmd for c in ["python", "bash", "./", "sh ", "node ", "ruby ", "perl "]):
-                    # Find a previously written file to run, or ask LLM to write+run inline
-                    prev_files = [
-                        r.get("tool_input", {}).get("path", "")
-                        for r in state["results"].values()
-                        if r.get("tool") == "write_file" and r.get("success")
-                    ]
-                    if prev_files and prev_files[-1]:
-                        tool_input["command"] = f"python {prev_files[-1]}"
-                    else:
-                        # Generate and run inline without writing to a file
-                        code_prompt = (
-                            f"Write ONLY the complete working Python one-liner or short script (no markdown) for:\n{state['task']}"
-                        )
-                        code_response = await self.llm.ainvoke([HumanMessage(content=code_prompt)])
-                        code = code_response.content.strip().strip("```python").strip("```").strip()
-                        tool_input["command"] = f"python3 -c {repr(code)}"
-            
-            # Skip scrape step if a previous search already succeeded
-            # BUT: if the task involves prices/booking/showtimes, scrape the top result
-            if tool_name == "browser" and tool_input.get("action") == "scrape":
-                prev_results = state["results"]
-                last_search = next(
-                    (r for r in reversed(list(prev_results.values()))
-                     if r.get("tool") == "browser" and r.get("success")),
-                    None,
-                )
-                needs_detail = any(w in state["task"].lower() for w in [
-                    "price", "ticket", "flight", "book", "buy", "cost", "cheap",
-                    "showtime", "schedule", "cartelera", "precio", "vuelo", "reserva",
-                ])
-                if last_search and not needs_detail:
-                    logger.info("Skipping scrape -- search results are enough for this query")
-                    state["current_step"] += 1
-                    return state
-                elif last_search and needs_detail and not tool_input.get("url"):
-                    # Extract first real URL from last search result text
-                    import re as _re
-                    urls = _re.findall(r"https?://[^\s\)>\"']+", last_search.get("result", ""))
-                    if urls:
-                        tool_input["url"] = urls[0]
-                        logger.info(f"Auto-scraping first result for price/booking: {tool_input['url']}")
-                    else:
-                        state["current_step"] += 1
-                        return state
-            
-            # Execute tool only if one is needed
-            if tool_name == "none":
-                # No tool needed - this is just conversation
-                result = "Understood."
-            else:
-                # Execute tool
-                result = await self.tools.execute(tool_name, tool_input)
-            
-            state["results"][f"step_{state['current_step']}"] = {
-                "plan": current_plan,
-                "tool": tool_name,
-                "tool_input": tool_input,
-                "query": tool_input.get("query", ""),  # saved for 'search more' reuse
-                "result": result,
-                "success": True,
-                "model_used": self.llm.current_model if hasattr(self.llm, 'current_model') else "unknown"
-            }
-            
-            state["current_step"] += 1
-            
-        except Exception as e:
-            logger.error(f"Error executing step {state['current_step']}: {e}")
-            state["error"] = str(e)
-            state["results"][f"step_{state['current_step']}"] = {
-                "plan": current_plan,
-                "error": str(e),
-                "success": False
-            }
-        
-        return state
-    
-    def _detect_task_type(self, plan_step: str) -> str:
-        """Detect what type of task this is to choose optimal model"""
-        plan_lower = plan_step.lower()
-        
-        # Vision tasks
-        if any(word in plan_lower for word in ['image', 'picture', 'photo', 'screenshot', 'visual', 'see', 'look']):
-            return 'vision'
-        
-        # Reasoning tasks
-        if any(word in plan_lower for word in ['analyze', 'think', 'reason', 'deduce', 'calculate', 'solve', 'problem']):
-            return 'reasoning'
-        
-        # Tool/action tasks
-        if any(word in plan_lower for word in ['search', 'fetch', 'download', 'execute', 'run', 'call', 'api']):
-            return 'tools'
-        
-        return 'general'
-    
-    async def _reflect_on_results(self, state: AgentState) -> AgentState:
-        """Reflect on execution and formulate response"""
-        task = state["task"]
-        results = state["results"]
-        
-        # Check if any tools were actually executed
-        tools_executed = [r for r in results.values() if r.get("tool") != "none"]
-        
-        if not tools_executed:
-            # No tools executed - just respond directly
-            prompt = f"{self._get_personality_prompt()}\n\nUser: {task}\n\nIMPORTANT: Answer directly. Do NOT describe actions you didn't take."
-            messages = [HumanMessage(content=prompt)]
-            response = await self.llm.ainvoke(messages)
-            state["messages"].append({
-                "role": "final_response",
-                "content": response.content,
-                "timestamp": datetime.now().isoformat()
-            })
-            return state
-        
-        # Build summary with ONLY real tool results
-        summary = []
-        for step_key, step_result in results.items():
-            if step_result.get("tool") == "none":
-                continue  # Skip non-tool steps
-                
-            if step_result.get("success"):
-                summary.append(f"Tool: {step_result['tool']}\nResult: {step_result.get('result', 'No output')}")
-            else:
-                summary.append(f"Tool: {step_result['tool']}\nError: {step_result.get('error', 'Failed')}")
-        
-        summary_text = "\n\n".join(summary)        
-        # 🧠 METACOGNITIVE SELF-EVALUATION
-        if self.metacognition:
-            try:
-                # Check if response needs more depth
-                confidence = await self.metacognition.assess_confidence(summary_text, task)
-                
-                if confidence < 0.7:  # Low confidence - needs more info
-                    logger.info(f"🧠 Metacognition: Low confidence ({confidence:.0%}), response may need improvement")
-                    # Auto-scraping disabled: it was grabbing unrelated URLs and causing timeouts
-                    # The LLM should ask the user for clarification or use the search results as-is
-            except Exception as e:
-                logger.debug(f"Metacognition eval skipped: {e}")        
-        # Generate final response using ONLY actual tool outputs
-        rules = (
-            "CRITICAL RULES:\n"
-            "1. Answer using ONLY the information from the tool results above\n"
-            "2. NEVER invent, guess, or make up facts, names, dates, or any data not present in the results\n"
-            "3. If the search returned no results or failed, say: I could not find information about that -- do NOT fabricate an answer\n"
-            "4. If results are present, summarize them accurately and cite sources\n"
-            "5. Be direct and concise\n"
-            "6. Do NOT describe actions you did not take\n"
-        )
-        prompt = (
-            f"User asked: {task}\n\n"
-            f"ACTUAL TOOL RESULTS (use ONLY this information):\n{summary_text}\n\n"
-            f"{rules}\n"
-            "Provide a helpful answer based STRICTLY on what the tools returned above."
-        )
-
-        messages = [HumanMessage(content=prompt)]
-        response = await self.llm.ainvoke(messages)
-        
-        state["messages"].append({
-            "role": "final_response",
-            "content": response.content,
-            "timestamp": datetime.now().isoformat()
-        })
-        
-        # Save to memory
-        await self.memory.store(
-            state["user_id"],
-            f"Task: {task}\nResponse: {response.content}",
-            {"type": "task_completion", "timestamp": datetime.now().isoformat()}
-        )
-        
-        return state
-
-    async def run(self, message: str, history: Optional[List[dict]] = None) -> str:
-        """
-        Simplified run method for direct agent execution
-        
-        Args:
-            message: User message
-            history: Optional conversation history
-            
-        Returns:
-            Agent response
-        """
-        # For now, delegate to process_message with a default user_id
-        return await self.process_message("default_user", message, history)
-    
-    async def _heartbeat_loop(self):
-        """Periodic check for scheduled tasks"""
-        while True:
-            try:
-                await asyncio.sleep(self.config.heartbeat_interval)
-                logger.debug("Heartbeat: checking for scheduled tasks...")
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error(f"Heartbeat error: {e}")
-    
-    async def shutdown(self):
-        """Cleanup on shutdown"""
-        if self.heartbeat_task:
-            self.heartbeat_task.cancel()
-        if self.memory:
-            await self.memory.close()
-        logger.info("Agent shutdown complete")

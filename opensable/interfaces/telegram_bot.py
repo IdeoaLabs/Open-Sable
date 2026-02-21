@@ -711,13 +711,13 @@ class TelegramInterface:
                 await self._safe_edit(placeholder, full_text)
             else:
                 await placeholder.delete()
-                full_text = await self.agent.process_message(user_id, text)
+                full_text = await self.agent.process_message(user_id, text, history=history)
                 await self._safe_reply(message, full_text)
 
         except Exception as e:
             logger.warning(f"Stream failed ({e}), using non-streaming agent")
             await placeholder.delete()
-            full_text = await self.agent.process_message(user_id, text)
+            full_text = await self.agent.process_message(user_id, text, history=history)
             await self._safe_reply(message, full_text)
 
         return full_text

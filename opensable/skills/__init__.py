@@ -192,24 +192,42 @@ class CodeExecutor:
         self.config = config
     
     async def execute(self, code: str, language: str = "python", timeout: int = 30) -> dict:
-        """Execute code safely"""
+        """Execute code safely using subprocess"""
+        import subprocess
+        import tempfile
+        import os
+
         try:
-            from .code_executor import PythonExecutor, execute_in_sandbox
-            
-            if language == "python":
-                executor = PythonExecutor(self.config)
-                result = await executor.execute(code, timeout=timeout)
-                
-                if result.success:
-                    return {
-                        "success": True,
-                        "output": result.output or result.stdout,
-                        "return_value": result.return_value
-                    }
+            if language in ("python", "py"):
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+                    f.write(code)
+                    tmp_path = f.name
+                try:
+                    proc = subprocess.run(
+                        ["python3", tmp_path],
+                        capture_output=True, text=True, timeout=timeout,
+                        cwd=os.getcwd(),
+                    )
+                    if proc.returncode == 0:
+                        return {"success": True, "output": proc.stdout.strip(), "return_value": None}
+                    else:
+                        return {"success": False, "error": proc.stderr.strip() or f"Exit code {proc.returncode}"}
+                finally:
+                    os.unlink(tmp_path)
+            elif language in ("bash", "sh", "shell"):
+                proc = subprocess.run(
+                    ["bash", "-c", code],
+                    capture_output=True, text=True, timeout=timeout,
+                    cwd=os.getcwd(),
+                )
+                if proc.returncode == 0:
+                    return {"success": True, "output": proc.stdout.strip(), "return_value": None}
                 else:
-                    return {"success": False, "error": result.error}
+                    return {"success": False, "error": proc.stderr.strip() or f"Exit code {proc.returncode}"}
             else:
-                return {"success": False, "error": f"Language {language} not supported"}
+                return {"success": False, "error": f"Language '{language}' not supported. Use python or bash."}
+        except subprocess.TimeoutExpired:
+            return {"success": False, "error": f"Execution timed out after {timeout}s"}
         except Exception as e:
             return {"success": False, "error": str(e)}
 
