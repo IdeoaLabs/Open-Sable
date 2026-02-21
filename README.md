@@ -2216,7 +2216,6 @@ See [LICENSE](LICENSE) for full details.
 - **Documentation**: [Full docs](docs/)
 - **Examples**: [examples/](examples/)
 - **Issues**: [GitHub Issues](https://github.com/IdeoaLabs/Open-Sable/issues)
-- **Discord**: [Join our community](https://discord.gg/opensable)
 
 ---
 
