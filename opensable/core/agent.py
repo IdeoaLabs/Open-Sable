@@ -18,6 +18,9 @@ from .config import OpenSableConfig
 
 logger = logging.getLogger(__name__)
 
+# Default timeout for a single LLM call (seconds)
+_LLM_TIMEOUT = 120
+
 
 class AgentState(Dict):
     """State for the agent graph"""
@@ -50,6 +53,7 @@ class SableAgent:
         self.tool_synthesizer = None
         self.metacognition = None
         self.world_model = None
+        self.tracer = None
         
     async def initialize(self):
         """Initialize agent components"""
@@ -144,6 +148,13 @@ class SableAgent:
             logger.info("✅ Emotional intelligence initialized")
         except Exception as e:
             logger.warning(f"Emotional intelligence init failed: {e}")
+
+        try:
+            from .observability import DistributedTracer
+            self.tracer = DistributedTracer(service_name="opensable-agent")
+            logger.info("✅ Distributed tracing initialized")
+        except Exception as e:
+            logger.warning(f"Distributed tracing init failed: {e}")
     
     def _build_graph(self) -> StateGraph:
         """Build the LangGraph workflow"""
@@ -171,6 +182,14 @@ class SableAgent:
         """
         task    = state["task"]
         user_id = state["user_id"]
+
+        # ── Tracing: create a span for the full request ───────────────
+        trace_id = span = None
+        if self.tracer:
+            trace_id = self.tracer.create_trace()
+            span = self.tracer.start_span("agentic_loop", trace_id, attributes={
+                "user_id": user_id, "task_length": len(task),
+            })
 
         # Memory context
         memories = await self.memory.recall(user_id, task)
@@ -228,16 +247,28 @@ class SableAgent:
 
         if is_search:
             logger.info(f"🔍 [FORCED] Search intent detected")
+            tool_span = None
+            if self.tracer and trace_id:
+                tool_span = self.tracer.start_span("tool:browser_search", trace_id, span.span_id if span else None)
             try:
                 query = task
                 for filler in ["search for", "busca", "find", "look up", "google", "what is", "who is"]:
                     query = query.replace(filler, "", 1).strip()
-                result = await self.tools.execute_schema_tool(
-                    "browser_search", {"query": query, "num_results": 5}
+                result = await asyncio.wait_for(
+                    self.tools.execute_schema_tool(
+                        "browser_search", {"query": query, "num_results": 5}
+                    ),
+                    timeout=_LLM_TIMEOUT,
                 )
                 tool_results.append(f"**browser_search:** {result}")
+            except asyncio.TimeoutError:
+                tool_results.append("**browser_search:** ⚠️ Timed out")
+                logger.error("browser_search timed out")
             except Exception as e:
                 tool_results.append(f"**browser_search:** ⚠️ Failed: {e}")
+            finally:
+                if tool_span:
+                    self.tracer.end_span(tool_span.span_id)
 
         # ── NATIVE TOOL CALLING: LLM chooses tools ───────────────────
         if not tool_results:
@@ -249,9 +280,15 @@ class SableAgent:
 
             for _round in range(3):
                 try:
-                    response = await self.llm.invoke_with_tools(
-                        messages, tool_schemas if not tool_results else []
+                    response = await asyncio.wait_for(
+                        self.llm.invoke_with_tools(
+                            messages, tool_schemas if not tool_results else []
+                        ),
+                        timeout=_LLM_TIMEOUT,
                     )
+                except asyncio.TimeoutError:
+                    logger.error(f"LLM call timed out (round {_round})")
+                    break
                 except Exception as e:
                     logger.error(f"LLM call failed: {e}")
                     break
@@ -264,13 +301,29 @@ class SableAgent:
 
                 if tc:
                     logger.info(f"🔧 LLM chose tool: {tc['name']}")
+                    tool_span = None
+                    if self.tracer and trace_id:
+                        tool_span = self.tracer.start_span(
+                            f"tool:{tc['name']}", trace_id,
+                            span.span_id if span else None,
+                            attributes={"tool.args": str(tc['arguments'])[:200]},
+                        )
                     try:
-                        result = await self.tools.execute_schema_tool(
-                            tc["name"], tc["arguments"]
+                        result = await asyncio.wait_for(
+                            self.tools.execute_schema_tool(
+                                tc["name"], tc["arguments"]
+                            ),
+                            timeout=_LLM_TIMEOUT,
                         )
                         tool_results.append(f"**{tc['name']}:** {result}")
+                    except asyncio.TimeoutError:
+                        tool_results.append(f"**{tc['name']}:** ❌ Timed out")
+                        logger.error(f"Tool {tc['name']} timed out")
                     except Exception as e:
                         tool_results.append(f"**{tc['name']}:** ❌ {e}")
+                    finally:
+                        if tool_span:
+                            self.tracer.end_span(tool_span.span_id)
                     # Next round: LLM synthesizes results (no tools offered)
                     messages.append({"role": "assistant", "content": f"Used tool: {tc['name']}"})
                     messages.append({
@@ -300,8 +353,8 @@ class SableAgent:
                         f"Task: {task}\nResponse: {final_text}",
                         {"type": "task_completion", "timestamp": datetime.now().isoformat()},
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Memory store failed: {e}")
                 return state
 
         # ── SYNTHESIS: Format tool results into final answer ──────────
@@ -339,8 +392,15 @@ class SableAgent:
                 f"Task: {task}\nResponse: {final_text}",
                 {"type": "task_completion", "timestamp": datetime.now().isoformat()},
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Memory store failed: {e}")
+
+        # ── End tracing span ──────────────────────────────────────────
+        if span:
+            span.set_attribute("response_length", len(final_text or ""))
+            span.set_attribute("tools_used", len(tool_results))
+            self.tracer.end_span(span.span_id)
+            logger.debug(f"📊 Trace {trace_id}: {span.duration_ms:.0f}ms, {len(tool_results)} tools")
 
         return state
 

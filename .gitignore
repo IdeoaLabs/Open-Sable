@@ -91,3 +91,4 @@ models/
 *_fix.txt
 *_check.txt
 discord_clean_check.txt
+config/permissions.json

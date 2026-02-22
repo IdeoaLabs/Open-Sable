@@ -78,10 +78,10 @@ class PermissionManager:
             logger.warning(f"Action {action.value} denied for user {user_id}")
             return False
         else:  # ASK
-            # In production, this would prompt the user
-            # For now, we'll allow but log
-            logger.info(f"Action {action.value} requires confirmation for user {user_id}")
-            return True
+            # In production with an interactive interface, this would prompt the user.
+            # For safety: deny by default until interactive confirmation is implemented.
+            logger.warning(f"Action {action.value} requires confirmation for user {user_id} — denied (no interactive prompt available)")
+            return False
     
     def set_permission(self, user_id: str, action: ActionType, level: PermissionLevel):
         """Set permission level for a user and action"""
@@ -163,17 +163,30 @@ class Sandbox:
     
     @staticmethod
     def sanitize_input(text: str, max_length: int = 10000) -> str:
-        """Sanitize user input"""
+        """Sanitize user input — strip HTML/JS injection vectors."""
+        import re as _re
         # Truncate
         text = text[:max_length]
-        
-        # Remove potentially dangerous characters
-        # This is basic - production would need more robust sanitization
-        dangerous_chars = ['<script', 'javascript:', 'onerror=']
-        for char in dangerous_chars:
-            text = text.replace(char, '')
-        
-        return text
+
+        # Strip all HTML tags (case-insensitive, including self-closing)
+        text = _re.sub(r'<[^>]+>', '', text, flags=_re.IGNORECASE)
+
+        # Strip javascript: / data: / vbscript: URIs (url-encoded variants too)
+        text = _re.sub(
+            r'(?:j\s*a\s*v\s*a\s*s\s*c\s*r\s*i\s*p\s*t|data|vbscript)\s*:',
+            '', text, flags=_re.IGNORECASE
+        )
+
+        # Strip event handlers (onclick=, onerror=, onload=, etc.)
+        text = _re.sub(r'\bon\w+\s*=', '', text, flags=_re.IGNORECASE)
+
+        # Strip CSS expression() / url() injection
+        text = _re.sub(r'expression\s*\(', '', text, flags=_re.IGNORECASE)
+
+        # Strip null bytes
+        text = text.replace('\x00', '')
+
+        return text.strip()
     
     @staticmethod
     def validate_url(url: str, allowed_domains: List[str]) -> bool:

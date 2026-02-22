@@ -7,11 +7,11 @@ Unit tests for individual components.
 import pytest
 from datetime import datetime, timedelta
 
-from core.session_manager import Session, Message
-from core.commands import CommandResult
-from core.rate_limiter import TokenBucket, SlidingWindow
-from core.context_manager import ContextWindow
-from core.config import Config
+from opensable.core.session_manager import Session, Message
+from opensable.core.commands import CommandResult
+from opensable.core.rate_limiter import TokenBucket, SlidingWindow
+from opensable.core.context_manager import ContextWindow
+from opensable.core.config import OpenSableConfig as Config
 
 
 class TestSession:
@@ -19,7 +19,7 @@ class TestSession:
     
     def test_create_session(self):
         """Test session creation"""
-        session = Session('telegram', 'user123')
+        session = Session('sess1', 'telegram', 'user123')
         
         assert session.channel == 'telegram'
         assert session.user_id == 'user123'
@@ -28,7 +28,7 @@ class TestSession:
     
     def test_add_message(self):
         """Test adding messages"""
-        session = Session('telegram', 'user123')
+        session = Session('sess1', 'telegram', 'user123')
         
         session.add_message('user', 'Hello!')
         session.add_message('assistant', 'Hi there!')
@@ -39,12 +39,12 @@ class TestSession:
     
     def test_session_serialization(self):
         """Test session to/from dict"""
-        session = Session('telegram', 'user123')
+        session = Session('sess1', 'telegram', 'user123')
         session.add_message('user', 'Test')
         
         data = session.to_dict()
         
-        assert 'session_id' in data
+        assert 'id' in data
         assert 'channel' in data
         assert 'messages' in data
         
@@ -63,7 +63,7 @@ class TestMessage:
         
         assert msg.role == 'user'
         assert msg.content == 'Hello!'
-        assert isinstance(msg.timestamp, datetime)
+        assert isinstance(msg.timestamp, str)
     
     def test_message_serialization(self):
         """Test message to/from dict"""
@@ -190,11 +190,10 @@ class TestConfig:
         assert hasattr(config, '__dict__')
     
     def test_config_from_dict(self):
-        """Test creating config from dict"""
-        config = Config()
-        config.custom_value = "test"
+        """Test creating config from known fields"""
+        config = Config(agent_name="TestBot")
         
-        assert config.custom_value == "test"
+        assert config.agent_name == "TestBot"
 
 
 # Run tests

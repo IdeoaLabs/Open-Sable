@@ -10,13 +10,26 @@
       "description": "Search the web using DuckDuckGo API. Returns structured results with titles, URLs, and snippets.",
       "category": "search",
       "function": "import aiohttp\nimport urllib.parse\n\nasync def web_search(query: str, max_results: int = 5) -> list:\n    encoded = urllib.parse.quote(query)\n    url = f'https://api.duckduckgo.com/?q={encoded}&format=json&no_html=1'\n    async with aiohttp.ClientSession() as session:\n        async with session.get(url) as resp:\n            data = await resp.json(content_type=None)\n            results = []\n            for topic in data.get('RelatedTopics', [])[:max_results]:\n                if 'Text' in topic:\n                    results.append({'text': topic['Text'], 'url': topic.get('FirstURL', '')})\n            return results or [{'text': data.get('Abstract', 'No results'), 'url': data.get('AbstractURL', '')}]",
-      "triggers": ["search", "look up", "find", "google", "search the web"],
-      "examples": ["Search for Python tutorials", "Look up weather in Tokyo"],
+      "triggers": [
+        "search",
+        "look up",
+        "find",
+        "google",
+        "search the web"
+      ],
+      "examples": [
+        "Search for Python tutorials",
+        "Look up weather in Tokyo"
+      ],
       "author": "SableCore Team",
       "version": "1.0.0",
-      "rating": 4.8,
-      "downloads": 3200,
-      "tags": ["search", "web", "information"]
+      "rating": 0.0,
+      "downloads": 0,
+      "tags": [
+        "search",
+        "web",
+        "information"
+      ]
     },
     {
       "id": "weather_checker",
@@ -24,13 +37,26 @@
       "description": "Get real-time weather data for any city using Open-Meteo free API. Returns temperature, humidity, wind.",
       "category": "utility",
       "function": "import aiohttp\n\nasync def get_weather(city: str) -> dict:\n    async with aiohttp.ClientSession() as session:\n        geo_url = f'https://geocoding-api.open-meteo.com/v1/search?name={city}&count=1'\n        async with session.get(geo_url) as resp:\n            geo = await resp.json()\n            if not geo.get('results'):\n                return {'error': f'City not found: {city}'}\n            loc = geo['results'][0]\n            lat, lon = loc['latitude'], loc['longitude']\n        wx_url = f'https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,wind_speed_10m'\n        async with session.get(wx_url) as resp:\n            data = await resp.json()\n            c = data.get('current', {})\n            return {'city': loc['name'], 'temp_c': c.get('temperature_2m'), 'humidity': c.get('relative_humidity_2m'), 'wind_kmh': c.get('wind_speed_10m')}",
-      "triggers": ["weather", "temperature", "forecast", "how hot", "how cold"],
-      "examples": ["What is the weather in London?", "Temperature in New York"],
+      "triggers": [
+        "weather",
+        "temperature",
+        "forecast",
+        "how hot",
+        "how cold"
+      ],
+      "examples": [
+        "What is the weather in London?",
+        "Temperature in New York"
+      ],
       "author": "SableCore Team",
       "version": "1.0.0",
-      "rating": 4.7,
-      "downloads": 2800,
-      "tags": ["weather", "utility", "api"]
+      "rating": 0.0,
+      "downloads": 0,
+      "tags": [
+        "weather",
+        "utility",
+        "api"
+      ]
     },
     {
       "id": "smart_calculator",
@@ -38,13 +64,26 @@
       "description": "Advanced calculator with math expressions, unit conversions, percentage calculations, and scientific functions.",
       "category": "utility",
       "function": "import math\n\ndef smart_calculate(expression: str) -> dict:\n    safe = {'sin': math.sin, 'cos': math.cos, 'tan': math.tan, 'sqrt': math.sqrt, 'log': math.log, 'log10': math.log10, 'abs': abs, 'round': round, 'pow': pow, 'pi': math.pi, 'e': math.e, 'ceil': math.ceil, 'floor': math.floor}\n    conversions = {'km_to_miles': lambda x: x * 0.621371, 'miles_to_km': lambda x: x * 1.60934, 'c_to_f': lambda x: x * 9/5 + 32, 'f_to_c': lambda x: (x - 32) * 5/9, 'kg_to_lbs': lambda x: x * 2.20462, 'lbs_to_kg': lambda x: x / 2.20462}\n    try:\n        expr = expression.strip()\n        if '_to_' in expr:\n            parts = expr.split(); val = float(parts[0]); conv = parts[1] if len(parts) > 1 else ''\n            if conv in conversions: return {'result': conversions[conv](val)}\n        return {'expression': expr, 'result': eval(expr, {'__builtins__': {}}, safe)}\n    except Exception as e:\n        return {'error': str(e)}",
-      "triggers": ["calculate", "math", "compute", "convert", "how much is"],
-      "examples": ["Calculate sqrt(144) + 15", "Convert 100 km_to_miles"],
+      "triggers": [
+        "calculate",
+        "math",
+        "compute",
+        "convert",
+        "how much is"
+      ],
+      "examples": [
+        "Calculate sqrt(144) + 15",
+        "Convert 100 km_to_miles"
+      ],
       "author": "SableCore Team",
       "version": "1.0.0",
-      "rating": 4.6,
-      "downloads": 2100,
-      "tags": ["math", "calculator", "conversion"]
+      "rating": 0.0,
+      "downloads": 0,
+      "tags": [
+        "math",
+        "calculator",
+        "conversion"
+      ]
     },
     {
       "id": "file_manager",
@@ -52,13 +91,27 @@
       "description": "Manage files: read, write, list, search, copy, move, and get file info. Supports text, JSON, CSV.",
       "category": "system",
       "function": "import os\nimport json\nfrom pathlib import Path\nfrom datetime import datetime\n\ndef file_read(path: str) -> dict:\n    p = Path(path)\n    if not p.exists(): return {'error': f'Not found: {path}'}\n    return {'path': str(p), 'content': p.read_text(errors='replace'), 'size': p.stat().st_size}\n\ndef file_write(path: str, content: str) -> dict:\n    p = Path(path); p.parent.mkdir(parents=True, exist_ok=True); p.write_text(content)\n    return {'path': str(p), 'bytes': len(content.encode())}\n\ndef file_list(directory: str = '.', pattern: str = '*') -> list:\n    return [{'name': f.name, 'size': f.stat().st_size, 'is_dir': f.is_dir()} for f in sorted(Path(directory).glob(pattern))]\n\ndef file_search(directory: str, query: str) -> list:\n    return [{'path': str(f), 'size': f.stat().st_size} for f in Path(directory).rglob(f'*{query}*')][:50]",
-      "triggers": ["file", "read file", "write file", "list files", "find file"],
-      "examples": ["Read config.json", "List Python files", "Search for README"],
+      "triggers": [
+        "file",
+        "read file",
+        "write file",
+        "list files",
+        "find file"
+      ],
+      "examples": [
+        "Read config.json",
+        "List Python files",
+        "Search for README"
+      ],
       "author": "SableCore Team",
       "version": "1.0.0",
-      "rating": 4.5,
-      "downloads": 1900,
-      "tags": ["file", "system", "io"]
+      "rating": 0.0,
+      "downloads": 0,
+      "tags": [
+        "file",
+        "system",
+        "io"
+      ]
     },
     {
       "id": "system_info",
@@ -66,13 +119,26 @@
       "description": "Get system info: CPU, RAM, disk usage, OS, Python version, load average, hostname.",
       "category": "system",
       "function": "import platform, os, shutil\n\ndef get_system_info() -> dict:\n    disk = shutil.disk_usage('/')\n    info = {'os': platform.system(), 'os_version': platform.version(), 'arch': platform.machine(), 'hostname': platform.node(), 'python': platform.python_version(), 'cpus': os.cpu_count(), 'disk_total_gb': round(disk.total/(1024**3),2), 'disk_free_gb': round(disk.free/(1024**3),2), 'disk_pct': round(disk.used/disk.total*100,1)}\n    try: load = os.getloadavg(); info['load_avg'] = {'1m': load[0], '5m': load[1], '15m': load[2]}\n    except (OSError, AttributeError): pass\n    try:\n        with open('/proc/meminfo') as f:\n            for line in f:\n                if 'MemTotal' in line: info['ram_gb'] = round(int(line.split()[1])/(1024**2),2)\n                elif 'MemAvailable' in line: info['ram_free_gb'] = round(int(line.split()[1])/(1024**2),2)\n    except FileNotFoundError: pass\n    return info",
-      "triggers": ["system info", "cpu", "ram", "disk space", "system status"],
-      "examples": ["Show system info", "How much disk space?", "CPU usage"],
+      "triggers": [
+        "system info",
+        "cpu",
+        "ram",
+        "disk space",
+        "system status"
+      ],
+      "examples": [
+        "Show system info",
+        "How much disk space?",
+        "CPU usage"
+      ],
       "author": "SableCore Team",
       "version": "1.0.0",
-      "rating": 4.4,
-      "downloads": 1500,
-      "tags": ["system", "monitoring"]
+      "rating": 0.0,
+      "downloads": 0,
+      "tags": [
+        "system",
+        "monitoring"
+      ]
     },
     {
       "id": "reminder_manager",
@@ -80,13 +146,26 @@
       "description": "Set, list, complete reminders with priorities. Persistent JSON storage in ~/.sablecore/.",
       "category": "productivity",
       "function": "import json\nfrom pathlib import Path\nfrom datetime import datetime\n\nFILE = Path.home() / '.sablecore' / 'reminders.json'\n\ndef _load(): return json.loads(FILE.read_text()) if FILE.exists() else []\ndef _save(r): FILE.parent.mkdir(parents=True, exist_ok=True); FILE.write_text(json.dumps(r, indent=2))\n\ndef add_reminder(text, when='', priority='normal'):\n    r = _load(); item = {'id': len(r)+1, 'text': text, 'when': when or 'unscheduled', 'priority': priority, 'created': datetime.now().isoformat(), 'done': False}\n    r.append(item); _save(r); return item\n\ndef list_reminders(show_done=False):\n    r = _load(); return r if show_done else [x for x in r if not x.get('done')]\n\ndef complete_reminder(rid):\n    r = _load()\n    for x in r:\n        if x['id'] == rid: x['done'] = True; x['completed'] = datetime.now().isoformat(); _save(r); return x\n    return {'error': f'Not found: {rid}'}",
-      "triggers": ["remind", "reminder", "remember to", "don't forget", "alert me"],
-      "examples": ["Remind me to call John", "List reminders", "Complete reminder 1"],
+      "triggers": [
+        "remind",
+        "reminder",
+        "remember to",
+        "don't forget",
+        "alert me"
+      ],
+      "examples": [
+        "Remind me to call John",
+        "List reminders",
+        "Complete reminder 1"
+      ],
       "author": "SableCore Team",
       "version": "1.0.0",
-      "rating": 4.6,
-      "downloads": 2400,
-      "tags": ["reminder", "productivity"]
+      "rating": 0.0,
+      "downloads": 0,
+      "tags": [
+        "reminder",
+        "productivity"
+      ]
     },
     {
       "id": "note_taker",
@@ -94,13 +173,25 @@
       "description": "Take, search, and organize notes with tags. Markdown support. Persistent storage in ~/.sablecore/notes/.",
       "category": "productivity",
       "function": "import json\nfrom pathlib import Path\nfrom datetime import datetime\n\nDIR = Path.home() / '.sablecore' / 'notes'\n\ndef save_note(title, content, tags=None):\n    DIR.mkdir(parents=True, exist_ok=True)\n    slug = title.lower().replace(' ', '_')[:50]\n    note = {'title': title, 'content': content, 'tags': tags or [], 'created': datetime.now().isoformat()}\n    (DIR / f'{slug}.json').write_text(json.dumps(note, indent=2))\n    return {'saved': slug, 'title': title}\n\ndef search_notes(query):\n    if not DIR.exists(): return []\n    return [{'title': n['title'], 'preview': n['content'][:100]} for f in DIR.glob('*.json') for n in [json.loads(f.read_text())] if query.lower() in n['title'].lower() or query.lower() in n['content'].lower()]\n\ndef list_notes():\n    if not DIR.exists(): return []\n    return [{'title': n['title'], 'tags': n['tags'], 'date': n['created'][:10]} for f in sorted(DIR.glob('*.json')) for n in [json.loads(f.read_text())]]",
-      "triggers": ["note", "take a note", "save note", "write down", "jot down"],
-      "examples": ["Take a note about the meeting", "Search notes for project ideas"],
+      "triggers": [
+        "note",
+        "take a note",
+        "save note",
+        "write down",
+        "jot down"
+      ],
+      "examples": [
+        "Take a note about the meeting",
+        "Search notes for project ideas"
+      ],
       "author": "SableCore Team",
       "version": "1.0.0",
-      "rating": 4.5,
-      "downloads": 1800,
-      "tags": ["notes", "productivity"]
+      "rating": 0.0,
+      "downloads": 0,
+      "tags": [
+        "notes",
+        "productivity"
+      ]
     },
     {
       "id": "code_runner",
@@ -108,13 +199,27 @@
       "description": "Execute Python code safely with timeout protection and output capture. Also supports shell commands.",
       "category": "development",
       "function": "import subprocess, tempfile, os\n\ndef run_python(code, timeout=30):\n    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:\n        f.write(code); f.flush()\n        try:\n            r = subprocess.run(['python3', f.name], capture_output=True, text=True, timeout=timeout)\n            return {'stdout': r.stdout, 'stderr': r.stderr, 'exit_code': r.returncode, 'success': r.returncode == 0}\n        except subprocess.TimeoutExpired:\n            return {'error': f'Timed out after {timeout}s'}\n        finally:\n            os.unlink(f.name)\n\ndef run_shell(command, timeout=15):\n    try:\n        r = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=timeout)\n        return {'stdout': r.stdout, 'stderr': r.stderr, 'exit_code': r.returncode}\n    except subprocess.TimeoutExpired:\n        return {'error': f'Timed out after {timeout}s'}",
-      "triggers": ["run code", "execute", "run python", "run script", "shell", "terminal"],
-      "examples": ["Run print('hello')", "Execute ls -la"],
+      "triggers": [
+        "run code",
+        "execute",
+        "run python",
+        "run script",
+        "shell",
+        "terminal"
+      ],
+      "examples": [
+        "Run print('hello')",
+        "Execute ls -la"
+      ],
       "author": "SableCore Team",
       "version": "1.0.0",
-      "rating": 4.7,
-      "downloads": 3100,
-      "tags": ["code", "execution", "python"]
+      "rating": 0.0,
+      "downloads": 0,
+      "tags": [
+        "code",
+        "execution",
+        "python"
+      ]
     },
     {
       "id": "api_caller",
@@ -122,13 +227,27 @@
       "description": "Make HTTP requests to any API. Supports GET, POST, PUT, DELETE with headers, auth, and JSON.",
       "category": "development",
       "function": "import aiohttp, json\n\nasync def api_request(url, method='GET', headers=None, data=None, params=None, auth_token=None):\n    h = headers or {}\n    if auth_token: h['Authorization'] = f'Bearer {auth_token}'\n    if data and 'Content-Type' not in h: h['Content-Type'] = 'application/json'\n    async with aiohttp.ClientSession() as s:\n        kw = {'headers': h}\n        if params: kw['params'] = params\n        if data: kw['json'] = data\n        try:\n            async with s.request(method.upper(), url, **kw) as r:\n                body = await r.json() if 'json' in r.headers.get('Content-Type', '') else await r.text()\n                return {'status': r.status, 'body': body, 'ok': r.ok}\n        except Exception as e:\n            return {'error': str(e)}",
-      "triggers": ["api", "request", "fetch", "http", "call api", "get url"],
-      "examples": ["GET https://api.github.com/users/octocat", "POST to API with data"],
+      "triggers": [
+        "api",
+        "request",
+        "fetch",
+        "http",
+        "call api",
+        "get url"
+      ],
+      "examples": [
+        "GET https://api.github.com/users/octocat",
+        "POST to API with data"
+      ],
       "author": "SableCore Team",
       "version": "1.0.0",
-      "rating": 4.6,
-      "downloads": 2600,
-      "tags": ["api", "http", "rest"]
+      "rating": 0.0,
+      "downloads": 0,
+      "tags": [
+        "api",
+        "http",
+        "rest"
+      ]
     },
     {
       "id": "text_summarizer",
@@ -136,13 +255,26 @@
       "description": "Summarize long texts using extractive summarization. Picks most important sentences by word frequency.",
       "category": "nlp",
       "function": "import re\nfrom collections import Counter\n\ndef summarize(text, num_sentences=3):\n    sentences = re.split(r'(?<=[.!?])\\s+', text.strip())\n    if len(sentences) <= num_sentences:\n        return {'summary': text, 'compression': 1.0}\n    words = re.findall(r'\\w+', text.lower())\n    stops = {'the','a','an','is','are','was','were','be','have','has','had','do','does','did','will','would','to','of','in','for','on','with','at','by','from','and','but','or','not','it','this','that','i','me','my','we','you','he','she','they'}\n    freq = Counter(w for w in words if w not in stops and len(w) > 2)\n    scored = [(sum(freq.get(w,0) for w in re.findall(r'\\w+', s.lower()))/(len(s.split())+1) * (1.5 if i==0 else 1), i, s) for i, s in enumerate(sentences)]\n    scored.sort(reverse=True)\n    top = sorted(scored[:num_sentences], key=lambda x: x[1])\n    summary = ' '.join(s[2] for s in top)\n    return {'summary': summary, 'original': len(sentences), 'kept': num_sentences, 'compression': round(len(summary)/len(text),2)}",
-      "triggers": ["summarize", "summary", "tldr", "shorten", "condense"],
-      "examples": ["Summarize this article", "Give me a TLDR"],
+      "triggers": [
+        "summarize",
+        "summary",
+        "tldr",
+        "shorten",
+        "condense"
+      ],
+      "examples": [
+        "Summarize this article",
+        "Give me a TLDR"
+      ],
       "author": "SableCore Team",
       "version": "1.0.0",
-      "rating": 4.5,
-      "downloads": 2200,
-      "tags": ["nlp", "text", "summarization"]
+      "rating": 0.0,
+      "downloads": 0,
+      "tags": [
+        "nlp",
+        "text",
+        "summarization"
+      ]
     },
     {
       "id": "translator",
@@ -150,13 +282,25 @@
       "description": "Translate text between 100+ languages using MyMemory free translation API.",
       "category": "nlp",
       "function": "import aiohttp, urllib.parse\n\nasync def translate(text, target='en', source='auto'):\n    encoded = urllib.parse.quote(text)\n    url = f'https://api.mymemory.translated.net/get?q={encoded}&langpair={source}|{target}'\n    async with aiohttp.ClientSession() as s:\n        async with s.get(url) as r:\n            d = await r.json()\n            if d.get('responseStatus') == 200:\n                return {'original': text, 'translated': d['responseData']['translatedText'], 'target': target}\n            return {'error': 'Translation failed'}",
-      "triggers": ["translate", "in spanish", "in french", "in english", "to english"],
-      "examples": ["Translate hello to Spanish", "What does bonjour mean?"],
+      "triggers": [
+        "translate",
+        "in spanish",
+        "in french",
+        "in english",
+        "to english"
+      ],
+      "examples": [
+        "Translate hello to Spanish",
+        "What does bonjour mean?"
+      ],
       "author": "SableCore Team",
       "version": "1.0.0",
-      "rating": 4.4,
-      "downloads": 1700,
-      "tags": ["translation", "language"]
+      "rating": 0.0,
+      "downloads": 0,
+      "tags": [
+        "translation",
+        "language"
+      ]
     },
     {
       "id": "json_toolkit",
@@ -164,13 +308,26 @@
       "description": "Format, validate, query, and diff JSON data. Supports dot-path queries and structure comparison.",
       "category": "development",
       "function": "import json\n\ndef json_format(data):\n    try: return {'formatted': json.dumps(json.loads(data), indent=2, sort_keys=True), 'valid': True}\n    except json.JSONDecodeError as e: return {'error': str(e), 'valid': False}\n\ndef json_validate(data):\n    try:\n        p = json.loads(data)\n        return {'valid': True, 'type': type(p).__name__, 'keys': list(p.keys()) if isinstance(p, dict) else None}\n    except json.JSONDecodeError as e: return {'valid': False, 'error': str(e)}\n\ndef json_query(data, path):\n    try:\n        obj = json.loads(data)\n        for key in path.split('.'):\n            obj = obj[int(key)] if isinstance(obj, list) else obj[key]\n        return {'path': path, 'value': obj}\n    except Exception as e: return {'error': str(e)}",
-      "triggers": ["json", "format json", "validate json", "parse json"],
-      "examples": ["Format this JSON", "Validate JSON", "Query users.0.name"],
+      "triggers": [
+        "json",
+        "format json",
+        "validate json",
+        "parse json"
+      ],
+      "examples": [
+        "Format this JSON",
+        "Validate JSON",
+        "Query users.0.name"
+      ],
       "author": "SableCore Team",
       "version": "1.0.0",
-      "rating": 4.5,
-      "downloads": 1600,
-      "tags": ["json", "data", "development"]
+      "rating": 0.0,
+      "downloads": 0,
+      "tags": [
+        "json",
+        "data",
+        "development"
+      ]
     },
     {
       "id": "git_helper",
@@ -178,13 +335,26 @@
       "description": "Common git operations: status, log, diff, branch management. Wraps git CLI commands.",
       "category": "development",
       "function": "import subprocess\n\ndef git_run(cmd, cwd='.'):\n    try:\n        r = subprocess.run(f'git {cmd}', shell=True, capture_output=True, text=True, cwd=cwd, timeout=30)\n        return {'stdout': r.stdout.strip(), 'stderr': r.stderr.strip(), 'success': r.returncode == 0}\n    except subprocess.TimeoutExpired: return {'error': 'Timed out'}\n\ndef git_status(cwd='.'): return git_run('status --short --branch', cwd)\ndef git_log(n=10, cwd='.'): return git_run(f'log --oneline --graph -n {n}', cwd)\ndef git_diff(staged=False, cwd='.'): return git_run(f\"diff {'--cached' if staged else ''} --stat\", cwd)\ndef git_branches(cwd='.'): return git_run('branch -a --sort=-committerdate', cwd)",
-      "triggers": ["git", "commit", "branch", "git status", "git log"],
-      "examples": ["Show git status", "Recent commits", "List branches"],
+      "triggers": [
+        "git",
+        "commit",
+        "branch",
+        "git status",
+        "git log"
+      ],
+      "examples": [
+        "Show git status",
+        "Recent commits",
+        "List branches"
+      ],
       "author": "SableCore Team",
       "version": "1.0.0",
-      "rating": 4.7,
-      "downloads": 2900,
-      "tags": ["git", "version-control"]
+      "rating": 0.0,
+      "downloads": 0,
+      "tags": [
+        "git",
+        "version-control"
+      ]
     },
     {
       "id": "task_tracker",
@@ -192,13 +362,26 @@
       "description": "Track tasks with priorities, deadlines, projects, and status. Persistent JSON storage.",
       "category": "productivity",
       "function": "import json\nfrom pathlib import Path\nfrom datetime import datetime\n\nFILE = Path.home() / '.sablecore' / 'tasks.json'\ndef _load(): return json.loads(FILE.read_text()) if FILE.exists() else []\ndef _save(t): FILE.parent.mkdir(parents=True, exist_ok=True); FILE.write_text(json.dumps(t, indent=2))\n\ndef add_task(title, project='default', priority='medium', deadline=''):\n    t = _load(); item = {'id': len(t)+1, 'title': title, 'project': project, 'priority': priority, 'deadline': deadline, 'status': 'todo', 'created': datetime.now().isoformat()}\n    t.append(item); _save(t); return item\n\ndef list_tasks(project=None, status=None):\n    t = _load()\n    if project: t = [x for x in t if x['project'] == project]\n    if status: t = [x for x in t if x['status'] == status]\n    return t\n\ndef update_task(tid, status=None, priority=None):\n    t = _load()\n    for x in t:\n        if x['id'] == tid:\n            if status: x['status'] = status\n            if priority: x['priority'] = priority\n            _save(t); return x\n    return {'error': f'Not found: {tid}'}",
-      "triggers": ["task", "todo", "add task", "list tasks", "mark done"],
-      "examples": ["Add task: Fix login bug", "List tasks", "Mark task 3 done"],
+      "triggers": [
+        "task",
+        "todo",
+        "add task",
+        "list tasks",
+        "mark done"
+      ],
+      "examples": [
+        "Add task: Fix login bug",
+        "List tasks",
+        "Mark task 3 done"
+      ],
       "author": "SableCore Team",
       "version": "1.0.0",
-      "rating": 4.6,
-      "downloads": 2300,
-      "tags": ["tasks", "productivity"]
+      "rating": 0.0,
+      "downloads": 0,
+      "tags": [
+        "tasks",
+        "productivity"
+      ]
     },
     {
       "id": "password_generator",
@@ -206,13 +389,24 @@
       "description": "Generate secure passwords, passphrases, and API keys. Check password strength.",
       "category": "security",
       "function": "import secrets, string, math\n\ndef generate_password(length=16, upper=True, lower=True, digits=True, symbols=True):\n    chars = ''\n    if upper: chars += string.ascii_uppercase\n    if lower: chars += string.ascii_lowercase\n    if digits: chars += string.digits\n    if symbols: chars += '!@#$%^&*()_+-='\n    if not chars: chars = string.ascii_letters + string.digits\n    pw = ''.join(secrets.choice(chars) for _ in range(length))\n    entropy = math.log2(len(chars) ** length)\n    return {'password': pw, 'length': length, 'entropy_bits': round(entropy,1), 'strength': 'strong' if entropy > 60 else 'medium' if entropy > 40 else 'weak'}\n\ndef generate_passphrase(words=4, sep='-'):\n    wl = ['alpha','brave','coral','delta','eagle','flame','globe','haven','ivory','jewel','karma','lunar','maple','noble','oasis','pearl','quest','river','solar','tiger','ultra','vivid','waltz','xenon','yield','zephyr','amber','blaze','crest','drift','ember','frost','grace','nexus','orbit','prism','quill','ridge','spark','thorn','unity','valor']\n    phrase = sep.join(secrets.choice(wl) for _ in range(words))\n    return {'passphrase': phrase, 'words': words, 'entropy_bits': round(math.log2(len(wl)**words),1)}\n\ndef generate_api_key(prefix='sk'):\n    return {'api_key': f'{prefix}_{secrets.token_hex(24)}'}",
-      "triggers": ["password", "generate password", "passphrase", "api key"],
-      "examples": ["Generate a strong password", "Create a passphrase"],
+      "triggers": [
+        "password",
+        "generate password",
+        "passphrase",
+        "api key"
+      ],
+      "examples": [
+        "Generate a strong password",
+        "Create a passphrase"
+      ],
       "author": "SableCore Team",
       "version": "1.0.0",
-      "rating": 4.7,
-      "downloads": 2700,
-      "tags": ["security", "password"]
+      "rating": 0.0,
+      "downloads": 0,
+      "tags": [
+        "security",
+        "password"
+      ]
     },
     {
       "id": "regex_helper",
@@ -220,13 +414,26 @@
       "description": "Build, test, and explain regex patterns. Common patterns for emails, URLs, phones, dates.",
       "category": "development",
       "function": "import re\n\nPATTERNS = {'email': r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}', 'url': r'https?://[\\w.-]+(?:\\.[\\w.-]+)+[\\w.,@?^=%&:/~+#-]*', 'phone': r'\\+?\\d{1,4}[-.\\s]?\\(?\\d{1,3}\\)?[-.\\s]?\\d{1,4}[-.\\s]?\\d{1,9}', 'ipv4': r'\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b', 'date_iso': r'\\d{4}-\\d{2}-\\d{2}'}\n\ndef regex_test(pattern, text, flags=''):\n    fmap = {'i': re.IGNORECASE, 'm': re.MULTILINE, 's': re.DOTALL}\n    rf = 0\n    for f in flags: rf |= fmap.get(f, 0)\n    try:\n        matches = [{'match': m.group(), 'start': m.start(), 'end': m.end()} for m in re.finditer(pattern, text, rf)]\n        return {'pattern': pattern, 'matches': matches, 'count': len(matches)}\n    except re.error as e: return {'error': str(e)}\n\ndef regex_extract(name, text):\n    p = PATTERNS.get(name)\n    if not p: return {'error': f'Unknown. Available: {list(PATTERNS.keys())}'}\n    return regex_test(p, text)",
-      "triggers": ["regex", "pattern", "match", "extract emails", "find urls"],
-      "examples": ["Extract emails from text", "Test this regex pattern"],
+      "triggers": [
+        "regex",
+        "pattern",
+        "match",
+        "extract emails",
+        "find urls"
+      ],
+      "examples": [
+        "Extract emails from text",
+        "Test this regex pattern"
+      ],
       "author": "SableCore Team",
       "version": "1.0.0",
-      "rating": 4.4,
-      "downloads": 1300,
-      "tags": ["regex", "text", "patterns"]
+      "rating": 0.0,
+      "downloads": 0,
+      "tags": [
+        "regex",
+        "text",
+        "patterns"
+      ]
     }
   ]
 }

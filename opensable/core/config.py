@@ -112,7 +112,7 @@ class OpenSableConfig(BaseModel):
         return True
     
     class Config:
-        extra = "allow"
+        extra = "ignore"  # silently drop unknown fields (catches env var typos)
 
 
 def load_config() -> OpenSableConfig:
