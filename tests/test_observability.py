@@ -1,265 +1,244 @@
 """
-Tests for Observability - Distributed tracing and log aggregation.
+Tests for Observability - Distributed Tracing and Log Aggregation.
 """
 
 import pytest
-from datetime import datetime, timedelta
-from unittest.mock import Mock, AsyncMock
-
-from core.observability import (
-    TracingProvider, LogAggregator,
-    Span, SpanKind, SpanStatus, LogLevel
+import time
+from opensable.core.observability import (
+    DistributedTracer, LogAggregator, Span, Trace,
+    SpanKind, LogLevel, LogEntry
 )
 
 
-class TestTracingProvider:
-    """Test distributed tracing"""
-    
+class TestSpanKind:
+    """Test SpanKind enum."""
+
+    def test_members(self):
+        assert SpanKind.INTERNAL.value == "internal"
+        assert SpanKind.SERVER.value == "server"
+        assert SpanKind.CLIENT.value == "client"
+        assert SpanKind.PRODUCER.value == "producer"
+        assert SpanKind.CONSUMER.value == "consumer"
+
+
+class TestLogLevel:
+    """Test LogLevel enum."""
+
+    def test_members(self):
+        assert LogLevel.DEBUG.value == "DEBUG"
+        assert LogLevel.INFO.value == "INFO"
+        assert LogLevel.WARNING.value == "WARNING"
+        assert LogLevel.ERROR.value == "ERROR"
+        assert LogLevel.CRITICAL.value == "CRITICAL"
+
+
+class TestLogEntry:
+    """Test LogEntry dataclass."""
+
+    def test_create(self):
+        from datetime import datetime
+        entry = LogEntry(
+            timestamp=datetime.now(),
+            level=LogLevel.INFO,
+            message="test msg",
+            logger_name="test",
+        )
+        assert entry.level == LogLevel.INFO
+        assert entry.message == "test msg"
+        assert entry.logger_name == "test"
+
+    def test_to_dict(self):
+        from datetime import datetime
+        entry = LogEntry(
+            timestamp=datetime.now(),
+            level=LogLevel.ERROR,
+            message="oops",
+            logger_name="app",
+            trace_id="t1",
+        )
+        d = entry.to_dict()
+        assert d["level"] == "ERROR"
+        assert d["message"] == "oops"
+        assert d["trace_id"] == "t1"
+
+    def test_defaults(self):
+        from datetime import datetime
+        entry = LogEntry(timestamp=datetime.now(), level=LogLevel.DEBUG, message="x", logger_name="l")
+        assert entry.trace_id is None
+        assert entry.span_id is None
+        assert entry.attributes == {}
+        assert entry.exception is None
+
+
+class TestSpan:
+    """Test Span dataclass."""
+
+    def test_create(self):
+        s = Span(
+            trace_id="t1", span_id="s1", parent_span_id=None,
+            name="op", kind=SpanKind.INTERNAL, start_time=time.time()
+        )
+        assert s.trace_id == "t1"
+        assert s.name == "op"
+        assert s.status == "ok"
+
+    def test_add_event(self):
+        s = Span(trace_id="t", span_id="s", parent_span_id=None,
+                 name="op", kind=SpanKind.SERVER, start_time=time.time())
+        s.add_event("checkpoint", {"key": "val"})
+        assert len(s.events) == 1
+        assert s.events[0]["name"] == "checkpoint"
+
+    def test_set_attribute(self):
+        s = Span(trace_id="t", span_id="s", parent_span_id=None,
+                 name="op", kind=SpanKind.CLIENT, start_time=time.time())
+        s.set_attribute("http.method", "GET")
+        assert s.attributes["http.method"] == "GET"
+
+    def test_set_error(self):
+        s = Span(trace_id="t", span_id="s", parent_span_id=None,
+                 name="op", kind=SpanKind.INTERNAL, start_time=time.time())
+        s.set_error(ValueError("bad"))
+        assert s.status == "error"
+        assert s.error == "bad"
+
+    def test_end_and_duration(self):
+        s = Span(trace_id="t", span_id="s", parent_span_id=None,
+                 name="op", kind=SpanKind.INTERNAL, start_time=time.time())
+        time.sleep(0.01)
+        s.end()
+        assert s.end_time is not None
+        assert s.duration_ms > 0
+
+    def test_to_dict(self):
+        s = Span(trace_id="t", span_id="s", parent_span_id=None,
+                 name="op", kind=SpanKind.INTERNAL, start_time=1000.0)
+        d = s.to_dict()
+        assert d["trace_id"] == "t"
+        assert d["kind"] == "internal"
+
+
+class TestDistributedTracer:
+    """Test distributed tracer."""
+
     @pytest.fixture
     def tracer(self):
-        return TracingProvider(
-            service_name="test-service",
-            exporter="jaeger",
-            endpoint="http://localhost:14268/api/traces"
-        )
-    
-    def test_create_span(self, tracer):
-        """Test span creation"""
-        span = tracer.start_span("test_operation", SpanKind.INTERNAL)
-        
-        assert span.name == "test_operation"
-        assert span.kind == SpanKind.INTERNAL
-        assert span.trace_id is not None
-        assert span.span_id is not None
-    
-    def test_span_with_attributes(self, tracer):
-        """Test span with attributes"""
-        span = tracer.start_span(
-            "http_request",
-            SpanKind.SERVER,
-            attributes={"http.method": "GET", "http.status": 200}
-        )
-        
-        assert span.attributes["http.method"] == "GET"
-        assert span.attributes["http.status"] == 200
-    
-    def test_nested_spans(self, tracer):
-        """Test parent-child span relationships"""
-        parent = tracer.start_span("parent_op", SpanKind.INTERNAL)
-        child = tracer.start_span("child_op", SpanKind.INTERNAL, parent=parent)
-        
+        return DistributedTracer(service_name="test-svc")
+
+    def test_init(self, tracer):
+        assert tracer.service_name == "test-svc"
+
+    def test_create_trace(self, tracer):
+        tid = tracer.create_trace()
+        assert isinstance(tid, str)
+        assert tid in tracer.traces
+
+    def test_start_span(self, tracer):
+        tid = tracer.create_trace()
+        span = tracer.start_span("operation", trace_id=tid)
+        assert isinstance(span, Span)
+        assert span.name == "operation"
+        assert span.trace_id == tid
+
+    def test_end_span(self, tracer):
+        tid = tracer.create_trace()
+        span = tracer.start_span("op", trace_id=tid)
+        tracer.end_span(span.span_id)
+        assert span.span_id not in tracer.active_spans
+        assert span.end_time is not None
+
+    def test_child_span(self, tracer):
+        tid = tracer.create_trace()
+        parent = tracer.start_span("parent", trace_id=tid)
+        child = tracer.start_span("child", trace_id=tid, parent_span_id=parent.span_id)
         assert child.parent_span_id == parent.span_id
-        assert child.trace_id == parent.trace_id  # Same trace
-    
-    def test_span_status(self, tracer):
-        """Test span status setting"""
-        span = tracer.start_span("test_op", SpanKind.INTERNAL)
-        
-        span.set_status(SpanStatus.OK, "Operation successful")
-        
-        assert span.status == SpanStatus.OK
-        assert span.status_message == "Operation successful"
-    
-    def test_span_error(self, tracer):
-        """Test error recording in span"""
-        span = tracer.start_span("failing_op", SpanKind.INTERNAL)
-        
-        try:
-            raise ValueError("Test error")
-        except Exception as e:
-            span.record_exception(e)
-            span.set_status(SpanStatus.ERROR, str(e))
-        
-        assert span.status == SpanStatus.ERROR
-        assert "Test error" in span.status_message
-    
-    def test_span_events(self, tracer):
-        """Test adding events to spans"""
-        span = tracer.start_span("event_test", SpanKind.INTERNAL)
-        
-        span.add_event("event1", {"key": "value1"})
-        span.add_event("event2", {"key": "value2"})
-        
-        assert len(span.events) == 2
-        assert span.events[0]["name"] == "event1"
-    
-    def test_context_propagation(self, tracer):
-        """Test trace context extraction and propagation"""
-        span = tracer.start_span("service_a", SpanKind.CLIENT)
-        
-        context = tracer.extract_context(span)
-        
-        assert "traceparent" in context
-        assert span.trace_id in context["traceparent"]
-    
-    def test_span_duration(self, tracer):
-        """Test span duration tracking"""
-        import time
-        
-        span = tracer.start_span("timed_op", SpanKind.INTERNAL)
-        time.sleep(0.1)  # 100ms
-        tracer.end_span(span)
-        
-        assert span.duration_ms >= 100
+
+    def test_get_trace(self, tracer):
+        tid = tracer.create_trace()
+        tracer.start_span("op", trace_id=tid)
+        trace = tracer.get_trace(tid)
+        assert trace is not None
+        assert len(trace.spans) == 1
+
+    def test_span_kind(self, tracer):
+        tid = tracer.create_trace()
+        span = tracer.start_span("http", trace_id=tid, kind=SpanKind.SERVER)
+        assert span.kind == SpanKind.SERVER
+
+    def test_export_traces(self, tracer):
+        tid = tracer.create_trace()
+        tracer.start_span("op", trace_id=tid)
+        exported = tracer.export_traces(backend="jaeger")
+        assert len(exported) >= 1
+
+
+class TestTrace:
+    """Test Trace dataclass."""
+
+    def test_create(self):
+        t = Trace(trace_id="abc")
+        assert t.trace_id == "abc"
+        assert t.spans == []
+
+    def test_add_span(self):
+        t = Trace(trace_id="abc")
+        s = Span(trace_id="abc", span_id="s1", parent_span_id=None,
+                 name="op", kind=SpanKind.INTERNAL, start_time=time.time())
+        t.add_span(s)
+        assert len(t.spans) == 1
+
+    def test_get_root_span(self):
+        t = Trace(trace_id="abc")
+        s = Span(trace_id="abc", span_id="s1", parent_span_id=None,
+                 name="root", kind=SpanKind.INTERNAL, start_time=time.time())
+        t.add_span(s)
+        root = t.get_root_span()
+        assert root is not None
+        assert root.name == "root"
 
 
 class TestLogAggregator:
-    """Test log aggregation"""
-    
-    @pytest.fixture
-    def logger(self):
-        return LogAggregator(
-            service_name="test-service",
-            backend="elasticsearch",
-            endpoint="http://localhost:9200"
-        )
-    
-    @pytest.mark.asyncio
-    async def test_log_message(self, logger):
-        """Test basic logging"""
-        await logger.log(
-            level=LogLevel.INFO,
-            message="Test log message",
-            context={"key": "value"}
-        )
-        
-        assert len(logger.logs) == 1
-        assert logger.logs[0].message == "Test log message"
-        assert logger.logs[0].level == LogLevel.INFO
-    
-    @pytest.mark.asyncio
-    async def test_log_levels(self, logger):
-        """Test different log levels"""
-        await logger.log(LogLevel.DEBUG, "Debug message")
-        await logger.log(LogLevel.INFO, "Info message")
-        await logger.log(LogLevel.WARNING, "Warning message")
-        await logger.log(LogLevel.ERROR, "Error message")
-        
-        assert len(logger.logs) == 4
-    
-    @pytest.mark.asyncio
-    async def test_structured_logging(self, logger):
-        """Test structured log context"""
-        await logger.log(
-            LogLevel.INFO,
-            "User action",
-            context={
-                "user_id": "123",
-                "action": "login",
-                "ip": "192.168.1.1"
-            }
-        )
-        
-        log = logger.logs[0]
-        assert log.context["user_id"] == "123"
-        assert log.context["action"] == "login"
-    
-    @pytest.mark.asyncio
-    async def test_query_by_level(self, logger):
-        """Test querying logs by level"""
-        await logger.log(LogLevel.INFO, "Info 1")
-        await logger.log(LogLevel.ERROR, "Error 1")
-        await logger.log(LogLevel.INFO, "Info 2")
-        
-        errors = await logger.query(level=LogLevel.ERROR)
-        
-        assert len(errors) == 1
-        assert errors[0].message == "Error 1"
-    
-    @pytest.mark.asyncio
-    async def test_query_by_time(self, logger):
-        """Test querying logs by time range"""
-        now = datetime.now()
-        
-        await logger.log(LogLevel.INFO, "Recent log")
-        
-        recent = await logger.query(
-            start_time=now - timedelta(minutes=1),
-            end_time=now + timedelta(minutes=1)
-        )
-        
-        assert len(recent) >= 1
-    
-    @pytest.mark.asyncio
-    async def test_query_with_filters(self, logger):
-        """Test querying with context filters"""
-        await logger.log(
-            LogLevel.INFO,
-            "User action",
-            context={"user_id": "123", "action": "login"}
-        )
-        await logger.log(
-            LogLevel.INFO,
-            "Other action",
-            context={"user_id": "456", "action": "logout"}
-        )
-        
-        user_logs = await logger.query(filters={"user_id": "123"})
-        
-        assert len(user_logs) == 1
-        assert user_logs[0].context["user_id"] == "123"
-    
-    @pytest.mark.asyncio
-    async def test_trace_correlation(self, logger):
-        """Test trace ID in logs for correlation"""
-        await logger.log(
-            LogLevel.INFO,
-            "Traced operation",
-            context={
-                "trace_id": "abc123",
-                "span_id": "span456"
-            }
-        )
-        
-        log = logger.logs[0]
-        assert log.context["trace_id"] == "abc123"
+    """Test log aggregator."""
 
+    @pytest.fixture
+    def aggregator(self, tmp_path):
+        return LogAggregator(storage_dir=str(tmp_path / "logs"))
 
-class TestObservabilityIntegration:
-    """Test tracing + logging integration"""
-    
-    @pytest.fixture
-    def tracer(self):
-        return TracingProvider(service_name="test")
-    
-    @pytest.fixture
-    def logger(self):
-        return LogAggregator(service_name="test")
-    
-    @pytest.mark.asyncio
-    async def test_correlated_trace_and_logs(self, tracer, logger):
-        """Test correlating traces with logs"""
-        span = tracer.start_span("operation", SpanKind.INTERNAL)
-        
-        # Log with trace context
-        await logger.log(
-            LogLevel.INFO,
-            "Operation in progress",
-            context={
-                "trace_id": span.trace_id,
-                "span_id": span.span_id
-            }
+    def test_init(self, aggregator):
+        assert aggregator.log_buffer == []
+        assert aggregator.buffer_size == 1000
+
+    def test_log_entry(self, aggregator):
+        aggregator.log(LogLevel.INFO, "hello world", logger_name="test")
+        assert len(aggregator.log_buffer) == 1
+        assert aggregator.log_buffer[0].message == "hello world"
+
+    def test_log_with_context(self, aggregator):
+        aggregator.log(
+            LogLevel.ERROR, "failed",
+            logger_name="app",
+            trace_id="t123",
+            attributes={"key": "val"},
         )
-        
-        tracer.end_span(span)
-        
-        # Verify correlation
-        log = logger.logs[0]
-        assert log.context["trace_id"] == span.trace_id
-        assert log.context["span_id"] == span.span_id
-    
-    def test_multiple_exporters(self):
-        """Test different trace exporters"""
-        jaeger = TracingProvider(service_name="test", exporter="jaeger")
-        zipkin = TracingProvider(service_name="test", exporter="zipkin")
-        
-        assert jaeger.exporter == "jaeger"
-        assert zipkin.exporter == "zipkin"
-    
-    def test_multiple_log_backends(self):
-        """Test different log backends"""
-        elk = LogAggregator(service_name="test", backend="elasticsearch")
-        loki = LogAggregator(service_name="test", backend="loki")
-        
-        assert elk.backend == "elasticsearch"
-        assert loki.backend == "loki"
+        entry = aggregator.log_buffer[0]
+        assert entry.trace_id == "t123"
+        assert entry.attributes["key"] == "val"
+
+    def test_multiple_levels(self, aggregator):
+        aggregator.log(LogLevel.DEBUG, "d", logger_name="l")
+        aggregator.log(LogLevel.WARNING, "w", logger_name="l")
+        assert len(aggregator.log_buffer) == 2
+
+    @pytest.mark.asyncio
+    async def test_flush(self, aggregator):
+        aggregator.log(LogLevel.INFO, "flush me", logger_name="t")
+        await aggregator.flush()
+        assert len(aggregator.log_buffer) == 0
+
+    @pytest.mark.asyncio
+    async def test_query(self, aggregator):
+        aggregator.log(LogLevel.INFO, "findme", logger_name="t")
+        await aggregator.flush()
+        results = await aggregator.query(search="findme")
+        assert len(results) >= 1
+        assert results[0].message == "findme"

@@ -1,260 +1,239 @@
 """
-Tests for Enterprise features - Multi-tenancy, RBAC, Audit, SSO.
+Tests for Enterprise features - RBAC, Multi-tenancy, Audit, SSO.
 """
 
 import pytest
-from datetime import datetime, timedelta
-from unittest.mock import Mock, AsyncMock
+from datetime import datetime
+from unittest.mock import patch
 
-from core.enterprise import (
-    MultiTenancy, RBAC, AuditLogger, SSOProvider,
-    Permission, AuditAction, Role, User, Tenant
+from opensable.core.enterprise import (
+    RBAC, MultiTenancy, AuditLogger, SSOProvider,
+    Permission, AuditAction, Role, Tenant, User, AuditLog
 )
 
 
+class TestPermissionEnum:
+    """Test Permission enum."""
+
+    def test_admin_permissions(self):
+        assert Permission.ADMIN_ALL.value == "admin:*"
+        assert Permission.ADMIN_USERS.value == "admin:users"
+
+    def test_agent_permissions(self):
+        assert Permission.AGENT_CREATE.value == "agent:create"
+        assert Permission.AGENT_READ.value == "agent:read"
+
+    def test_data_permissions(self):
+        assert Permission.DATA_READ.value == "data:read"
+        assert Permission.DATA_WRITE.value == "data:write"
+
+
+class TestRole:
+    """Test Role dataclass."""
+
+    def test_create_role(self):
+        role = Role(name="test", permissions={Permission.AGENT_READ})
+        assert role.name == "test"
+        assert Permission.AGENT_READ in role.permissions
+
+    def test_has_permission(self):
+        role = Role(name="r", permissions={Permission.DATA_READ, Permission.DATA_WRITE})
+        assert role.has_permission(Permission.DATA_READ)
+        assert not role.has_permission(Permission.ADMIN_ALL)
+
+    def test_to_dict(self):
+        role = Role(name="r", permissions={Permission.DATA_READ}, description="desc")
+        d = role.to_dict()
+        assert d["name"] == "r"
+        assert d["description"] == "desc"
+
+
 class TestMultiTenancy:
-    """Test multi-tenancy system"""
-    
+    """Test multi-tenancy management."""
+
     @pytest.fixture
-    def tenancy(self):
-        return MultiTenancy()
-    
-    def test_create_tenant(self, tenancy):
-        """Test tenant creation"""
-        tenant = tenancy.create_tenant("Test Corp", plan="enterprise")
-        
-        assert tenant.name == "Test Corp"
-        assert tenant.plan == "enterprise"
-        assert tenant.id is not None
-        assert tenant.limits is not None
-    
-    def test_create_user(self, tenancy):
-        """Test user creation"""
-        tenant = tenancy.create_tenant("Company", plan="pro")
-        user = tenancy.create_user("user@company.com", tenant.id, "password123")
-        
-        assert user.email == "user@company.com"
-        assert user.tenant_id == tenant.id
-        assert user.id is not None
-    
-    def test_tenant_isolation(self, tenancy):
-        """Test that tenants are isolated"""
-        tenant1 = tenancy.create_tenant("Company A", plan="pro")
-        tenant2 = tenancy.create_tenant("Company B", plan="pro")
-        
-        user1 = tenancy.create_user("user@a.com", tenant1.id, "pass1")
-        user2 = tenancy.create_user("user@b.com", tenant2.id, "pass2")
-        
-        assert user1.tenant_id != user2.tenant_id
-    
-    def test_quota_checking(self, tenancy):
-        """Test resource quota enforcement"""
-        tenant = tenancy.create_tenant("Test", plan="free")
-        
-        # Free plan has low limits
-        within_quota = tenancy.check_quota(tenant.id, "agents", 5)
-        over_quota = tenancy.check_quota(tenant.id, "agents", 1000)
-        
-        assert within_quota is True
-        assert over_quota is False
-    
-    def test_tenant_plans(self, tenancy):
-        """Test different plan limits"""
-        free = tenancy.create_tenant("Free", plan="free")
-        pro = tenancy.create_tenant("Pro", plan="pro")
-        enterprise = tenancy.create_tenant("Enterprise", plan="enterprise")
-        
-        # Enterprise should have highest limits
-        assert enterprise.limits["agents"] > pro.limits["agents"]
-        assert pro.limits["agents"] > free.limits["agents"]
+    def mt(self, tmp_path):
+        return MultiTenancy(storage_dir=str(tmp_path / "tenants"))
+
+    def test_create_tenant(self, mt):
+        tenant = mt.create_tenant("Acme Corp")
+        assert isinstance(tenant, Tenant)
+        assert tenant.name == "Acme Corp"
+        assert tenant.plan == "free"
+
+    def test_tenant_plans(self, mt):
+        t = mt.create_tenant("Pro Co", plan="pro")
+        assert t.plan == "pro"
+        assert t.limits.get("agents") == 50
+
+    def test_get_tenant(self, mt):
+        t = mt.create_tenant("FindMe")
+        found = mt.get_tenant(t.id)
+        assert found is not None
+        assert found.name == "FindMe"
+
+    def test_get_nonexistent(self, mt):
+        assert mt.get_tenant("nonexistent") is None
+
+    def test_create_user(self, mt):
+        t = mt.create_tenant("UserOrg")
+        user = mt.create_user("a@b.com", t.id, "pass123")
+        assert isinstance(user, User)
+        assert user.email == "a@b.com"
+        assert user.tenant_id == t.id
+
+    def test_check_quota(self, mt):
+        t = mt.create_tenant("Quota", plan="free")
+        # free plan: agents=5
+        assert mt.check_quota(t.id, "agents", 3) is True
+        assert mt.check_quota(t.id, "agents", 10) is False
+
+    def test_enterprise_unlimited(self, mt):
+        t = mt.create_tenant("Big", plan="enterprise")
+        assert mt.check_quota(t.id, "agents", 999999) is True
 
 
 class TestRBAC:
-    """Test role-based access control"""
-    
+    """Test role-based access control."""
+
     @pytest.fixture
     def rbac(self):
         return RBAC()
-    
+
+    def test_default_roles(self, rbac):
+        assert "admin" in rbac.roles
+        assert "developer" in rbac.roles
+        assert "operator" in rbac.roles
+        assert "viewer" in rbac.roles
+
+    def test_create_role(self, rbac):
+        role = rbac.create_role("custom", {Permission.DATA_READ}, "Custom role")
+        assert role.name == "custom"
+        assert "custom" in rbac.roles
+
     def test_assign_role(self, rbac):
-        """Test role assignment"""
-        user_id = "user_123"
-        
-        rbac.assign_role(user_id, "admin")
-        
-        roles = rbac.get_user_roles(user_id)
-        assert "admin" in roles
-    
+        rbac.assign_role("user1", "viewer")
+        assert "viewer" in rbac.user_roles.get("user1", [])
+
     def test_check_permission(self, rbac):
-        """Test permission checking"""
-        user_id = "user_456"
-        
-        rbac.assign_role(user_id, "developer")
-        
-        # Developer can create agents
-        assert rbac.check_permission(user_id, Permission.AGENT_CREATE)
-        
-        # Developer cannot delete everything
-        assert not rbac.check_permission(user_id, Permission.SYSTEM_DELETE)
-    
-    def test_custom_role(self, rbac):
-        """Test custom role creation"""
-        permissions = {
-            Permission.AGENT_READ,
-            Permission.AGENT_EXECUTE,
-            Permission.DATA_READ
-        }
-        
-        role = rbac.create_role("analyst", permissions, "Data analyst role")
-        
-        assert role.name == "analyst"
-        assert len(role.permissions) == 3
-    
+        rbac.assign_role("u1", "viewer")
+        assert rbac.check_permission("u1", Permission.AGENT_READ) is True
+        assert rbac.check_permission("u1", Permission.AGENT_DELETE) is False
+
+    def test_admin_has_all(self, rbac):
+        rbac.assign_role("admin_user", "admin")
+        assert rbac.check_permission("admin_user", Permission.ADMIN_ALL) is True
+
     def test_multiple_roles(self, rbac):
-        """Test user with multiple roles"""
-        user_id = "user_789"
-        
-        rbac.assign_role(user_id, "developer")
-        rbac.assign_role(user_id, "operator")
-        
-        roles = rbac.get_user_roles(user_id)
-        assert len(roles) == 2
-        assert "developer" in roles
-        assert "operator" in roles
-    
-    def test_permission_hierarchy(self, rbac):
-        """Test that admin has all permissions"""
-        admin_id = "admin_001"
-        rbac.assign_role(admin_id, "admin")
-        
-        # Admin should have all permissions
-        assert rbac.check_permission(admin_id, Permission.AGENT_DELETE)
-        assert rbac.check_permission(admin_id, Permission.SYSTEM_DELETE)
-        assert rbac.check_permission(admin_id, Permission.USER_CREATE)
+        rbac.assign_role("u2", "viewer")
+        rbac.assign_role("u2", "developer")
+        assert rbac.check_permission("u2", Permission.AGENT_DELETE) is True
+
+    def test_revoke_role(self, rbac):
+        rbac.assign_role("u3", "developer")
+        rbac.revoke_role("u3", "developer")
+        assert rbac.check_permission("u3", Permission.AGENT_DELETE) is False
+
+    def test_no_user_no_permission(self, rbac):
+        assert rbac.check_permission("nobody", Permission.DATA_READ) is False
+
+    def test_get_user_permissions(self, rbac):
+        rbac.assign_role("u4", "viewer")
+        perms = rbac.get_user_permissions("u4")
+        assert Permission.AGENT_READ in perms
 
 
 class TestAuditLogger:
-    """Test audit logging"""
-    
+    """Test audit logging."""
+
     @pytest.fixture
-    def audit(self):
-        return AuditLogger()
-    
+    def logger(self, tmp_path):
+        return AuditLogger(storage_dir=str(tmp_path / "audit"))
+
     @pytest.mark.asyncio
-    async def test_log_action(self, audit):
-        """Test logging an action"""
-        await audit.log(
-            tenant_id="tenant_1",
-            user_id="user_1",
+    async def test_log_action(self, logger):
+        await logger.log(
+            tenant_id="t1",
+            user_id="u1",
             action=AuditAction.CREATE,
             resource_type="agent",
-            resource_id="agent_123",
-            details={"name": "Test Agent"}
+            resource_id="a1",
         )
-        
-        assert len(audit.logs) == 1
-        assert audit.logs[0].action == AuditAction.CREATE
-    
+        assert len(logger.logs) == 1
+        assert logger.logs[0].action == AuditAction.CREATE
+
     @pytest.mark.asyncio
-    async def test_query_by_tenant(self, audit):
-        """Test querying logs by tenant"""
-        await audit.log("tenant_1", "user_1", AuditAction.CREATE, "agent", "a1")
-        await audit.log("tenant_2", "user_2", AuditAction.UPDATE, "agent", "a2")
-        
-        tenant1_logs = await audit.query(tenant_id="tenant_1")
-        
-        assert len(tenant1_logs) == 1
-        assert tenant1_logs[0].tenant_id == "tenant_1"
-    
-    @pytest.mark.asyncio
-    async def test_query_by_action(self, audit):
-        """Test querying logs by action type"""
-        await audit.log("t1", "u1", AuditAction.CREATE, "agent", "a1")
-        await audit.log("t1", "u1", AuditAction.DELETE, "agent", "a2")
-        await audit.log("t1", "u1", AuditAction.CREATE, "workflow", "w1")
-        
-        create_logs = await audit.query(action=AuditAction.CREATE)
-        
-        assert len(create_logs) == 2
-    
-    @pytest.mark.asyncio
-    async def test_query_by_time_range(self, audit):
-        """Test querying logs by time range"""
-        now = datetime.now()
-        
-        await audit.log("t1", "u1", AuditAction.LOGIN, "session", "s1")
-        
-        # Query last hour
-        recent = await audit.query(
-            start_date=now - timedelta(hours=1),
-            end_date=now + timedelta(hours=1)
+    async def test_log_with_details(self, logger):
+        await logger.log(
+            tenant_id="t1",
+            user_id="u1",
+            action=AuditAction.UPDATE,
+            resource_type="workflow",
+            resource_id="w1",
+            details={"field": "name"},
+            ip_address="10.0.0.1",
         )
-        
-        assert len(recent) >= 1
+        log = logger.logs[0]
+        assert log.details == {"field": "name"}
+        assert log.ip_address == "10.0.0.1"
+
+    @pytest.mark.asyncio
+    async def test_query_by_tenant(self, logger):
+        await logger.log("t1", "u1", AuditAction.READ, "agent", "a1")
+        await logger.log("t2", "u2", AuditAction.READ, "agent", "a2")
+        results = await logger.query(tenant_id="t1")
+        assert len(results) == 1
+        assert results[0].tenant_id == "t1"
+
+    @pytest.mark.asyncio
+    async def test_query_by_action(self, logger):
+        await logger.log("t1", "u1", AuditAction.CREATE, "agent", "a1")
+        await logger.log("t1", "u1", AuditAction.DELETE, "agent", "a2")
+        results = await logger.query(action=AuditAction.DELETE)
+        assert len(results) == 1
 
 
 class TestSSOProvider:
-    """Test Single Sign-On"""
-    
+    """Test SSO provider."""
+
     @pytest.fixture
     def sso(self):
-        return SSOProvider(secret_key="test-secret-key-123")
-    
+        return SSOProvider(secret_key="test-secret-key-12345")
+
     def test_create_token(self, sso):
-        """Test JWT token creation"""
         token = sso.create_token(
-            user_id="user_123",
-            tenant_id="tenant_456",
-            roles=["developer"],
-            expires_in=3600
+            user_id="u1",
+            tenant_id="t1",
+            roles=["admin"],
         )
-        
-        assert token is not None
         assert isinstance(token, str)
         assert len(token) > 0
-    
+
     def test_verify_token(self, sso):
-        """Test token verification"""
-        token = sso.create_token(
-            user_id="user_123",
-            tenant_id="tenant_456",
-            roles=["admin"]
-        )
-        
+        token = sso.create_token("u1", "t1", ["viewer"])
         payload = sso.verify_token(token)
-        
         assert payload is not None
-        assert payload["user_id"] == "user_123"
-        assert payload["tenant_id"] == "tenant_456"
-        assert "admin" in payload["roles"]
-    
-    def test_expired_token(self, sso):
-        """Test that expired tokens are rejected"""
-        # Create token that expires immediately
-        token = sso.create_token(
-            user_id="user_123",
-            tenant_id="tenant_456",
-            expires_in=-1  # Already expired
-        )
-        
-        payload = sso.verify_token(token)
-        
-        # Should be None or raise exception
-        assert payload is None or "error" in payload
-    
-    def test_session_management(self, sso):
-        """Test session creation and validation"""
-        session_id = sso.create_session("user_123", "tenant_456")
-        
-        assert session_id is not None
-        assert sso.validate_session(session_id) is True
-        
-        # Destroy session
-        sso.destroy_session(session_id)
-        assert sso.validate_session(session_id) is False
-    
+        assert payload["user_id"] == "u1"
+        assert payload["tenant_id"] == "t1"
+        assert "viewer" in payload["roles"]
+
     def test_invalid_token(self, sso):
-        """Test invalid token handling"""
-        payload = sso.verify_token("invalid.token.here")
-        
-        assert payload is None
+        result = sso.verify_token("totally.invalid.token")
+        assert result is None
+
+    def test_create_session(self, sso):
+        session_id = sso.create_session("u1", "t1")
+        assert isinstance(session_id, str)
+        assert len(session_id) > 0
+
+    def test_validate_session(self, sso):
+        sid = sso.create_session("u1", "t1")
+        assert sso.validate_session(sid) is True
+
+    def test_destroy_session(self, sso):
+        sid = sso.create_session("u1", "t1")
+        sso.destroy_session(sid)
+        assert sso.validate_session(sid) is False
+
+    def test_invalid_session(self, sso):
+        assert sso.validate_session("fake-session") is False

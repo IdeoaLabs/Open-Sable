@@ -1,58 +1,66 @@
-#!/usr/bin/env python3
 """
-WhatsApp Integration Test
-Tests sending messages via whatsapp-web.js bridge
+Tests for WhatsApp Bot Interface (mocked, no live bridge needed).
 """
 
-import asyncio
-import aiohttp
+import pytest
+from unittest.mock import Mock, AsyncMock, patch, MagicMock
+from pathlib import Path
 
-async def test_whatsapp():
-    """Test WhatsApp bridge connectivity"""
-    
-    # Replace with your phone number (international format, no +)
-    # Example: 5491234567890 for Argentina +54 9 11 2345-6789
-    phone = input("Enter phone number to test (format: 5491234567890): ")
-    
-    if not phone:
-        print("❌ Phone number required")
-        return
-    
-    # Ensure proper WhatsApp format
-    if '@c.us' not in phone:
-        phone = f"{phone}@c.us"
-    
-    message = "🤖 Hello from SableCore! WhatsApp integration is working! ✅"
-    
-    print(f"\n📤 Sending message to {phone}...")
-    
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                'http://localhost:3333/send',
-                json={
-                    'phone': phone,
-                    'message': message
-                },
-                timeout=aiohttp.ClientTimeout(total=30)
-            ) as response:
-                result = await response.json()
-                
-                if response.status == 200:
-                    print(f"✅ Message sent successfully!")
-                    print(f"Response: {result}")
-                else:
-                    print(f"❌ Failed to send message: {result}")
-                    
-    except aiohttp.ClientConnectorError:
-        print("❌ Cannot connect to bridge. Is it running on port 3333?")
-    except asyncio.TimeoutError:
-        print("❌ Request timed out")
-    except Exception as e:
-        print(f"❌ Error: {e}")
+from opensable.interfaces.whatsapp_bot import WhatsAppBot
 
-if __name__ == "__main__":
-    print("=" * 60)
-    print("SableCore WhatsApp Integration Test")
-    print("=" * 60)
-    asyncio.run(test_whatsapp())
+
+class TestWhatsAppBotInit:
+    """Test WhatsApp bot initialization"""
+
+    def test_init(self):
+        config = Mock()
+        config.whatsapp_session_name = "test_session"
+        config.whatsapp_callback_port = 3334
+        agent = Mock()
+        bot = WhatsAppBot(config, agent)
+        assert bot.config is config
+        assert bot.agent is agent
+        assert bot.session_name == "test_session"
+        assert bot.running is False
+
+    def test_default_session_name(self):
+        config = Mock(spec=[])  # no whatsapp_session_name attribute
+        agent = Mock()
+        bot = WhatsAppBot(config, agent)
+        assert bot.session_name == "opensable"
+
+    def test_bridge_path(self):
+        config = Mock()
+        config.whatsapp_session_name = "s"
+        config.whatsapp_callback_port = 3334
+        agent = Mock()
+        bot = WhatsAppBot(config, agent)
+        assert bot.bridge_dir.name == "whatsapp-bridge"
+        assert bot.bridge_script.name == "bridge.js"
+
+
+class TestWhatsAppBotStart:
+    """Test start / stop lifecycle"""
+
+    @pytest.mark.asyncio
+    async def test_start_already_running(self):
+        config = Mock()
+        config.whatsapp_session_name = "s"
+        config.whatsapp_callback_port = 3334
+        agent = Mock()
+        bot = WhatsAppBot(config, agent)
+        bot.running = True
+        # Should return early without error
+        await bot.start()
+        assert bot.running is True
+
+    @pytest.mark.asyncio
+    async def test_stop_when_not_running(self):
+        config = Mock()
+        config.whatsapp_session_name = "s"
+        config.whatsapp_callback_port = 3334
+        agent = Mock()
+        bot = WhatsAppBot(config, agent)
+        bot.running = False
+        await bot.stop()
+        assert bot.running is False

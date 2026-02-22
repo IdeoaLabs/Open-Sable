@@ -1,358 +1,191 @@
 """
-Tests for Interface SDK - Custom interface development.
+Tests for Interface SDK - Custom chat interface framework.
 """
 
 import pytest
-from unittest.mock import Mock, AsyncMock, patch
-
-from core.interface_sdk import (
-    InterfaceSDK, InterfaceType, MessageFormat,
-    InterfaceEvent, EventHandler, InterfaceRegistry
+import asyncio
+from opensable.core.interface_sdk import (
+    InterfaceType, MessageType, InterfaceConfig, Message,
+    InterfaceLifecycle, InterfaceRegistry, InterfaceBuilder,
+    WebSocketInterface, HTTPWebhookInterface, CustomCLIInterface
 )
 
 
-class TestInterfaceSDK:
-    """Test interface SDK"""
-    
-    @pytest.fixture
-    def sdk(self):
-        return InterfaceSDK(
-            name="test-interface",
-            interface_type=InterfaceType.WEBSOCKET,
-            version="1.0.0"
-        )
-    
-    def test_initialization(self, sdk):
-        """Test SDK initialization"""
-        assert sdk.name == "test-interface"
-        assert sdk.interface_type == InterfaceType.WEBSOCKET
-        assert sdk.version == "1.0.0"
-    
-    def test_format_message(self, sdk):
-        """Test message formatting"""
-        msg = sdk.format_message(
-            content="Hello",
-            sender="user_123",
-            message_format=MessageFormat.TEXT
-        )
-        
-        assert msg.content == "Hello"
-        assert msg.sender == "user_123"
-        assert msg.message_format == MessageFormat.TEXT
-        assert msg.timestamp is not None
-    
-    def test_format_rich_message(self, sdk):
-        """Test rich message with attachments"""
-        msg = sdk.format_message(
-            content="Check this",
-            sender="user_456",
-            message_format=MessageFormat.RICH,
-            attachments=[
-                {"type": "image", "url": "https://example.com/img.png"}
-            ]
-        )
-        
-        assert len(msg.attachments) == 1
-        assert msg.attachments[0]["type"] == "image"
-    
-    def test_message_with_metadata(self, sdk):
-        """Test message with custom metadata"""
-        msg = sdk.format_message(
-            content="Test",
-            sender="user",
-            message_format=MessageFormat.TEXT,
-            metadata={"priority": "high", "tags": ["urgent"]}
-        )
-        
-        assert msg.metadata["priority"] == "high"
-        assert "urgent" in msg.metadata["tags"]
-    
-    @pytest.mark.asyncio
-    async def test_event_handling(self, sdk):
-        """Test event handler registration and emission"""
-        received_events = []
-        
-        @sdk.on_event(InterfaceEvent.MESSAGE_RECEIVED)
-        async def handle_message(data):
-            received_events.append(data)
-        
-        await sdk.emit(InterfaceEvent.MESSAGE_RECEIVED, {"content": "Test"})
-        
-        assert len(received_events) == 1
-        assert received_events[0]["content"] == "Test"
-    
-    @pytest.mark.asyncio
-    async def test_multiple_event_handlers(self, sdk):
-        """Test multiple handlers for same event"""
-        call_count = []
-        
-        @sdk.on_event(InterfaceEvent.USER_CONNECTED)
-        async def handler1(data):
-            call_count.append(1)
-        
-        @sdk.on_event(InterfaceEvent.USER_CONNECTED)
-        async def handler2(data):
-            call_count.append(2)
-        
-        await sdk.emit(InterfaceEvent.USER_CONNECTED, {"user_id": "123"})
-        
-        assert len(call_count) == 2
-    
-    @pytest.mark.asyncio
-    async def test_lifecycle(self, sdk):
-        """Test interface lifecycle"""
-        await sdk.start()
-        assert sdk.is_running() is True
-        
-        await sdk.stop()
-        assert sdk.is_running() is False
-    
-    @pytest.mark.asyncio
-    async def test_send_receive(self, sdk):
-        """Test sending and receiving messages"""
-        await sdk.start()
-        
-        await sdk.send("Test message")
-        
-        # Mock receive
-        received = await sdk.receive(timeout=0.1)
-        
-        await sdk.stop()
-    
-    def test_serialization(self, sdk):
-        """Test message serialization"""
-        msg = sdk.format_message("Test", "user", MessageFormat.TEXT)
-        
-        # Serialize to JSON
-        json_data = sdk.serialize(msg, format="json")
-        
-        assert json_data is not None
-        assert isinstance(json_data, str)
-    
-    def test_deserialization(self, sdk):
-        """Test message deserialization"""
-        msg = sdk.format_message("Test", "user", MessageFormat.TEXT)
-        json_data = sdk.serialize(msg, format="json")
-        
-        # Deserialize back
-        deserialized = sdk.deserialize(json_data, format="json")
-        
-        assert deserialized.content == msg.content
-        assert deserialized.sender == msg.sender
+class TestInterfaceType:
+    """Test InterfaceType enum."""
+
+    def test_enum_members(self):
+        assert InterfaceType.CHAT.value == "chat"
+        assert InterfaceType.VOICE.value == "voice"
+        assert InterfaceType.API.value == "api"
+        assert InterfaceType.WEBHOOK.value == "webhook"
+        assert InterfaceType.CUSTOM.value == "custom"
 
 
-class TestInterfaceTypes:
-    """Test different interface types"""
-    
-    def test_websocket_interface(self):
-        """Test WebSocket interface configuration"""
-        ws = InterfaceSDK(
-            name="websocket",
-            interface_type=InterfaceType.WEBSOCKET,
-            config={
-                "host": "localhost",
-                "port": 8765,
-                "path": "/ws"
-            }
+class TestMessageType:
+    """Test MessageType enum."""
+
+    def test_enum_members(self):
+        assert MessageType.TEXT.value == "text"
+        assert MessageType.IMAGE.value == "image"
+        assert MessageType.FILE.value == "file"
+        assert MessageType.COMMAND.value == "command"
+
+
+class TestInterfaceConfig:
+    """Test InterfaceConfig dataclass."""
+
+    def test_required_fields(self):
+        cfg = InterfaceConfig(name="test", type=InterfaceType.CHAT)
+        assert cfg.name == "test"
+        assert cfg.type == InterfaceType.CHAT
+        assert cfg.enabled is True
+        assert cfg.settings == {}
+
+    def test_custom_settings(self):
+        cfg = InterfaceConfig(
+            name="ws",
+            type=InterfaceType.CHAT,
+            enabled=False,
+            settings={"host": "0.0.0.0", "port": 8765},
         )
-        
-        assert ws.config["host"] == "localhost"
-        assert ws.config["port"] == 8765
-    
-    def test_rest_api_interface(self):
-        """Test REST API interface configuration"""
-        api = InterfaceSDK(
-            name="rest-api",
-            interface_type=InterfaceType.REST_API,
-            config={
-                "base_url": "https://api.example.com",
-                "auth_token": "token123"
-            }
-        )
-        
-        assert api.config["base_url"] == "https://api.example.com"
-    
-    def test_webhook_interface(self):
-        """Test Webhook interface configuration"""
-        webhook = InterfaceSDK(
-            name="webhook",
-            interface_type=InterfaceType.WEBHOOK,
-            config={
-                "listen_port": 9000,
-                "secret": "webhook-secret",
-                "verify_signature": True
-            }
-        )
-        
-        assert webhook.config["listen_port"] == 9000
-        assert webhook.config["verify_signature"] is True
+        assert cfg.enabled is False
+        assert cfg.settings["port"] == 8765
+
+    def test_to_dict(self):
+        cfg = InterfaceConfig(name="x", type=InterfaceType.API)
+        d = cfg.to_dict()
+        assert d["name"] == "x"
+        assert d["type"] == "api"
+
+
+class TestMessage:
+    """Test Message dataclass."""
+
+    def test_create(self):
+        msg = Message(id="m1", type=MessageType.TEXT, content="hello", sender_id="user1")
+        assert msg.id == "m1"
+        assert msg.content == "hello"
+        assert msg.sender_id == "user1"
+
+    def test_to_dict(self):
+        msg = Message(id="m2", type=MessageType.IMAGE, content="img.png", sender_id="bot")
+        d = msg.to_dict()
+        assert d["id"] == "m2"
+        assert d["type"] == "image"
+        assert d["sender_id"] == "bot"
+
+    def test_metadata(self):
+        msg = Message(id="m3", type=MessageType.TEXT, content="hi", sender_id="u", metadata={"key": "val"})
+        assert msg.metadata["key"] == "val"
 
 
 class TestInterfaceRegistry:
-    """Test interface registry"""
-    
+    """Test interface registry."""
+
     @pytest.fixture
     def registry(self):
         return InterfaceRegistry()
-    
-    def test_register_interface(self, registry):
-        """Test registering an interface"""
-        iface = InterfaceSDK(
-            name="test",
-            interface_type=InterfaceType.WEBSOCKET
-        )
-        
-        registry.register(iface)
-        
-        assert len(registry.list()) == 1
-    
-    def test_get_interface(self, registry):
-        """Test retrieving interface by name"""
-        iface = InterfaceSDK(
-            name="my-interface",
-            interface_type=InterfaceType.WEBSOCKET
-        )
-        
-        registry.register(iface)
-        
-        found = registry.get("my-interface")
-        assert found is not None
-        assert found.name == "my-interface"
-    
-    def test_list_interfaces(self, registry):
-        """Test listing all interfaces"""
-        iface1 = InterfaceSDK("iface1", InterfaceType.WEBSOCKET)
-        iface2 = InterfaceSDK("iface2", InterfaceType.REST_API)
-        
-        registry.register(iface1)
-        registry.register(iface2)
-        
-        interfaces = registry.list()
-        assert len(interfaces) == 2
-    
-    def test_unregister_interface(self, registry):
-        """Test unregistering an interface"""
-        iface = InterfaceSDK("test", InterfaceType.WEBSOCKET)
-        
-        registry.register(iface)
-        assert len(registry.list()) == 1
-        
-        registry.unregister("test")
-        assert len(registry.list()) == 0
 
+    def test_builtin_interfaces(self, registry):
+        names = registry.list_interfaces()
+        assert "websocket" in names
+        assert "webhook" in names
+        assert "cli" in names
 
-class TestMessageFormats:
-    """Test different message formats"""
-    
-    @pytest.fixture
-    def sdk(self):
-        return InterfaceSDK("test", InterfaceType.WEBSOCKET)
-    
-    def test_text_format(self, sdk):
-        """Test plain text message"""
-        msg = sdk.format_message(
-            "Plain text",
-            "user",
-            MessageFormat.TEXT
-        )
-        
-        assert msg.message_format == MessageFormat.TEXT
-    
-    def test_markdown_format(self, sdk):
-        """Test markdown message"""
-        msg = sdk.format_message(
-            "# Title\n\n**Bold**",
-            "user",
-            MessageFormat.MARKDOWN
-        )
-        
-        assert msg.message_format == MessageFormat.MARKDOWN
-        assert "**Bold**" in msg.content
-    
-    def test_json_format(self, sdk):
-        """Test JSON message"""
-        msg = sdk.format_message(
-            '{"key": "value"}',
-            "user",
-            MessageFormat.JSON
-        )
-        
-        assert msg.message_format == MessageFormat.JSON
-    
-    def test_rich_format_with_attachments(self, sdk):
-        """Test rich format with multiple attachments"""
-        msg = sdk.format_message(
-            "Message with files",
-            "user",
-            MessageFormat.RICH,
-            attachments=[
-                {"type": "image", "url": "img.png"},
-                {"type": "document", "url": "doc.pdf"}
-            ]
-        )
-        
-        assert msg.message_format == MessageFormat.RICH
-        assert len(msg.attachments) == 2
+    def test_register_custom(self, registry):
+        class Dummy(InterfaceLifecycle):
+            async def start(self): pass
+            async def stop(self): pass
+            async def send_message(self, m): return True
+            async def receive_message(self): return None
 
+        registry.register("dummy", Dummy)
+        assert "dummy" in registry.list_interfaces()
 
-class TestInterfaceMetrics:
-    """Test interface metrics"""
-    
-    @pytest.fixture
-    def sdk(self):
-        return InterfaceSDK("test", InterfaceType.WEBSOCKET)
-    
+    def test_unregister(self, registry):
+        registry.unregister("cli")
+        assert "cli" not in registry.list_interfaces()
+
     @pytest.mark.asyncio
-    async def test_message_count(self, sdk):
-        """Test tracking message counts"""
-        # Simulate messages
-        for i in range(5):
-            await sdk.emit(
-                InterfaceEvent.MESSAGE_RECEIVED,
-                {"content": f"Message {i}"}
-            )
-        
-        metrics = sdk.get_metrics()
-        
-        assert metrics.get("messages_received", 0) >= 0
-    
+    async def test_create_and_destroy(self, registry):
+        cfg = InterfaceConfig(name="ws", type=InterfaceType.CHAT, settings={"port": 9999})
+        iface = await registry.create_interface("websocket", cfg)
+        assert iface is not None
+        assert iface.is_running is True
+        assert "websocket" in registry.list_active_interfaces()
+
+        await registry.destroy_interface("websocket")
+        assert "websocket" not in registry.list_active_interfaces()
+
+    def test_get_interface_none(self, registry):
+        assert registry.get_interface("nonexistent") is None
+
+
+class TestWebSocketInterface:
+    """Test WebSocket interface."""
+
+    @pytest.fixture
+    def ws(self):
+        cfg = InterfaceConfig(name="ws", type=InterfaceType.CHAT, settings={"host": "127.0.0.1", "port": 9000})
+        return WebSocketInterface(cfg)
+
     @pytest.mark.asyncio
-    async def test_uptime_tracking(self, sdk):
-        """Test uptime tracking"""
-        import time
-        
-        await sdk.start()
-        time.sleep(0.1)
-        
-        metrics = sdk.get_metrics()
-        
-        assert metrics.get("uptime_seconds", 0) >= 0
-        
-        await sdk.stop()
-    
-    def test_error_rate(self, sdk):
-        """Test error rate metrics"""
-        metrics = sdk.get_metrics()
-        
-        assert "error_rate" in metrics or metrics.get("error_rate") is not None
+    async def test_start_stop(self, ws):
+        await ws.start()
+        assert ws.is_running is True
+        await ws.stop()
+        assert ws.is_running is False
+
+    @pytest.mark.asyncio
+    async def test_send_when_stopped(self, ws):
+        msg = Message(id="m", type=MessageType.TEXT, content="x", sender_id="u")
+        result = await ws.send_message(msg)
+        assert result is False
+
+    def test_host_port(self, ws):
+        assert ws.host == "127.0.0.1"
+        assert ws.port == 9000
 
 
-class TestRateLimiting:
-    """Test rate limiting"""
-    
-    def test_rate_limit_config(self):
-        """Test rate limit configuration"""
-        sdk = InterfaceSDK(
-            name="limited",
-            interface_type=InterfaceType.WEBSOCKET,
-            config={
-                "rate_limit": {
-                    "max_messages_per_minute": 60,
-                    "max_messages_per_hour": 1000
-                }
-            }
-        )
-        
-        limits = sdk.config.get("rate_limit", {})
-        assert limits["max_messages_per_minute"] == 60
-        assert limits["max_messages_per_hour"] == 1000
+class TestHTTPWebhookInterface:
+    """Test HTTP webhook interface."""
+
+    def test_init(self):
+        cfg = InterfaceConfig(name="wh", type=InterfaceType.WEBHOOK, settings={"endpoint": "/hook", "secret": "s"})
+        wh = HTTPWebhookInterface(cfg)
+        assert wh.endpoint == "/hook"
+        assert wh.secret == "s"
+
+
+class TestCustomCLIInterface:
+    """Test CLI interface."""
+
+    def test_init(self):
+        cfg = InterfaceConfig(name="cli", type=InterfaceType.CHAT, settings={"prompt": ">> "})
+        cli = CustomCLIInterface(cfg)
+        assert cli.prompt == ">> "
+
+
+class TestInterfaceBuilder:
+    """Test interface builder utilities."""
+
+    def test_create_message(self):
+        msg = InterfaceBuilder.create_message("hello", sender_id="bot")
+        assert isinstance(msg, Message)
+        assert msg.content == "hello"
+        assert msg.sender_id == "bot"
+        assert msg.type == MessageType.TEXT
+
+    def test_parse_command(self):
+        cmd = InterfaceBuilder.parse_command("/help search")
+        assert cmd is not None
+        assert cmd["command"] == "help"
+        assert cmd["args"] == ["search"]
+
+    def test_parse_non_command(self):
+        assert InterfaceBuilder.parse_command("hello") is None
+
+    def test_format_text(self):
+        result = InterfaceBuilder.format_text_message("Hello {name}", name="World")
+        assert result == "Hello World"

@@ -4,292 +4,234 @@ Tests for Workflow Persistence - Save, resume, recover workflows.
 
 import pytest
 from datetime import datetime
-from unittest.mock import Mock, AsyncMock
 
-from core.workflow_persistence import (
-    WorkflowEngine, WorkflowTemplate, WorkflowStep,
-    StepStatus, RecoveryStrategy, Checkpoint
+from opensable.core.workflow_persistence import (
+    WorkflowEngine, WorkflowDefinition, WorkflowStep,
+    WorkflowStatus, RecoveryStrategy, Checkpoint, StepResult
 )
 
 
-class TestWorkflowEngine:
-    """Test workflow execution engine"""
-    
-    @pytest.fixture
-    def engine(self, tmp_path):
-        return WorkflowEngine(storage_dir=str(tmp_path / "workflows"))
-    
-    @pytest.mark.asyncio
-    async def test_execute_simple_workflow(self, engine):
-        """Test executing a simple workflow"""
-        steps = [
-            WorkflowStep(
-                id="step1",
-                name="Step 1",
-                action="task1",
-                params={}
-            ),
-            WorkflowStep(
-                id="step2",
-                name="Step 2",
-                action="task2",
-                params={},
-                dependencies=["step1"]
-            )
-        ]
-        
-        result = await engine.execute("wf_001", steps)
-        
-        assert result.workflow_id == "wf_001"
-        assert result.status == StepStatus.COMPLETED
-        assert result.completed_steps == 2
-    
-    @pytest.mark.asyncio
-    async def test_checkpoint_creation(self, engine):
-        """Test automatic checkpoint creation"""
-        steps = [
-            WorkflowStep(id="s1", name="S1", action="a1", params={}),
-            WorkflowStep(id="s2", name="S2", action="a2", params={}, dependencies=["s1"]),
-            WorkflowStep(id="s3", name="S3", action="a3", params={}, dependencies=["s2"])
-        ]
-        
-        result = await engine.execute(
-            "wf_checkpoint",
-            steps,
-            checkpoint_interval=1  # Checkpoint after each step
-        )
-        
-        assert len(result.checkpoints) >= 2
-    
-    @pytest.mark.asyncio
-    async def test_resume_from_checkpoint(self, engine):
-        """Test resuming workflow from checkpoint"""
-        steps = [
-            WorkflowStep(id="s1", name="S1", action="a1", params={}),
-            WorkflowStep(id="s2", name="S2 (fail)", action="fail", params={"fail": True}, dependencies=["s1"]),
-            WorkflowStep(id="s3", name="S3", action="a3", params={}, dependencies=["s2"])
-        ]
-        
-        # First execution (will fail at s2)
-        try:
-            await engine.execute("wf_resume", steps, checkpoint_interval=1)
-        except:
-            pass
-        
-        # Resume from checkpoint
-        result = await engine.resume("wf_resume")
-        
-        assert result is not None
-    
-    @pytest.mark.asyncio
-    async def test_dependency_resolution(self, engine):
-        """Test step dependency resolution"""
-        steps = [
-            WorkflowStep(id="init", name="Init", action="init", params={}),
-            WorkflowStep(id="a", name="A", action="a", params={}, dependencies=["init"]),
-            WorkflowStep(id="b", name="B", action="b", params={}, dependencies=["init"]),
-            WorkflowStep(id="final", name="Final", action="final", params={}, dependencies=["a", "b"])
-        ]
-        
-        result = await engine.execute("wf_deps", steps)
-        
-        # Final step should run after both a and b
-        assert result.status == StepStatus.COMPLETED
-    
-    @pytest.mark.asyncio
-    async def test_error_recovery_retry(self, engine):
-        """Test retry recovery strategy"""
-        step = WorkflowStep(
-            id="retry_step",
-            name="Retry Test",
-            action="unreliable",
-            params={},
-            retry_count=3,
-            recovery_strategy=RecoveryStrategy.RETRY
-        )
-        
-        result = await engine.execute("wf_retry", [step])
-        
-        # Should complete after retries
-        assert result.status in [StepStatus.COMPLETED, StepStatus.FAILED]
-    
-    @pytest.mark.asyncio
-    async def test_error_recovery_skip(self, engine):
-        """Test skip recovery strategy"""
-        steps = [
-            WorkflowStep(id="s1", name="S1", action="a1", params={}),
-            WorkflowStep(
-                id="skip",
-                name="Skip on error",
-                action="fail",
-                params={"fail": True},
-                dependencies=["s1"],
-                recovery_strategy=RecoveryStrategy.SKIP
-            ),
-            WorkflowStep(id="s3", name="S3", action="a3", params={}, dependencies=["skip"])
-        ]
-        
-        result = await engine.execute("wf_skip", steps)
-        
-        # Should complete despite failed step (skipped)
-        assert result.completed_steps >= 2
+class TestWorkflowStatus:
+    """Test WorkflowStatus enum."""
+
+    def test_members(self):
+        assert WorkflowStatus.PENDING.value == "pending"
+        assert WorkflowStatus.RUNNING.value == "running"
+        assert WorkflowStatus.COMPLETED.value == "completed"
+        assert WorkflowStatus.FAILED.value == "failed"
+        assert WorkflowStatus.CANCELLED.value == "cancelled"
+        assert WorkflowStatus.PAUSED.value == "paused"
 
 
-class TestWorkflowTemplate:
-    """Test workflow templates"""
-    
-    @pytest.fixture
-    def engine(self, tmp_path):
-        return WorkflowEngine(storage_dir=str(tmp_path / "workflows"))
-    
-    def test_save_template(self, engine):
-        """Test saving a workflow template"""
-        steps = [
-            WorkflowStep(id="s1", name="Step 1", action="action1", params={})
-        ]
-        
-        template = WorkflowTemplate(
-            id="tmpl_1",
-            name="Test Template",
-            description="A test template",
-            steps=steps,
-            variables=["var1", "var2"]
-        )
-        
-        engine.save_template(template)
-        
-        loaded = engine.load_template("tmpl_1")
-        assert loaded.name == "Test Template"
-    
-    def test_render_template(self, engine):
-        """Test rendering template with variables"""
-        steps = [
-            WorkflowStep(
-                id="s1",
-                name="Process {input}",
-                action="process",
-                params={"source": "{input}", "dest": "{output}"}
-            )
-        ]
-        
-        template = WorkflowTemplate(
-            id="tmpl_var",
-            name="Variable Template",
-            steps=steps,
-            variables=["input", "output"]
-        )
-        
-        engine.save_template(template)
-        
-        rendered = engine.render_template(
-            "tmpl_var",
-            variables={"input": "data.csv", "output": "results.json"}
-        )
-        
-        assert rendered is not None
-        assert len(rendered) == 1
-    
-    def test_template_metadata(self, engine):
-        """Test template with metadata"""
-        template = WorkflowTemplate(
-            id="tmpl_meta",
-            name="Meta Template",
-            steps=[],
-            metadata={"category": "data", "version": "1.0"}
-        )
-        
-        engine.save_template(template)
-        
-        loaded = engine.load_template("tmpl_meta")
-        assert loaded.metadata["category"] == "data"
+class TestRecoveryStrategy:
+    """Test RecoveryStrategy enum."""
+
+    def test_members(self):
+        assert RecoveryStrategy.RETRY.value == "retry"
+        assert RecoveryStrategy.SKIP.value == "skip"
+        assert RecoveryStrategy.FAIL.value == "fail"
+        assert RecoveryStrategy.ROLLBACK.value == "rollback"
 
 
-class TestWorkflowState:
-    """Test workflow state management"""
-    
-    @pytest.fixture
-    def engine(self, tmp_path):
-        return WorkflowEngine(storage_dir=str(tmp_path / "workflows"))
-    
-    @pytest.mark.asyncio
-    async def test_get_workflow_state(self, engine):
-        """Test retrieving workflow state"""
+class TestWorkflowStep:
+    """Test WorkflowStep dataclass."""
+
+    def test_create(self):
+        step = WorkflowStep(id="s1", name="Step 1", action="do_thing")
+        assert step.id == "s1"
+        assert step.name == "Step 1"
+        assert step.action == "do_thing"
+
+    def test_defaults(self):
+        step = WorkflowStep(id="s", name="S", action="a")
+        assert step.params == {}
+        assert step.depends_on == []
+        assert step.retry_count == 0
+        assert step.max_retries == 3
+        assert step.timeout is None
+        assert step.recovery_strategy == RecoveryStrategy.RETRY
+
+    def test_with_deps(self):
+        step = WorkflowStep(id="s2", name="S2", action="b", depends_on=["s1"])
+        assert "s1" in step.depends_on
+
+    def test_to_dict(self):
+        step = WorkflowStep(id="s", name="S", action="a", params={"k": "v"})
+        d = step.to_dict()
+        assert d["id"] == "s"
+        assert d["params"] == {"k": "v"}
+        assert d["recovery_strategy"] == "retry"
+
+    def test_from_dict(self):
+        data = {"id": "s1", "name": "S1", "action": "act", "params": {},
+                "depends_on": [], "retry_count": 0, "max_retries": 3,
+                "timeout": None, "recovery_strategy": "skip"}
+        step = WorkflowStep.from_dict(data)
+        assert step.recovery_strategy == RecoveryStrategy.SKIP
+
+
+class TestWorkflowDefinition:
+    """Test WorkflowDefinition dataclass."""
+
+    def test_create(self):
         steps = [
-            WorkflowStep(id="s1", name="S1", action="a1", params={})
+            WorkflowStep(id="a", name="A", action="do_a"),
+            WorkflowStep(id="b", name="B", action="do_b", depends_on=["a"]),
         ]
-        
-        await engine.execute("wf_state", steps)
-        
-        state = engine.get_state("wf_state")
-        
-        assert state is not None
-        assert state.workflow_id == "wf_state"
-    
-    @pytest.mark.asyncio
-    async def test_list_workflows(self, engine):
-        """Test listing all workflows"""
-        await engine.execute("wf1", [WorkflowStep(id="s1", name="S1", action="a", params={})])
-        await engine.execute("wf2", [WorkflowStep(id="s1", name="S1", action="a", params={})])
-        
-        workflows = engine.list_workflows()
-        
-        assert len(workflows) >= 2
-    
-    @pytest.mark.asyncio
-    async def test_workflow_export(self, engine, tmp_path):
-        """Test exporting workflow"""
-        steps = [WorkflowStep(id="s1", name="S1", action="a", params={})]
-        
-        await engine.execute("wf_export", steps)
-        
-        export_path = tmp_path / "export.json"
-        engine.export_workflow("wf_export", str(export_path))
-        
-        assert export_path.exists()
-    
-    @pytest.mark.asyncio
-    async def test_workflow_cleanup(self, engine):
-        """Test workflow cleanup and archival"""
-        steps = [WorkflowStep(id="s1", name="S1", action="a", params={})]
-        
-        await engine.execute("wf_old", steps)
-        
-        # Archive old workflows
+        defn = WorkflowDefinition(
+            id="wf1", name="Test", description="A test", steps=steps
+        )
+        assert defn.id == "wf1"
+        assert len(defn.steps) == 2
+
+    def test_metadata(self):
+        defn = WorkflowDefinition(
+            id="wf2", name="Meta", description="", steps=[],
+            metadata={"author": "test"}
+        )
+        assert defn.metadata["author"] == "test"
+
+    def test_to_dict(self):
+        defn = WorkflowDefinition(
+            id="wf", name="N", description="D",
+            steps=[WorkflowStep(id="s", name="S", action="a")]
+        )
+        d = defn.to_dict()
+        assert d["id"] == "wf"
+        assert len(d["steps"]) == 1
+
+    def test_from_dict(self):
+        data = {
+            "id": "wf1", "name": "N", "description": "D",
+            "steps": [{"id": "s1", "name": "S1", "action": "a", "params": {},
+                       "depends_on": [], "retry_count": 0, "max_retries": 3,
+                       "timeout": None, "recovery_strategy": "retry"}],
+            "metadata": {},
+            "created_at": "2024-01-01T00:00:00"
+        }
+        defn = WorkflowDefinition.from_dict(data)
+        assert defn.id == "wf1"
+        assert len(defn.steps) == 1
+
+
+class TestStepResult:
+    """Test StepResult dataclass."""
+
+    def test_create(self):
+        r = StepResult(step_id="s1", status=WorkflowStatus.COMPLETED, result="ok")
+        assert r.step_id == "s1"
+        assert r.status == WorkflowStatus.COMPLETED
+
+    def test_duration(self):
+        now = datetime.now()
         from datetime import timedelta
-        archived = engine.archive_workflows(
-            before=datetime.now() + timedelta(days=1)
+        r = StepResult(
+            step_id="s1", status=WorkflowStatus.COMPLETED,
+            started_at=now, completed_at=now + timedelta(seconds=5)
         )
-        
-        assert isinstance(archived, list)
+        assert r.duration_seconds == pytest.approx(5.0, abs=0.1)
+
+    def test_to_dict(self):
+        r = StepResult(step_id="s1", status=WorkflowStatus.FAILED, error="boom")
+        d = r.to_dict()
+        assert d["status"] == "failed"
+        assert d["error"] == "boom"
 
 
-class TestParallelExecution:
-    """Test parallel workflow execution"""
-    
+class TestCheckpoint:
+    """Test Checkpoint dataclass."""
+
+    def test_create(self):
+        cp = Checkpoint(
+            checkpoint_id="cp1",
+            workflow_id="wf1",
+            timestamp=datetime.now(),
+            status=WorkflowStatus.RUNNING,
+            current_step="s2",
+            completed_steps=["s1"],
+            step_results={},
+            context={"key": "val"},
+        )
+        assert cp.checkpoint_id == "cp1"
+        assert cp.workflow_id == "wf1"
+        assert cp.current_step == "s2"
+        assert "s1" in cp.completed_steps
+
+    def test_to_dict(self):
+        cp = Checkpoint(
+            checkpoint_id="cp2",
+            workflow_id="wf2",
+            timestamp=datetime.now(),
+            status=WorkflowStatus.COMPLETED,
+            current_step=None,
+            completed_steps=["s1"],
+            step_results={},
+            context={},
+        )
+        d = cp.to_dict()
+        assert d["checkpoint_id"] == "cp2"
+        assert d["status"] == "completed"
+
+
+class TestWorkflowEngine:
+    """Test workflow execution engine."""
+
     @pytest.fixture
     def engine(self, tmp_path):
         return WorkflowEngine(storage_dir=str(tmp_path / "workflows"))
-    
+
+    def test_init(self, engine):
+        assert engine.action_handlers == {}
+        assert engine.active_workflows == {}
+
+    def test_register_action(self, engine):
+        async def handler(**kwargs):
+            return "done"
+        engine.register_action("my_action", handler)
+        assert "my_action" in engine.action_handlers
+
     @pytest.mark.asyncio
-    async def test_parallel_steps(self, engine):
-        """Test executing independent steps in parallel"""
-        steps = [
-            WorkflowStep(id="init", name="Init", action="init", params={}),
-            WorkflowStep(id="a", name="A", action="a", params={}, dependencies=["init"]),
-            WorkflowStep(id="b", name="B", action="b", params={}, dependencies=["init"]),
-            WorkflowStep(id="c", name="C", action="c", params={}, dependencies=["init"]),
-        ]
-        
-        import time
-        start = time.time()
-        
-        result = await engine.execute(
-            "wf_parallel",
-            steps,
-            max_parallel=3
+    async def test_execute_with_handler(self, engine):
+        async def handler(**kwargs):
+            return {"result": "ok"}
+
+        engine.register_action("task1", handler)
+        defn = WorkflowDefinition(
+            id="wf1", name="Test", description="",
+            steps=[WorkflowStep(id="s1", name="S1", action="task1")]
         )
-        
-        duration = time.time() - start
-        
-        # Parallel execution should be faster
-        assert result.completed_steps == 4
+        result = await engine.execute(defn)
+        assert isinstance(result, dict)
+        assert result["status"] == "completed"
+        assert "s1" in result["completed_steps"]
+
+    @pytest.mark.asyncio
+    async def test_execute_no_handler_fails(self, engine):
+        """Steps with no handler should fail."""
+        defn = WorkflowDefinition(
+            id="wf2", name="Fail", description="",
+            steps=[WorkflowStep(id="s1", name="S1", action="nonexistent")]
+        )
+        result = await engine.execute(defn)
+        assert isinstance(result, dict)
+        assert result["status"] == "failed"
+
+    @pytest.mark.asyncio
+    async def test_execute_multi_step(self, engine):
+        async def handler(**kwargs):
+            return "ok"
+
+        engine.register_action("a", handler)
+        engine.register_action("b", handler)
+
+        defn = WorkflowDefinition(
+            id="wf3", name="Multi", description="",
+            steps=[
+                WorkflowStep(id="s1", name="S1", action="a"),
+                WorkflowStep(id="s2", name="S2", action="b", depends_on=["s1"]),
+            ]
+        )
+        result = await engine.execute(defn)
+        assert result["status"] == "completed"
+        assert "s1" in result["completed_steps"]
+        assert "s2" in result["completed_steps"]

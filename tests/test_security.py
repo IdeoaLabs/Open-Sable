@@ -2,13 +2,13 @@
 Tests for security and permissions
 """
 import pytest
-from core.security import PermissionManager, ActionType, PermissionLevel, Sandbox
+from opensable.core.security import PermissionManager, ActionType, PermissionLevel, Sandbox
 
 
 def test_permission_defaults():
     """Test default permissions are set correctly"""
-    from core.config import Open-SableConfig
-    config = Open-SableConfig()
+    from opensable.core.config import OpenSableConfig
+    config = OpenSableConfig()
     pm = PermissionManager(config)
     pm.initialize()
     
@@ -20,8 +20,8 @@ def test_permission_defaults():
 @pytest.mark.asyncio
 async def test_permission_setting():
     """Test setting and checking permissions"""
-    from core.config import Open-SableConfig
-    config = Open-SableConfig()
+    from opensable.core.config import OpenSableConfig
+    config = OpenSableConfig()
     pm = PermissionManager(config)
     pm.initialize()
     
@@ -74,8 +74,8 @@ def test_url_validation():
 
 def test_audit_log():
     """Test audit logging"""
-    from core.config import Open-SableConfig
-    config = Open-SableConfig()
+    from opensable.core.config import OpenSableConfig
+    config = OpenSableConfig()
     pm = PermissionManager(config)
     pm.initialize()
     
