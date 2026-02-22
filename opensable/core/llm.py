@@ -169,22 +169,28 @@ class AdaptiveLLM:
             )
             msg = response.get("message", {})
 
-            # Tool call path
-            tool_calls = msg.get("tool_calls")
-            if tool_calls:
-                call = tool_calls[0]
-                fn = call.get("function", {})
-                args = fn.get("arguments", {})
-                # Ollama may return args as a JSON string
-                if isinstance(args, str):
-                    try:
-                        args = json.loads(args)
-                    except Exception:
-                        args = {}
-                return {"tool_call": {"name": fn.get("name", ""), "arguments": args}, "text": None}
+            # Tool call path — collect ALL tool calls for parallel execution
+            raw_calls = msg.get("tool_calls") or []
+            if raw_calls:
+                parsed: list[dict] = []
+                for call in raw_calls:
+                    fn = call.get("function", {})
+                    args = fn.get("arguments", {})
+                    if isinstance(args, str):
+                        try:
+                            args = json.loads(args)
+                        except Exception:
+                            args = {}
+                    parsed.append({"name": fn.get("name", ""), "arguments": args})
+
+                return {
+                    "tool_call": parsed[0],  # backward compat
+                    "tool_calls": parsed,  # NEW: all tool calls
+                    "text": None,
+                }
 
             # Plain text path
-            return {"tool_call": None, "text": msg.get("content", "")}
+            return {"tool_call": None, "tool_calls": [], "text": msg.get("content", "")}
 
         except Exception as e:
             logger.warning(f"Tool calling failed ({e}), falling back to plain ainvoke")
@@ -198,7 +204,7 @@ class AdaptiveLLM:
                 else:
                     lc_messages.append(HumanMessage(content=m["content"]))
             resp = await self.llm.ainvoke(lc_messages)
-            return {"tool_call": None, "text": resp.content}
+            return {"tool_call": None, "tool_calls": [], "text": resp.content}
 
 
 def get_llm(config):

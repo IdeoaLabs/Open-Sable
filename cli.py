@@ -80,31 +80,24 @@ def gateway(host, port, verbose):
 def agent(message, channel, user, model):
     """Send a message directly to the agent"""
     from opensable.core.agent import SableAgent
-    from opensable.core.llm import initialize_llm
+    from opensable.core.config import OpenSableConfig
 
     console.print(f"[cyan]Processing: {message}[/cyan]")
 
-    try:
-        config = Config()
+    async def _run():
+        config = OpenSableConfig()
         if model:
             config.default_model = model
 
-        llm = initialize_llm(config)
-        agent_instance = SableAgent(llm)
+        agent_instance = SableAgent(config)
+        await agent_instance.initialize()
 
-        # Create session
-        session_manager = SessionManager()
-        session = session_manager.get_or_create_session(channel, user)
-        session.add_message("user", message)
+        response = await agent_instance.process_message(user, message)
+        return response
 
-        # Process
-        response = asyncio.run(agent_instance.process_message(user, message))
-
-        session.add_message("assistant", response)
-        session_manager._save_session(session)
-
+    try:
+        response = asyncio.run(_run())
         console.print(f"\n[green]{response}[/green]\n")
-
     except Exception as e:
         console.print(f"[bold red]Error: {e}[/bold red]")
         raise

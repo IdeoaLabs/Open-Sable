@@ -1,13 +1,17 @@
 """
-Core Open-Sable Agent - The brain of the operation
+Core Open-Sable Agent — The brain of the operation
+
+v2: Multi-step planning, parallel tool calls, streaming progress,
+    advanced memory retrieval, progress callbacks.
 """
 
 import asyncio
 import logging
 import re
 from pathlib import Path
-from typing import Dict, Any, List, Optional
-from datetime import datetime
+from typing import Dict, Any, List, Optional, Callable, Awaitable
+from datetime import datetime, date
+from dataclasses import dataclass, field
 
 from langgraph.graph import StateGraph, END
 
@@ -18,8 +22,42 @@ from .config import OpenSableConfig
 
 logger = logging.getLogger(__name__)
 
-# Default timeout for a single LLM call (seconds)
 _LLM_TIMEOUT = 120
+
+ProgressCallback = Optional[Callable[[str], Awaitable[None]]]
+
+
+@dataclass
+class Plan:
+    """A structured plan for multi-step task execution."""
+
+    goal: str
+    steps: List[str] = field(default_factory=list)
+    current_step: int = 0
+    results: Dict[int, str] = field(default_factory=dict)
+    is_complete: bool = False
+
+    def next_step(self) -> Optional[str]:
+        if self.current_step < len(self.steps):
+            return self.steps[self.current_step]
+        return None
+
+    def advance(self, result: str):
+        self.results[self.current_step] = result
+        self.current_step += 1
+        if self.current_step >= len(self.steps):
+            self.is_complete = True
+
+    def summary(self) -> str:
+        lines = []
+        for i, s in enumerate(self.steps):
+            if i < self.current_step:
+                lines.append(f"  ✅ {s}")
+            elif i == self.current_step:
+                lines.append(f"  ▶️  {s}")
+            else:
+                lines.append(f"  ⬜ {s}")
+        return "\n".join(lines)
 
 
 class AgentState(Dict):
@@ -35,7 +73,7 @@ class AgentState(Dict):
 
 
 class SableAgent:
-    """Main autonomous agent using LangGraph"""
+    """Main autonomous agent with planning + parallel tools."""
 
     def __init__(self, config: OpenSableConfig):
         self.config = config
@@ -44,8 +82,10 @@ class SableAgent:
         self.tools = None
         self.graph = None
         self.heartbeat_task = None
+        self._progress_callback: ProgressCallback = None
+        self._telegram_notify = None
 
-        # Advanced AGI components
+        # AGI components
         self.advanced_memory = None
         self.goals = None
         self.plugins = None
@@ -59,32 +99,18 @@ class SableAgent:
     async def initialize(self):
         """Initialize agent components"""
         logger.info("Initializing Open-Sable agent...")
-
-        # Initialize LLM
         self.llm = get_llm(self.config)
-
-        # Initialize memory
         self.memory = MemoryManager(self.config)
         await self.memory.initialize()
-
-        # Initialize tools
         self.tools = ToolRegistry(self.config)
         await self.tools.initialize()
-
-        # Initialize AGI systems
         await self._initialize_agi_systems()
-
-        # Build the agent graph
         self.graph = self._build_graph()
-
-        # Start heartbeat (periodic checks)
         self.heartbeat_task = asyncio.create_task(self._heartbeat_loop())
-
         logger.info("Agent initialized successfully")
 
     async def _initialize_agi_systems(self):
         """Initialize advanced AGI components"""
-        # Initialize Advanced Memory System
         try:
             from .advanced_memory import AdvancedMemorySystem
 
@@ -98,158 +124,320 @@ class SableAgent:
             logger.warning(f"Advanced memory init failed: {e}")
             self.advanced_memory = None
 
-        try:
-            from .goal_system import GoalManager
+        for name, init_fn in [
+            ("Goal system", self._init_goals),
+            ("Plugin system", self._init_plugins),
+            ("Tool synthesis", self._init_tool_synthesis),
+            ("Metacognition", self._init_metacognition),
+            ("World model", self._init_world_model),
+            ("Multi-agent", self._init_multi_agent),
+            ("Emotional intelligence", self._init_emotional_intelligence),
+            ("Distributed tracing", self._init_tracing),
+        ]:
+            try:
+                await init_fn()
+                logger.info(f"✅ {name} initialized")
+            except Exception as e:
+                logger.warning(f"{name} init failed: {e}")
 
-            self.goals = GoalManager()
-            await self.goals.initialize()
-            logger.info("✅ Goal system initialized")
-        except Exception as e:
-            logger.warning(f"Goal system init failed: {e}")
+    async def _init_goals(self):
+        from .goal_system import GoalManager
 
-        try:
-            from .plugins import PluginManager
+        self.goals = GoalManager()
+        await self.goals.initialize()
 
-            self.plugins = PluginManager(self.config)
-            await self.plugins.load_all_plugins()
-            logger.info(
-                f"✅ Plugin system initialized ({len(self.plugins.plugins)} plugins loaded)"
-            )
-        except Exception as e:
-            logger.warning(f"Plugin system init failed: {e}")
+    async def _init_plugins(self):
+        from .plugins import PluginManager
 
-        try:
-            from .tool_synthesis import ToolSynthesizer
+        self.plugins = PluginManager(self.config)
+        await self.plugins.load_all_plugins()
 
-            self.tool_synthesizer = ToolSynthesizer()
-            logger.info("✅ Tool synthesis initialized")
-        except Exception as e:
-            logger.warning(f"Tool synthesis init failed: {e}")
+    async def _init_tool_synthesis(self):
+        from .tool_synthesis import ToolSynthesizer
 
-        try:
-            from .metacognition import MetacognitiveSystem
+        self.tool_synthesizer = ToolSynthesizer()
 
-            self.metacognition = MetacognitiveSystem(self.config)
-            await self.metacognition.initialize()
-            logger.info("✅ Metacognition initialized")
-        except Exception as e:
-            logger.warning(f"Metacognition init failed: {e}")
+    async def _init_metacognition(self):
+        from .metacognition import MetacognitiveSystem
 
-        try:
-            from .world_model import WorldModel
+        self.metacognition = MetacognitiveSystem(self.config)
+        await self.metacognition.initialize()
 
-            self.world_model = WorldModel()
-            await self.world_model.initialize()
-            logger.info("✅ World model initialized")
-        except Exception as e:
-            logger.warning(f"World model init failed: {e}")
+    async def _init_world_model(self):
+        from .world_model import WorldModel
 
-        try:
-            from .multi_agent import AgentPool
+        self.world_model = WorldModel()
+        await self.world_model.initialize()
 
-            self.multi_agent = AgentPool(self.config)
-            await self.multi_agent.initialize()
-            logger.info("✅ Multi-agent system initialized")
-        except Exception as e:
-            logger.warning(f"Multi-agent init failed: {e}")
+    async def _init_multi_agent(self):
+        from .multi_agent import AgentPool
 
-        try:
-            from .emotional_intelligence import EmotionalIntelligence
+        self.multi_agent = AgentPool(self.config)
+        await self.multi_agent.initialize()
 
-            self.emotional_intelligence = EmotionalIntelligence()
-            logger.info("✅ Emotional intelligence initialized")
-        except Exception as e:
-            logger.warning(f"Emotional intelligence init failed: {e}")
+    async def _init_emotional_intelligence(self):
+        from .emotional_intelligence import EmotionalIntelligence
 
-        try:
-            from .observability import DistributedTracer
+        self.emotional_intelligence = EmotionalIntelligence()
 
-            self.tracer = DistributedTracer(service_name="opensable-agent")
-            logger.info("✅ Distributed tracing initialized")
-        except Exception as e:
-            logger.warning(f"Distributed tracing init failed: {e}")
+    async def _init_tracing(self):
+        from .observability import DistributedTracer
+
+        self.tracer = DistributedTracer(service_name="opensable-agent")
+
+    # ------------------------------------------------------------------
+    # Progress
+    # ------------------------------------------------------------------
+
+    async def _notify_progress(self, message: str):
+        """Send a progress update to the current interface."""
+        if self._progress_callback:
+            try:
+                await self._progress_callback(message)
+            except Exception as e:
+                logger.debug(f"Progress callback failed: {e}")
+
+    # ------------------------------------------------------------------
+    # Graph
+    # ------------------------------------------------------------------
 
     def _build_graph(self) -> StateGraph:
-        """Build the LangGraph workflow"""
         workflow = StateGraph(AgentState)
-
-        # Add nodes
         workflow.add_node("run", self._agentic_loop)
-
-        # Single-node graph -- the loop handles everything internally
         workflow.set_entry_point("run")
         workflow.add_edge("run", END)
-
         return workflow.compile()
 
+    # ------------------------------------------------------------------
+    # Planning
+    # ------------------------------------------------------------------
+
+    _COMPLEX_INDICATORS = re.compile(
+        r"\b(and then|after that|first .+ then|step by step|"
+        r"create .+ and .+ and|build .+ with .+ and|"
+        r"research .+ and write|find .+ then .+ then|"
+        r"compare .+ and|analyze .+ and summarize|"
+        r"y luego|después|primero .+ luego|paso a paso)\b",
+        re.IGNORECASE,
+    )
+
+    def _needs_planning(self, task: str) -> bool:
+        if len(task) > 200:
+            return True
+        if self._COMPLEX_INDICATORS.search(task):
+            return True
+        action_verbs = re.findall(
+            r"\b(search|find|create|write|read|edit|execute|run|build|"
+            r"analyze|compare|download|scrape|send|generate|install|deploy|"
+            r"busca|crea|escribe|lee|ejecuta|compara|descarga)\b",
+            task.lower(),
+        )
+        return len(set(action_verbs)) >= 3
+
+    async def _create_plan(self, task: str, system_prompt: str) -> Optional[Plan]:
+        planning_prompt = (
+            "You are a task planner. Break down the following task into clear, "
+            "sequential steps. Each step should be a single actionable item.\n\n"
+            "Rules:\n"
+            "- Output ONLY a numbered list (1. 2. 3. etc.)\n"
+            "- Each step should be one specific action\n"
+            "- Keep it to 2-6 steps maximum\n"
+            "- Be specific about what tool or action each step needs\n"
+            "- The last step should always be synthesizing/presenting results\n\n"
+            f"Task: {task}"
+        )
+        try:
+            response = await asyncio.wait_for(
+                self.llm.invoke_with_tools(
+                    [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": planning_prompt},
+                    ],
+                    [],
+                ),
+                timeout=_LLM_TIMEOUT,
+            )
+            text = response.get("text", "")
+            steps = []
+            for line in text.split("\n"):
+                match = re.match(r"^\d+[\.\)]\s*(.+)", line.strip())
+                if match:
+                    steps.append(match.group(1).strip())
+            if steps and len(steps) >= 2:
+                logger.info(f"📋 Created plan with {len(steps)} steps")
+                return Plan(goal=task, steps=steps)
+        except Exception as e:
+            logger.warning(f"Planning failed: {e}")
+        return None
+
+    # ------------------------------------------------------------------
+    # Advanced memory retrieval
+    # ------------------------------------------------------------------
+
+    async def _get_memory_context(self, user_id: str, task: str) -> str:
+        parts = []
+
+        # Basic ChromaDB
+        memories = await self.memory.recall(user_id, task)
+        if memories:
+            basic = "\n".join([m["content"] for m in memories[:3]])
+            parts.append(f"[Recent context]\n{basic}")
+
+        # Advanced memory
+        if self.advanced_memory:
+            try:
+                from .advanced_memory import MemoryType
+
+                episodic = await self.advanced_memory.retrieve_memories(
+                    query=task, memory_type=MemoryType.EPISODIC, limit=3
+                )
+                if episodic:
+                    ep_text = "\n".join(f"- {getattr(m, 'content', str(m))}" for m in episodic[:3])
+                    parts.append(f"[Past experiences]\n{ep_text}")
+
+                semantic = await self.advanced_memory.retrieve_memories(
+                    query=task, memory_type=MemoryType.SEMANTIC, limit=3
+                )
+                if semantic:
+                    sem_text = "\n".join(f"- {getattr(m, 'content', str(m))}" for m in semantic[:3])
+                    parts.append(f"[Known facts]\n{sem_text}")
+            except Exception as e:
+                logger.debug(f"Advanced memory retrieval failed: {e}")
+
+        # User preferences
+        try:
+            prefs = await self.memory.get_user_preferences(user_id)
+            if prefs:
+                pref_str = ", ".join(f"{k}={v}" for k, v in list(prefs.items())[:5])
+                parts.append(f"[User preferences] {pref_str}")
+        except Exception:
+            pass
+
+        return "\n\n".join(parts) if parts else ""
+
+    # ------------------------------------------------------------------
+    # Tool execution with progress
+    # ------------------------------------------------------------------
+
+    _TOOL_EMOJIS = {
+        "browser_search": "🔍",
+        "browser_scrape": "🌐",
+        "browser_snapshot": "📸",
+        "browser_action": "🖱️",
+        "execute_command": "⚡",
+        "read_file": "📖",
+        "write_file": "📝",
+        "edit_file": "✏️",
+        "list_directory": "📂",
+        "delete_file": "🗑️",
+        "move_file": "📦",
+        "search_files": "🔎",
+        "system_info": "💻",
+        "weather": "🌤️",
+        "calendar": "📅",
+        "execute_code": "⚙️",
+        "vector_search": "🧠",
+        "create_skill": "🛠️",
+        "generate_image": "🎨",
+        "analyze_image": "👁️",
+        "desktop_screenshot": "📷",
+    }
+
+    _TOOL_LABELS = {
+        "browser_search": "Searching the web",
+        "browser_scrape": "Scraping webpage",
+        "browser_snapshot": "Taking page snapshot",
+        "browser_action": "Interacting with page",
+        "execute_command": "Running command",
+        "read_file": "Reading file",
+        "write_file": "Writing file",
+        "edit_file": "Editing file",
+        "list_directory": "Listing directory",
+        "execute_code": "Running code",
+        "vector_search": "Searching knowledge base",
+        "weather": "Checking weather",
+        "calendar": "Checking calendar",
+        "create_skill": "Creating skill",
+        "generate_image": "Generating image",
+        "analyze_image": "Analyzing image",
+        "desktop_screenshot": "Taking screenshot",
+    }
+
+    async def _execute_tool(self, name: str, arguments: dict) -> str:
+        emoji = self._TOOL_EMOJIS.get(name, "🔧")
+        label = self._TOOL_LABELS.get(name, name.replace("_", " ").title())
+        await self._notify_progress(f"{emoji} {label}...")
+        try:
+            result = await asyncio.wait_for(
+                self.tools.execute_schema_tool(name, arguments),
+                timeout=_LLM_TIMEOUT,
+            )
+            return f"**{name}:** {result}"
+        except asyncio.TimeoutError:
+            logger.error(f"Tool {name} timed out")
+            return f"**{name}:** ❌ Timed out"
+        except Exception as e:
+            return f"**{name}:** ❌ {e}"
+
+    async def _execute_tools_parallel(self, tool_calls: List[dict]) -> List[str]:
+        if len(tool_calls) == 1:
+            return [await self._execute_tool(tool_calls[0]["name"], tool_calls[0]["arguments"])]
+
+        names = [tc["name"] for tc in tool_calls]
+        emojis = " ".join(self._TOOL_EMOJIS.get(n, "🔧") for n in names)
+        await self._notify_progress(f"{emojis} Running {len(tool_calls)} tools in parallel...")
+
+        tasks = [self._execute_tool(tc["name"], tc["arguments"]) for tc in tool_calls]
+        return list(await asyncio.gather(*tasks))
+
     # ──────────────────────────────────────────────
-    #  NATIVE TOOL-CALLING AGENTIC LOOP
+    #  AGENTIC LOOP v2
     # ──────────────────────────────────────────────
 
     async def _agentic_loop(self, state: AgentState) -> AgentState:
-        """
-        Full agentic loop with:
-        1. Fast path: Forced browser_search for obvious search queries
-        2. Native tool calling: LLM picks from all 28 tools via Ollama
-        3. Direct response: No tools needed, LLM answers directly
-        """
         task = state["task"]
         user_id = state["user_id"]
 
-        # ── Tracing: create a span for the full request ───────────────
+        # Tracing
         trace_id = span = None
         if self.tracer:
             trace_id = self.tracer.create_trace()
             span = self.tracer.start_span(
                 "agentic_loop",
                 trace_id,
-                attributes={
-                    "user_id": user_id,
-                    "task_length": len(task),
-                },
+                attributes={"user_id": user_id, "task_length": len(task)},
             )
 
-        # Memory context
-        memories = await self.memory.recall(user_id, task)
-        memory_ctx = "\n".join([m["content"] for m in memories[:3]]) if memories else ""
-
-        from datetime import date
+        # Memory context (advanced)
+        await self._notify_progress("🧠 Recalling context...")
+        memory_ctx = await self._get_memory_context(user_id, task)
 
         today = date.today().strftime("%B %d, %Y")
 
-        # Build conversation history
         history_for_ollama = []
         for m in state.get("messages", []):
             role = m.get("role", "")
-            if role == "user":
-                history_for_ollama.append({"role": "user", "content": m.get("content", "")})
-            elif role == "assistant":
-                history_for_ollama.append({"role": "assistant", "content": m.get("content", "")})
+            if role in ("user", "assistant"):
+                history_for_ollama.append({"role": role, "content": m.get("content", "")})
 
         base_system = (
             self._get_personality_prompt()
             + (f"\n\nRelevant context from memory:\n{memory_ctx}" if memory_ctx else "")
             + f"\n\nToday's date: {today}."
-            + (
-                "\n\nIMPORTANT: For general knowledge questions (explanations, definitions, "
-                "opinions, coding help), answer directly from your knowledge. "
-                "Only use tools when the task specifically requires reading files, "
-                "executing code, searching the web, or interacting with the system."
-            )
+            + "\n\nIMPORTANT: For general knowledge questions, answer directly. "
+            "Only use tools when the task specifically requires reading files, "
+            "executing code, searching the web, or interacting with the system."
         )
 
-        # Emotional intelligence: adapt tone to user's emotional state
         ei = getattr(self, "emotional_intelligence", None)
         if ei:
             adaptation = ei.process(user_id, task)
-            ei_addon = adaptation.get("system_prompt_addon", "")
-            if ei_addon:
-                base_system += f"\n\n[Emotional context] {ei_addon}"
+            addon = adaptation.get("system_prompt_addon", "")
+            if addon:
+                base_system += f"\n\n[Emotional context] {addon}"
 
-        # ── FAST PATH: Forced search for obvious queries ──────────────
+        # Fast path: forced search
         task_lower = task.lower().strip()
-        # Only trigger forced search when task clearly IS a search query
-        # (starts with search-intent phrases, not buried in middle)
         search_start = [
             "search ",
             "search for ",
@@ -282,7 +470,6 @@ class SableAgent:
             "flights from ",
             "flights to ",
         ]
-        # Personal/history questions should NOT go to web search
         personal_indicators = [" my ", " our ", " your ", " mi ", " tu ", " nuestro "]
         is_personal = any(p in f" {task_lower} " for p in personal_indicators)
         is_search = (not is_personal) and any(task_lower.startswith(p) for p in search_start)
@@ -291,53 +478,57 @@ class SableAgent:
 
         if is_search:
             logger.info("🔍 [FORCED] Search intent detected")
-            tool_span = None
-            if self.tracer and trace_id:
-                tool_span = self.tracer.start_span(
-                    "tool:browser_search", trace_id, span.span_id if span else None
-                )
-            try:
-                query = task
-                for filler in [
-                    "search for",
-                    "busca",
-                    "find",
-                    "look up",
-                    "google",
-                    "what is",
-                    "who is",
-                ]:
-                    query = query.replace(filler, "", 1).strip()
-                result = await asyncio.wait_for(
-                    self.tools.execute_schema_tool(
-                        "browser_search", {"query": query, "num_results": 5}
-                    ),
-                    timeout=_LLM_TIMEOUT,
-                )
-                tool_results.append(f"**browser_search:** {result}")
-            except asyncio.TimeoutError:
-                tool_results.append("**browser_search:** ⚠️ Timed out")
-                logger.error("browser_search timed out")
-            except Exception as e:
-                tool_results.append(f"**browser_search:** ⚠️ Failed: {e}")
-            finally:
-                if tool_span:
-                    self.tracer.end_span(tool_span.span_id)
+            query = task
+            for filler in ["search for", "busca", "find", "look up", "google", "what is", "who is"]:
+                query = query.replace(filler, "", 1).strip()
+            result = await self._execute_tool("browser_search", {"query": query, "num_results": 5})
+            tool_results.append(result)
 
-        # ── NATIVE TOOL CALLING: LLM chooses tools ───────────────────
+        # Planning
+        plan = None
+        if not tool_results and self._needs_planning(task):
+            await self._notify_progress("📋 Planning steps...")
+            plan = await self._create_plan(task, base_system)
+            if plan:
+                await self._notify_progress(f"📋 Plan ({len(plan.steps)} steps):\n{plan.summary()}")
+
+        # Tool calling loop
         if not tool_results:
             messages = [{"role": "system", "content": base_system}]
             messages += history_for_ollama[-8:]
-            messages.append({"role": "user", "content": task})
+
+            if plan:
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Complete this task step by step:\n\n"
+                            f"Overall goal: {task}\n\nPlan:\n{plan.summary()}\n\n"
+                            f"Current step: {plan.next_step()}\n\n"
+                            "Execute the current step using the appropriate tool(s). "
+                            "You may call MULTIPLE tools at once if they are independent."
+                        ),
+                    }
+                )
+            else:
+                messages.append({"role": "user", "content": task})
 
             tool_schemas = self.tools.get_tool_schemas()
-            _MAX_ROUNDS = 5  # allow more rounds for code iteration
+            _MAX_ROUNDS = 10
             _last_tool_was_code_error = False
+            final_text = None
 
             for _round in range(_MAX_ROUNDS):
-                # Offer tools on round 0, or if the last execute_code had an error
-                offer_tools = (not tool_results) or _last_tool_was_code_error
+                offer_tools = (
+                    (not tool_results)
+                    or _last_tool_was_code_error
+                    or (plan and not plan.is_complete)
+                )
                 _last_tool_was_code_error = False
+
+                await self._notify_progress(
+                    f"💭 Thinking... (round {_round + 1})" if _round > 0 else "💭 Thinking..."
+                )
 
                 try:
                     response = await asyncio.wait_for(
@@ -351,77 +542,84 @@ class SableAgent:
                     logger.error(f"LLM call failed: {e}")
                     break
 
-                tc = response.get("tool_call")
-
-                # Fallback: LLM sometimes outputs tool calls as JSON in text
-                if not tc and response.get("text"):
+                # Collect tool calls (parallel support)
+                all_tool_calls = response.get("tool_calls", [])
+                single_tc = response.get("tool_call")
+                if single_tc and not all_tool_calls:
+                    all_tool_calls = [single_tc]
+                if not all_tool_calls and response.get("text"):
                     tc = self._extract_tool_call_from_text(response["text"])
+                    if tc:
+                        all_tool_calls = [tc]
 
-                if tc:
-                    logger.info(f"🔧 LLM chose tool: {tc['name']}")
-                    tool_span = None
-                    if self.tracer and trace_id:
-                        tool_span = self.tracer.start_span(
-                            f"tool:{tc['name']}",
-                            trace_id,
-                            span.span_id if span else None,
-                            attributes={"tool.args": str(tc["arguments"])[:200]},
-                        )
-                    try:
-                        result = await asyncio.wait_for(
-                            self.tools.execute_schema_tool(tc["name"], tc["arguments"]),
-                            timeout=_LLM_TIMEOUT,
-                        )
-                        tool_results.append(f"**{tc['name']}:** {result}")
-                    except asyncio.TimeoutError:
-                        tool_results.append(f"**{tc['name']}:** ❌ Timed out")
-                        logger.error(f"Tool {tc['name']} timed out")
-                    except Exception as e:
-                        tool_results.append(f"**{tc['name']}:** ❌ {e}")
-                    finally:
-                        if tool_span:
-                            self.tracer.end_span(tool_span.span_id)
+                if all_tool_calls:
+                    names = [tc["name"] for tc in all_tool_calls]
+                    logger.info(f"🔧 LLM chose {len(all_tool_calls)} tool(s): {names}")
 
-                    last_result = tool_results[-1]
+                    results = await self._execute_tools_parallel(all_tool_calls)
+                    tool_results.extend(results)
 
-                    # ── Code feedback loop: if execute_code failed, let the
-                    #    LLM see the error and try again with tools available ──
-                    if tc["name"] == "execute_code" and "❌" in last_result:
+                    # Code feedback loop
+                    has_code_error = any(
+                        tc["name"] == "execute_code" and "❌" in r
+                        for tc, r in zip(all_tool_calls, results)
+                    )
+                    if has_code_error:
                         _last_tool_was_code_error = True
-                        messages.append(
-                            {"role": "assistant", "content": f"Used tool: {tc['name']}"}
+                        error_result = next(
+                            r
+                            for tc, r in zip(all_tool_calls, results)
+                            if tc["name"] == "execute_code" and "❌" in r
                         )
+                        messages.append({"role": "assistant", "content": f"Used tools: {names}"})
                         messages.append(
                             {
                                 "role": "user",
                                 "content": (
-                                    f"The code execution failed with this error:\n{last_result}\n\n"
+                                    f"The code execution failed:\n{error_result}\n\n"
                                     "Please fix the code and try again using execute_code."
                                 ),
                             }
                         )
-                        logger.info(f"🔄 Code feedback loop: round {_round + 1}, re-offering tools")
                         continue
 
-                    # Normal path: LLM synthesizes results (no tools offered)
-                    messages.append({"role": "assistant", "content": f"Used tool: {tc['name']}"})
-                    messages.append(
-                        {
-                            "role": "user",
-                            "content": (
-                                f"Tool result:\n{last_result}\n\n"
-                                f"Now answer the original question: {task}"
-                            ),
-                        }
-                    )
+                    # Plan advancement
+                    if plan and not plan.is_complete:
+                        step_result = "\n".join(results)
+                        plan.advance(step_result)
+                        if not plan.is_complete:
+                            await self._notify_progress(
+                                f"📋 Step {plan.current_step}/{len(plan.steps)}: {plan.next_step()}"
+                            )
+                            messages.append(
+                                {"role": "assistant", "content": f"Results:\n{step_result}"}
+                            )
+                            messages.append(
+                                {
+                                    "role": "user",
+                                    "content": f"Good. Now execute the next step:\n{plan.next_step()}",
+                                }
+                            )
+                            continue
+                        else:
+                            logger.info("📋 Plan complete — synthesizing")
+                            break
+                    else:
+                        last_result = "\n".join(results)
+                        messages.append({"role": "assistant", "content": f"Used tools: {names}"})
+                        messages.append(
+                            {
+                                "role": "user",
+                                "content": f"Tool results:\n{last_result}\n\nNow answer: {task}",
+                            }
+                        )
                 else:
-                    # LLM responded with text directly — no tool needed
                     final_text = response.get("text", "")
                     break
             else:
-                final_text = None  # max rounds reached
+                final_text = None
 
-            # If LLM answered directly (no tools used), save and return
+            # Direct answer (no tools)
             if not tool_results and final_text:
                 state["messages"].append(
                     {
@@ -430,17 +628,11 @@ class SableAgent:
                         "timestamp": datetime.now().isoformat(),
                     }
                 )
-                try:
-                    await self.memory.store(
-                        user_id,
-                        f"Task: {task}\nResponse: {final_text}",
-                        {"type": "task_completion", "timestamp": datetime.now().isoformat()},
-                    )
-                except Exception as e:
-                    logger.debug(f"Memory store failed: {e}")
+                await self._store_memory(user_id, task, final_text)
                 return state
 
-        # ── SYNTHESIS: Format tool results into final answer ──────────
+        # Synthesis
+        await self._notify_progress("✍️ Writing response...")
         synthesis_prompt = (
             base_system + "\n\nCRITICAL RULES:"
             "\n- Use ONLY information from the tool results"
@@ -448,6 +640,9 @@ class SableAgent:
             "\n- If no data found, say so honestly"
             "\n- Be concise and direct"
         )
+        if plan:
+            synthesis_prompt += f"\n\nYou completed a multi-step plan:\n{plan.summary()}"
+
         tool_context = "\n\n".join(tool_results)
         synth_messages = [{"role": "system", "content": synthesis_prompt}]
         synth_messages += history_for_ollama[-8:]
@@ -463,7 +658,7 @@ class SableAgent:
             final_text = resp.get("text", "")
         except Exception as e:
             logger.error(f"Synthesis failed: {e}")
-            final_text = f"I found some results but had trouble formatting them:\n\n{tool_context}"
+            final_text = f"I found results but had trouble formatting them:\n\n{tool_context}"
 
         state["messages"].append(
             {
@@ -472,44 +667,62 @@ class SableAgent:
                 "timestamp": datetime.now().isoformat(),
             }
         )
+        await self._store_memory(user_id, task, final_text)
+
+        if span:
+            span.set_attribute("response_length", len(final_text or ""))
+            span.set_attribute("tools_used", len(tool_results))
+            if plan:
+                span.set_attribute("plan_steps", len(plan.steps))
+            self.tracer.end_span(span.span_id)
+
+        return state
+
+    # ------------------------------------------------------------------
+    # Memory storage
+    # ------------------------------------------------------------------
+
+    async def _store_memory(self, user_id: str, task: str, response: str):
         try:
             await self.memory.store(
                 user_id,
-                f"Task: {task}\nResponse: {final_text}",
+                f"Task: {task}\nResponse: {response}",
                 {"type": "task_completion", "timestamp": datetime.now().isoformat()},
             )
         except Exception as e:
             logger.debug(f"Memory store failed: {e}")
 
-        # ── End tracing span ──────────────────────────────────────────
-        if span:
-            span.set_attribute("response_length", len(final_text or ""))
-            span.set_attribute("tools_used", len(tool_results))
-            self.tracer.end_span(span.span_id)
-            logger.debug(
-                f"📊 Trace {trace_id}: {span.duration_ms:.0f}ms, {len(tool_results)} tools"
-            )
+        if self.advanced_memory:
+            try:
+                from .advanced_memory import MemoryType, MemoryImportance
 
-        return state
+                await self.advanced_memory.store_memory(
+                    memory_type=MemoryType.SEMANTIC,
+                    content=f"Q: {task[:200]}\nA: {response[:500]}",
+                    context={"user_id": user_id, "type": "qa_pair"},
+                    importance=MemoryImportance.MEDIUM,
+                )
+            except Exception as e:
+                logger.debug(f"Advanced memory store failed: {e}")
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
 
     def _extract_tool_call_from_text(self, text: str) -> Optional[dict]:
-        """Parse tool calls that the LLM outputs as JSON text instead of structured tool_calls."""
         import json as _json
-        import re as _re
 
-        # Look for JSON blocks like {"name": "tool_name", "parameters": {...}}
         patterns = [
             r'\{[^{}]*"name"\s*:\s*"(\w+)"[^{}]*"(?:parameters|arguments)"\s*:\s*(\{[^{}]*\})',
         ]
         for pat in patterns:
-            m = _re.search(pat, text, _re.DOTALL)
+            m = re.search(pat, text, re.DOTALL)
             if m:
                 name = m.group(1)
                 try:
                     args = _json.loads(m.group(2))
                 except Exception:
                     args = {}
-                # Verify it's a known tool
                 known = [s["function"]["name"] for s in self.tools.get_tool_schemas()]
                 if name in known:
                     logger.info(f"🔧 [FALLBACK] Parsed tool call from text: {name}")
@@ -517,7 +730,6 @@ class SableAgent:
         return None
 
     def _get_personality_prompt(self) -> str:
-        """Get system prompt based on personality"""
         personalities = {
             "helpful": "You are Sable, a helpful and friendly AI assistant. Be clear, concise, and supportive.",
             "professional": "You are Sable, a professional AI assistant. Be formal, precise, and efficient.",
@@ -527,10 +739,23 @@ class SableAgent:
         return personalities.get(self.config.agent_personality, personalities["helpful"])
 
     async def process_message(
+        self,
+        user_id: str,
+        message: str,
+        history: Optional[List[dict]] = None,
+        progress_callback: ProgressCallback = None,
+    ) -> str:
+        old_callback = self._progress_callback
+        if progress_callback:
+            self._progress_callback = progress_callback
+        try:
+            return await self._process_message_inner(user_id, message, history)
+        finally:
+            self._progress_callback = old_callback
+
+    async def _process_message_inner(
         self, user_id: str, message: str, history: Optional[List[dict]] = None
     ) -> str:
-        """Process a user message and return response"""
-        # Store in advanced memory if available
         if self.advanced_memory:
             try:
                 from .advanced_memory import MemoryType, MemoryImportance
@@ -544,12 +769,8 @@ class SableAgent:
             except Exception as e:
                 logger.debug(f"Failed to store in advanced memory: {e}")
 
-        # ── Python-level pre-processing ────────────────────────────────────
-        # 1. Resolve pronouns using history (don't rely on LLM to do this)
-        # 2. Detect "search more / again" and reuse last query
         resolved_message = self._resolve_message(message, history or [])
 
-        # ── Multi-agent routing for complex tasks ──────────────────────────
         if self.multi_agent:
             try:
                 from .multi_agent import MultiAgentOrchestrator
@@ -563,7 +784,6 @@ class SableAgent:
             except Exception as e:
                 logger.debug(f"Multi-agent routing skipped: {e}")
 
-        # ── Plugin hooks ───────────────────────────────────────────────────
         if self.plugins:
             try:
                 await self.plugins.execute_hook("message_received", user_id, resolved_message)
@@ -591,7 +811,7 @@ class SableAgent:
         return "I processed your request, but couldn't formulate a response."
 
     # ------------------------------------------------------------------
-    # Pre-processing helpers
+    # Pre-processing
     # ------------------------------------------------------------------
 
     _FILLER_ONLY = re.compile(
@@ -605,57 +825,38 @@ class SableAgent:
     )
 
     def _last_search_query(self, history: list) -> str:
-        """Return the last browser search query from history assistant messages."""
-        import re as _re
-
         for msg in reversed(history):
             if msg.get("role") == "assistant":
-                # Our reflect prompt always mentions what was searched
-                m = _re.search(
-                    r"searched? (?:for )?[\"']?(.+?)[\"']?[\.\n]", msg.get("content", ""), _re.I
+                m = re.search(
+                    r"searched? (?:for )?[\"']?(.+?)[\"']?[\.\n]",
+                    msg.get("content", ""),
+                    re.I,
                 )
                 if m:
                     return m.group(1).strip()
         return ""
 
     def _extract_topic_from_history(self, history: list) -> str:
-        """Extract the most recent concrete subject from conversation history."""
-        import re
-
-        # Look at last few user messages for nouns / quoted things
         candidates = []
         for msg in reversed(history[-8:]):
             if msg.get("role") not in ("user", "assistant"):
                 continue
             content = msg.get("content", "")
-            # Quoted strings are strong candidates
             quoted = re.findall(r'"([^"]{3,40})"', content)
             candidates.extend(quoted)
-            # Capitalized multi-word sequences (proper nouns)
             proper = re.findall(r"(?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)", content)
             candidates.extend(proper)
         return candidates[0] if candidates else ""
 
     def _resolve_message(self, message: str, history: list) -> str:
-        """
-        Python-level message normalization:
-        - 'search more' / 'again' → repeat last search query
-        - Pronouns (that/it/this) → replace with last known subject
-        """
-        from datetime import date
-
         today = date.today().strftime("%B %d, %Y")
 
-        # 1. Pure filler → repeat last query
         if self._FILLER_ONLY.match(message.strip()):
             last = self._last_search_query(history)
             if last:
-                logger.info(f"[resolve] 'search more' → reusing query: {last}")
                 return f"search for more information about {last}"
-            # No history → pass through unchanged
             return message
 
-        # 2. Message contains only pronouns for the subject → resolve
         if self._PRONOUNS.search(message):
             topic = self._extract_topic_from_history(history)
             if topic:
@@ -663,7 +864,6 @@ class SableAgent:
                 logger.info(f"[resolve] pronoun '{message}' → '{resolved}'")
                 message = resolved
 
-        # 3. Inject today's date for time-sensitive queries
         time_words = [
             "today",
             "tonight",
@@ -683,11 +883,9 @@ class SableAgent:
         return message
 
     async def run(self, message: str, history: Optional[List[dict]] = None) -> str:
-        """Simplified run method"""
         return await self.process_message("default_user", message, history)
 
     async def _heartbeat_loop(self):
-        """Periodic check for scheduled tasks"""
         while True:
             try:
                 await asyncio.sleep(self.config.heartbeat_interval)
@@ -698,7 +896,6 @@ class SableAgent:
                 logger.error(f"Heartbeat error: {e}")
 
     async def shutdown(self):
-        """Cleanup on shutdown"""
         if self.heartbeat_task:
             self.heartbeat_task.cancel()
         if self.memory:

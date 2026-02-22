@@ -639,12 +639,30 @@ class TelegramInterface:
         history = session.get_llm_messages(limit=20)
 
         try:
-            # Always route through the full agentic loop — the agent decides
-            # internally whether to call tools (browser, weather, calendar…)
-            # or just answer from context. The old split path caused the bot
-            # to refuse tool use for messages that didn't match a keyword list.
+            # Send a placeholder message for progress updates
+            placeholder = await message.answer("💭 _thinking…_", parse_mode=ParseMode.MARKDOWN)
+            _last_progress = {"text": ""}
+
+            async def _tg_progress(status: str):
+                """Edit the placeholder with live progress."""
+                try:
+                    new_text = f"⏳ {status}"
+                    if new_text != _last_progress["text"]:
+                        _last_progress["text"] = new_text
+                        await placeholder.edit_text(new_text, parse_mode=None)
+                except Exception:
+                    pass  # Telegram rate-limit or message-not-modified
+
             logger.info(f"[Telegram] → agent: {text[:80]}")
-            response = await self.agent.process_message(user_id, text, history=history)
+            response = await self.agent.process_message(
+                user_id, text, history=history, progress_callback=_tg_progress
+            )
+
+            # Delete placeholder and send final response
+            try:
+                await placeholder.delete()
+            except Exception:
+                pass
             await self._safe_reply(message, response)
         except Exception as e:
             logger.error(f"Agent error: {e}", exc_info=True)
