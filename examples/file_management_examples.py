@@ -5,7 +5,7 @@ Demonstrates file operations, compression, search, and storage management.
 """
 
 import asyncio
-from skills.file_manager import FileManager
+from opensable.skills.file_manager import FileManager
 
 
 async def main():

@@ -6,7 +6,7 @@ and image analysis with face detection and color extraction.
 """
 
 import asyncio
-from skills.image_skill import ImageGenerator, OCREngine, ImageAnalyzer
+from opensable.skills.image_skill import ImageGenerator, OCREngine, ImageAnalyzer
 
 
 async def main():

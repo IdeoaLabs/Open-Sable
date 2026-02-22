@@ -5,7 +5,14 @@ Demonstrates tenant management, role-based access control, audit trails, and aut
 """
 
 import asyncio
-from core.enterprise import MultiTenancy, RBAC, AuditLogger, SSOProvider, Permission, AuditAction
+from opensable.core.enterprise import (
+    MultiTenancy,
+    RBAC,
+    AuditLogger,
+    SSOProvider,
+    Permission,
+    AuditAction,
+)
 
 
 async def main():

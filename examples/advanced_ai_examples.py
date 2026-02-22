@@ -5,7 +5,7 @@ Demonstrates prompt engineering, multi-step reasoning, and response critique.
 """
 
 import asyncio
-from core.advanced_ai import PromptLibrary, ChainOfThought, SelfReflection
+from opensable.core.advanced_ai import PromptLibrary, ChainOfThought, SelfReflection
 
 
 async def main():

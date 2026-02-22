@@ -46,6 +46,7 @@ pip install --upgrade pip setuptools wheel > /dev/null 2>&1
 # Install core
 echo ""
 echo "📦 Installing Open-Sable (this may take a few minutes)..."
+pip install -r requirements.txt
 pip install -e ".[core]"
 
 # Create directories

@@ -5,7 +5,7 @@ Demonstrates creating custom chat interfaces, event handling, and message routin
 """
 
 import asyncio
-from core.interface_sdk import (
+from opensable.core.interface_sdk import (
     InterfaceSDK,
     InterfaceType,
     MessageFormat,

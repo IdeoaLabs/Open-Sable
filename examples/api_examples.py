@@ -5,7 +5,7 @@ Demonstrates HTTP methods, auth, retry, caching, and rate limiting.
 """
 
 import asyncio
-from skills.api_client import APIClient, APIAuth, AuthType
+from opensable.skills.api_client import APIClient, APIAuth, AuthType
 
 
 async def main():

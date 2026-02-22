@@ -5,7 +5,7 @@ Demonstrates metrics collection, health checks, and Grafana dashboard generation
 """
 
 import asyncio
-from core.monitoring import MetricsCollector, HealthChecker
+from opensable.core.monitoring import MetricsCollector, HealthChecker
 
 
 async def main():

@@ -16,8 +16,12 @@ import aiohttp
 from pathlib import Path
 from enum import Enum
 
-from fastapi import FastAPI, Request, HTTPException, Header
-from fastapi.responses import JSONResponse
+try:
+    from fastapi import FastAPI, Request, HTTPException, Header
+    from fastapi.responses import JSONResponse
+except ImportError:
+    FastAPI = Request = HTTPException = Header = None
+    JSONResponse = None
 
 from opensable.core.config import Config
 

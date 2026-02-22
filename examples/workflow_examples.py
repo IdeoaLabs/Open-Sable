@@ -5,7 +5,7 @@ Demonstrates workflow checkpointing, state persistence, error recovery, and temp
 """
 
 import asyncio
-from core.workflow_persistence import (
+from opensable.core.workflow_persistence import (
     WorkflowEngine,
     WorkflowTemplate,
     WorkflowStep,

@@ -22,8 +22,12 @@ from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field, asdict
 from enum import Enum
 from datetime import datetime
-import semver
 import uuid
+
+try:
+    import semver
+except ImportError:
+    semver = None
 
 logger = logging.getLogger(__name__)
 
@@ -577,8 +581,14 @@ class SkillManager:
             raise ValueError(f"Skill not found in registry: {skill_id}")
 
         # Check version
-        current_version = semver.VersionInfo.parse(skill.metadata.version)
-        latest_version = semver.VersionInfo.parse(latest_metadata.version)
+        if semver:
+            current_version = semver.VersionInfo.parse(skill.metadata.version)
+            latest_version = semver.VersionInfo.parse(latest_metadata.version)
+        else:
+            from packaging.version import Version
+
+            current_version = Version(skill.metadata.version)
+            latest_version = Version(latest_metadata.version)
 
         if latest_version <= current_version:
             logger.info(f"Skill already up to date: {skill_id}")

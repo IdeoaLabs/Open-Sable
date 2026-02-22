@@ -5,7 +5,13 @@ Demonstrates OpenTelemetry tracing with Jaeger/Zipkin and structured logging wit
 """
 
 import asyncio
-from core.observability import TracingProvider, LogAggregator, SpanKind, SpanStatus, LogLevel
+from opensable.core.observability import (
+    TracingProvider,
+    LogAggregator,
+    SpanKind,
+    SpanStatus,
+    LogLevel,
+)
 
 
 async def main():

@@ -12,10 +12,10 @@ This example shows:
 
 import asyncio
 import logging
-from core.agi_integration import AGIAgent
-from core.goal_system import GoalPriority
-from core.advanced_memory import MemoryImportance
-from core.tool_synthesis import ToolSpecification, ToolType
+from opensable.core.agi_integration import AGIAgent
+from opensable.core.goal_system import GoalPriority
+from opensable.core.advanced_memory import MemoryImportance
+from opensable.core.tool_synthesis import ToolSpecification, ToolType
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"

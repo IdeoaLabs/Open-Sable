@@ -43,6 +43,8 @@ fake-useragent>=1.4.0
 # Misc
 python-dateutil>=2.8.0
 PyJWT>=2.8.0
+pyyaml>=6.0.1
+click>=8.1.7
 
 # Chat Platforms (lightweight — bot libs are optional)
 aiogram>=3.3.0

@@ -1,6 +1,6 @@
 [project]
 name = "opensable"
-version = "0.1.0-beta"
+version = "0.1.0b0"
 description = "Your personal AI that actually does things – autonomous, local, and yours forever"
 authors = [{name = "IdeoaLabs", email = "contact@ideolabs.ai"}]
 license = {text = "MIT"}
@@ -17,8 +17,9 @@ classifiers = [
 
 dependencies = [
     "langgraph>=0.0.40,<1.0",
-    "langchain>=0.1.0,<0.4",
-    "langchain-community>=0.0.20,<0.4",
+    "langchain>=0.1.0,<1.0",
+    "langchain-community>=0.0.20,<1.0",
+    "langchain-ollama>=0.1.0,<1.0",
     "ollama>=0.1.6,<1.0",
     "chromadb>=0.4.22,<0.6",
     "tiktoken>=0.5.2,<1.0",
@@ -32,12 +33,22 @@ dependencies = [
     "psutil>=5.9.0,<7.0",
     "RestrictedPython>=6.2,<8.0",
     "aiofiles>=23.2.1,<25.0",
+    "python-dateutil>=2.8.0,<3.0",
+    "PyJWT>=2.8.0,<3.0",
+    "py-cpuinfo>=9.0.0,<10.0",
 ]
 
 [tool.setuptools]
 packages = ["opensable", "opensable.core", "opensable.interfaces", "opensable.skills"]
 
 [project.optional-dependencies]
+core = [
+    "aiogram>=3.3.0,<4.0",
+    "playwright>=1.40.0",
+    "beautifulsoup4>=4.12.0",
+    "fake-useragent>=1.4.0",
+]
+
 telegram = [
     "aiogram>=3.3.0,<4.0",
     "python-telegram-bot>=20.7,<22.0",

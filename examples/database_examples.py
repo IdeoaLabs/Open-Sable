@@ -5,7 +5,7 @@ Demonstrates SQLite, PostgreSQL, MySQL, MongoDB, and Redis operations.
 """
 
 import asyncio
-from skills.database_skill import DatabaseManager, DatabaseConfig, DatabaseType
+from opensable.skills.database_skill import DatabaseManager, DatabaseConfig, DatabaseType
 
 
 async def main():

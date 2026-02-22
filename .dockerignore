@@ -1,0 +1,51 @@
+# Ignore version control
+.git
+.gitignore
+
+# Python artifacts
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+dist
+build
+
+# Virtual environments
+venv
+.venv
+
+# IDE / editor
+.vscode
+.idea
+*.swp
+*.swo
+
+# Logs and data (runtime-generated)
+logs/
+data/vectordb/
+
+# Testing
+.pytest_cache
+.coverage
+htmlcov
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Development files
+*.bak
+*_fix.txt
+tests/
+
+# Node (whatsapp bridge has its own Dockerfile)
+whatsapp-bridge/node_modules
+venom-bot/
+
+# Docs not needed in runtime image
+docs/
+examples/
+k8s/
+scripts/
+*.md
+LICENSE

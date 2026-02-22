@@ -14,12 +14,12 @@ import logging
 from pathlib import Path
 from datetime import datetime
 
-from core.agi_integration import AGIAgent
-from core.voice_interface import VoiceInterface, WhisperModel, TTSVoice
-from core.multimodal_agi import MultimodalAGI, MultimodalInput, VisionTask
-from core.multi_device_sync import MultiDeviceSync, SyncScope
-from core.skills_marketplace import SkillManager, SkillRegistry, SkillCategory
-from core.goal_system import GoalPriority
+from opensable.core.agi_integration import AGIAgent
+from opensable.core.voice_interface import VoiceInterface, WhisperModel, TTSVoice
+from opensable.core.multimodal_agi import MultimodalAGI, MultimodalInput, VisionTask
+from opensable.core.multi_device_sync import MultiDeviceSync, SyncScope
+from opensable.core.skills_marketplace import SkillManager, SkillRegistry, SkillCategory
+from opensable.core.goal_system import GoalPriority
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"

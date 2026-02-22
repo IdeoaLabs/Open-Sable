@@ -5,7 +5,7 @@ Demonstrates document ingestion, embeddings, semantic search, and context retrie
 """
 
 import asyncio
-from skills.rag_skill import RAGSystem, Document
+from opensable.skills.rag_skill import RAGSystem, Document
 
 
 async def main():

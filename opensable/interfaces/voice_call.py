@@ -220,8 +220,12 @@ class VoiceWebRTC:
 
 
 # FastAPI integration for voice endpoints
-from fastapi import FastAPI, Request, Response
-from fastapi.responses import PlainTextResponse
+try:
+    from fastapi import FastAPI, Request, Response
+    from fastapi.responses import PlainTextResponse
+except ImportError:
+    FastAPI = Request = Response = None
+    PlainTextResponse = None
 
 
 def create_voice_app(config: Config) -> FastAPI:

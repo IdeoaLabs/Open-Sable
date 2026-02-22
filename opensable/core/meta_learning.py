@@ -18,7 +18,11 @@ from datetime import datetime, timedelta
 from enum import Enum
 import json
 from pathlib import Path
-import numpy as np
+
+try:
+    import numpy as np
+except ImportError:
+    np = None
 
 logger = logging.getLogger(__name__)
 
