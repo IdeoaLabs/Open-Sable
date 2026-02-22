@@ -9,13 +9,11 @@ this is a lightweight checker that:
   4. Returns True if startup can proceed
 """
 
-import asyncio
 import logging
 import os
 import re
-import sys
 from pathlib import Path
-from typing import List, Tuple, Optional
+from typing import List, Optional
 
 import httpx
 from rich.console import Console
@@ -31,17 +29,18 @@ ENV_PATH = Path(__file__).parent.parent.parent / ".env"
 
 # ── Checks ─────────────────────────────────────────────────────────
 
+
 class Issue:
     """A missing or broken config item."""
+
     __slots__ = ("key", "label", "hint", "critical", "secret")
 
-    def __init__(self, key: str, label: str, hint: str,
-                 critical: bool = True, secret: bool = True):
+    def __init__(self, key: str, label: str, hint: str, critical: bool = True, secret: bool = True):
         self.key = key
         self.label = label
         self.hint = hint
-        self.critical = critical      # can't start without it
-        self.secret = secret          # mask when printing
+        self.critical = critical  # can't start without it
+        self.secret = secret  # mask when printing
 
 
 async def _check_ollama(config) -> Optional[Issue]:
@@ -54,7 +53,7 @@ async def _check_ollama(config) -> Optional[Issue]:
                 data = r.json()
                 models = data.get("models", [])
                 if models:
-                    return None          # all good
+                    return None  # all good
                 return Issue(
                     key="__ollama_no_models__",
                     label="No Ollama models installed",
@@ -128,6 +127,7 @@ def _check_telegram_users(config) -> Optional[Issue]:
 
 # ── Core logic ─────────────────────────────────────────────────────
 
+
 async def gather_issues(config) -> List[Issue]:
     """Run all checks, return list of issues."""
     issues: List[Issue] = []
@@ -170,6 +170,7 @@ def _set_env_value(key: str, value: str):
 
 # ── Interactive wizard ─────────────────────────────────────────────
 
+
 async def run_startup_wizard(config) -> bool:
     """
     Check for missing config.  If everything is fine, return True silently.
@@ -178,18 +179,20 @@ async def run_startup_wizard(config) -> bool:
     """
     issues = await gather_issues(config)
     if not issues:
-        return True                     # nothing missing — carry on
+        return True  # nothing missing — carry on
 
     # ── Show what's missing ────────────────────────────────────────
     critical = [i for i in issues if i.critical]
     optional = [i for i in issues if not i.critical]
 
     console.print()
-    console.print(Panel(
-        "[bold yellow]⚡ Startup Wizard[/bold yellow]\n"
-        "[dim]Some configuration is missing. Let's fix it.[/dim]",
-        border_style="yellow",
-    ))
+    console.print(
+        Panel(
+            "[bold yellow]⚡ Startup Wizard[/bold yellow]\n"
+            "[dim]Some configuration is missing. Let's fix it.[/dim]",
+            border_style="yellow",
+        )
+    )
     console.print()
 
     # Table of issues
@@ -228,7 +231,7 @@ async def run_startup_wizard(config) -> bool:
             os.environ[issue.key] = value.strip()
             console.print(f"[green]✅ Saved {issue.key}[/green]\n")
         else:
-            console.print(f"[red]⏭  Skipped (still required for startup)[/red]\n")
+            console.print("[red]⏭  Skipped (still required for startup)[/red]\n")
             return False
 
     # ── Handle optional issues ─────────────────────────────────────
@@ -258,11 +261,13 @@ async def run_startup_wizard(config) -> bool:
             console.print("[dim]You can configure them later in .env[/dim]")
 
     console.print()
-    console.print(Panel(
-        "[bold green]✅ Configuration updated![/bold green]\n"
-        "[dim]Changes saved to .env — reloading config...[/dim]",
-        border_style="green",
-    ))
+    console.print(
+        Panel(
+            "[bold green]✅ Configuration updated![/bold green]\n"
+            "[dim]Changes saved to .env — reloading config...[/dim]",
+            border_style="green",
+        )
+    )
     console.print()
 
     return True

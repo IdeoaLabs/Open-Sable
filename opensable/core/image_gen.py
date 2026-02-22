@@ -13,10 +13,10 @@ Features:
 - Placeholder / banner generation
 - Thumbnail creation
 """
+
 import base64
 import hashlib
 import io
-import json
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 try:
     from PIL import Image, ImageDraw, ImageFont
+
     PILLOW_AVAILABLE = True
 except ImportError:
     PILLOW_AVAILABLE = False
@@ -34,6 +35,7 @@ except ImportError:
 
 try:
     import qrcode
+
     QRCODE_AVAILABLE = True
 except ImportError:
     QRCODE_AVAILABLE = False
@@ -42,6 +44,7 @@ except ImportError:
 @dataclass
 class GeneratedImage:
     """Result of an image generation request."""
+
     image_id: str
     prompt: str
     width: int
@@ -83,9 +86,9 @@ class ImageGenerator:
         backend: str = "auto",
     ) -> GeneratedImage:
         """Generate an image from a text prompt."""
-        image_id = hashlib.sha256(
-            f"{prompt}-{datetime.now().isoformat()}".encode()
-        ).hexdigest()[:12]
+        image_id = hashlib.sha256(f"{prompt}-{datetime.now().isoformat()}".encode()).hexdigest()[
+            :12
+        ]
 
         # Try backends in order
         if backend == "auto":
@@ -171,9 +174,7 @@ class ImageGenerator:
     # QR Code
     # ------------------------------------------------------------------
 
-    def generate_qr(
-        self, data: str, size: int = 256
-    ) -> Optional[GeneratedImage]:
+    def generate_qr(self, data: str, size: int = 256) -> Optional[GeneratedImage]:
         """Generate a QR code image."""
         if not QRCODE_AVAILABLE:
             logger.warning("qrcode not installed: pip install qrcode[pil]")

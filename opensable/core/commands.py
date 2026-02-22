@@ -33,34 +33,35 @@ logger = logging.getLogger(__name__)
 @dataclass
 class CommandResult:
     """Result returned to the interface layer."""
+
     success: bool
     message: str
     data: Optional[Dict[str, Any]] = None
-    should_continue: bool = False   # True = also pass message to agent
+    should_continue: bool = False  # True = also pass message to agent
 
 
 class CommandHandler:
     """Platform-agnostic slash-command handler."""
 
     COMMANDS: Dict[str, str] = {
-        "status":     "Show session status and statistics",
-        "reset":      "Clear conversation history",
-        "new":        "Start a new conversation (alias for /reset)",
-        "compact":    "Compress old messages into a summary",
-        "think":      "Set thinking depth: off|minimal|low|medium|high|xhigh",
-        "verbose":    "Toggle verbose output: on|off",
-        "usage":      "Usage footer: off|tokens|full",
-        "voice":      "Toggle voice mode: on|off",
-        "model":      "Switch AI model — /model llama3.1:8b",
-        "help":       "Show this command list",
-        "restart":    "Restart the gateway (owner only)",
+        "status": "Show session status and statistics",
+        "reset": "Clear conversation history",
+        "new": "Start a new conversation (alias for /reset)",
+        "compact": "Compress old messages into a summary",
+        "think": "Set thinking depth: off|minimal|low|medium|high|xhigh",
+        "verbose": "Toggle verbose output: on|off",
+        "usage": "Usage footer: off|tokens|full",
+        "voice": "Toggle voice mode: on|off",
+        "model": "Switch AI model — /model llama3.1:8b",
+        "help": "Show this command list",
+        "restart": "Restart the gateway (owner only)",
         "activation": "Group activation mode: mention|always  (groups only)",
-        "plugin":     "Run a plugin command — /plugin <command> [args]",
-        "plugins":    "List loaded plugins and their commands",
+        "plugin": "Run a plugin command — /plugin <command> [args]",
+        "plugins": "List loaded plugins and their commands",
     }
 
     THINKING_LEVELS: List[str] = ["off", "minimal", "low", "medium", "high", "xhigh"]
-    USAGE_MODES:    List[str] = ["off", "tokens", "full"]
+    USAGE_MODES: List[str] = ["off", "tokens", "full"]
 
     def __init__(self, session_manager, gateway=None, plugin_manager=None):
         self.session_manager = session_manager
@@ -139,7 +140,7 @@ class CommandHandler:
                 return val if val.tzinfo else val.replace(tzinfo=timezone.utc)
             return datetime.fromisoformat(str(val)).replace(tzinfo=timezone.utc)
 
-        age_h  = (now - _dt(session.created_at)).total_seconds() / 3600
+        age_h = (now - _dt(session.created_at)).total_seconds() / 3600
         idle_s = (now - _dt(session.updated_at)).total_seconds()
 
         lines = [
@@ -224,7 +225,7 @@ class CommandHandler:
         return CommandResult(success=True, message=f"✅ Verbose -> **{mode}**")
 
     async def _cmd_usage(self, session, args, user_id, is_admin, is_group) -> CommandResult:
-        mode = (args[0].lower() if args else "full")
+        mode = args[0].lower() if args else "full"
         if mode not in self.USAGE_MODES:
             return CommandResult(
                 success=False,
@@ -353,7 +354,10 @@ class CommandHandler:
             result = await pm.execute_command(cmd_name, *cmd_args)
             return CommandResult(success=True, message=str(result))
         except ValueError:
-            return CommandResult(success=False, message=f"❌ Unknown plugin command: `{cmd_name}`\nUse `/plugins` to see available commands.")
+            return CommandResult(
+                success=False,
+                message=f"❌ Unknown plugin command: `{cmd_name}`\nUse `/plugins` to see available commands.",
+            )
         except Exception as e:
             logger.error("Plugin command '%s' failed: %s", cmd_name, e)
             return CommandResult(success=False, message=f"❌ Plugin error: {e}")

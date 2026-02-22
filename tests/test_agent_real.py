@@ -3,6 +3,7 @@ REAL integration tests for SableCore agent.
 These actually send messages and verify responses work end-to-end.
 Requires: Ollama running locally with at least one model.
 """
+
 import asyncio
 import pytest
 import os
@@ -57,7 +58,14 @@ class TestAgentInit:
         tool_list = agent.tools.list_tools()
         assert len(tool_list) >= 20
         # Must have critical tools
-        for name in ["execute_command", "read_file", "write_file", "browser", "weather", "calendar"]:
+        for name in [
+            "execute_command",
+            "read_file",
+            "write_file",
+            "browser",
+            "weather",
+            "calendar",
+        ]:
             assert name in tool_list, f"Missing critical tool: {name}"
 
     def test_agent_has_graph(self, agent):
@@ -81,9 +89,7 @@ class TestMessageProcessing:
 
     def test_simple_greeting(self, agent, event_loop):
         """Agent should respond to a simple greeting"""
-        response = event_loop.run_until_complete(
-            agent.process_message("test_user", "Hello!")
-        )
+        response = event_loop.run_until_complete(agent.process_message("test_user", "Hello!"))
         assert isinstance(response, str)
         assert len(response) > 5
         assert response != "I processed your request, but couldn't formulate a response."
@@ -108,13 +114,16 @@ class TestMessageProcessing:
         """Agent should use conversation history"""
         history = [
             {"role": "user", "content": "My name is Carlos and I live in Mexico City"},
-            {"role": "assistant", "content": "Nice to meet you, Carlos! Mexico City is a great place."},
+            {
+                "role": "assistant",
+                "content": "Nice to meet you, Carlos! Mexico City is a great place.",
+            },
         ]
         response = event_loop.run_until_complete(
             agent.process_message(
                 "test_user",
                 "Repeat back the name I told you earlier. Just the name, nothing else.",
-                history=history
+                history=history,
             )
         )
         assert isinstance(response, str)
@@ -174,16 +183,12 @@ class TestToolExecution:
 
     def test_list_directory(self, agent, event_loop):
         """Agent should list directory contents"""
-        result = event_loop.run_until_complete(
-            agent.tools.execute("list_directory", {"path": "."})
-        )
+        result = event_loop.run_until_complete(agent.tools.execute("list_directory", {"path": "."}))
         assert "main.py" in result or "opensable" in result
 
     def test_system_info(self, agent, event_loop):
         """System info tool should return real data"""
-        result = event_loop.run_until_complete(
-            agent.tools.execute("system_info", {})
-        )
+        result = event_loop.run_until_complete(agent.tools.execute("system_info", {}))
         assert "CPU" in result or "cpu" in result or "Memory" in result
 
 
@@ -283,31 +288,34 @@ class TestConfig:
 class TestImports:
     """Verify all critical modules import cleanly"""
 
-    @pytest.mark.parametrize("module", [
-        "opensable.core.agent",
-        "opensable.core.llm",
-        "opensable.core.memory",
-        "opensable.core.tools",
-        "opensable.core.config",
-        "opensable.core.computer_tools",
-        "opensable.core.session_manager",
-        "opensable.core.commands",
-        "opensable.core.heartbeat",
-        "opensable.core.skills_hub",
-        "opensable.core.skill_factory",
-        "opensable.core.onboarding",
-        "opensable.core.advanced_memory",
-        "opensable.core.goal_system",
-        "opensable.core.plugins",
-        "opensable.core.workflow",
-        "opensable.core.security",
-        "opensable.core.sandbox_runner",
-        "opensable.core.cache",
-        "opensable.core.rate_limiter",
-        "opensable.interfaces.telegram_bot",
-        "opensable.interfaces.discord_bot",
-        "opensable.interfaces.cli_interface",
-        "opensable.interfaces.whatsapp_bot",
-    ])
+    @pytest.mark.parametrize(
+        "module",
+        [
+            "opensable.core.agent",
+            "opensable.core.llm",
+            "opensable.core.memory",
+            "opensable.core.tools",
+            "opensable.core.config",
+            "opensable.core.computer_tools",
+            "opensable.core.session_manager",
+            "opensable.core.commands",
+            "opensable.core.heartbeat",
+            "opensable.core.skills_hub",
+            "opensable.core.skill_factory",
+            "opensable.core.onboarding",
+            "opensable.core.advanced_memory",
+            "opensable.core.goal_system",
+            "opensable.core.plugins",
+            "opensable.core.workflow",
+            "opensable.core.security",
+            "opensable.core.sandbox_runner",
+            "opensable.core.cache",
+            "opensable.core.rate_limiter",
+            "opensable.interfaces.telegram_bot",
+            "opensable.interfaces.discord_bot",
+            "opensable.interfaces.cli_interface",
+            "opensable.interfaces.whatsapp_bot",
+        ],
+    )
     def test_import(self, module):
         __import__(module)

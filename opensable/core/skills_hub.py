@@ -2,15 +2,14 @@
 Sable Skills Hub - Skills Marketplace for SableCore
 Includes SkillFactory for autonomous skill creation
 """
-import asyncio
+
 import json
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Union
+from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, asdict, field
 from datetime import datetime
 import hashlib
-import aiohttp
 
 from opensable.core.skill_factory import SkillFactory
 
@@ -22,6 +21,7 @@ class Skill:
     """
     SableCore Skill definition.
     """
+
     skill_id: str
     name: str
     description: str
@@ -35,20 +35,20 @@ class Skill:
     created_at: str = ""
     updated_at: str = ""
     dependencies: List[str] = field(default_factory=list)
-    
+
     # Community skill fields
     community_format: bool = False  # If skill is from community catalog
     trigger_words: List[str] = field(default_factory=list)
     examples: List[str] = field(default_factory=list)
-    
+
     def to_dict(self) -> Dict:
         return asdict(self)
-    
+
     @classmethod
-    def from_catalog(cls, skill_entry: Dict) -> 'Skill':
+    def from_catalog(cls, skill_entry: Dict) -> "Skill":
         """
         Convert community catalog skill entry to SableCore Skill.
-        
+
         Catalog format:
         {
             "id": "skill_name",
@@ -61,26 +61,26 @@ class Skill:
         }
         """
         return cls(
-            skill_id=skill_entry.get('id', ''),
-            name=skill_entry.get('name', ''),
-            description=skill_entry.get('description', ''),
-            category=skill_entry.get('category', 'general'),
-            code=skill_entry.get('function', skill_entry.get('code', '')),
-            author=skill_entry.get('author', 'SableCore Community'),
-            version=skill_entry.get('version', '1.0.0'),
-            downloads=skill_entry.get('downloads', 0),
-            rating=skill_entry.get('rating', 0.0),
-            tags=skill_entry.get('tags', []),
-            trigger_words=skill_entry.get('triggers', []),
-            examples=skill_entry.get('examples', []),
-            community_format=True
+            skill_id=skill_entry.get("id", ""),
+            name=skill_entry.get("name", ""),
+            description=skill_entry.get("description", ""),
+            category=skill_entry.get("category", "general"),
+            code=skill_entry.get("function", skill_entry.get("code", "")),
+            author=skill_entry.get("author", "SableCore Community"),
+            version=skill_entry.get("version", "1.0.0"),
+            downloads=skill_entry.get("downloads", 0),
+            rating=skill_entry.get("rating", 0.0),
+            tags=skill_entry.get("tags", []),
+            trigger_words=skill_entry.get("triggers", []),
+            examples=skill_entry.get("examples", []),
+            community_format=True,
         )
 
 
 class SkillsHub:
     """
     Skills marketplace for discovering, sharing, and installing skills.
-    
+
     Features:
     - Browse skills by category
     - Search skills by keyword
@@ -89,7 +89,7 @@ class SkillsHub:
     - Auto-updates for installed skills
     - SkillFactory for autonomous skill creation
     """
-    
+
     def __init__(self, config):
         self.config = config
         self.skills_dir = Path(__file__).parent.parent.parent / "opensable" / "skills"
@@ -97,17 +97,17 @@ class SkillsHub:
         self.installed_dir = self.skills_dir / "installed"
         self.community_dir = self.skills_dir / "community"  # Community skills
         self.cache_file = self.marketplace_dir / "cache.json"
-        
+
         # Create directories
         self.marketplace_dir.mkdir(parents=True, exist_ok=True)
         self.installed_dir.mkdir(parents=True, exist_ok=True)
         self.community_dir.mkdir(parents=True, exist_ok=True)
-        
+
         self.skills_catalog: Dict[str, Skill] = {}
-        
+
         # Skill Factory — autonomous skill creation engine
         self.factory = SkillFactory(config)
-        
+
     async def initialize(self):
         """Initialize skills hub"""
         logger.info("🛒 Initializing Skills Hub...")
@@ -115,44 +115,44 @@ class SkillsHub:
         await self._load_community_skills()  # Load community skills catalog
         await self._sync_with_remote()
         logger.info(f"✅ Skills Hub ready ({len(self.skills_catalog)} skills available)")
-    
+
     async def _load_community_skills(self):
         """Load community skills catalog"""
         catalog_file = self.community_dir / "skills_catalog.json"
-        
+
         if catalog_file.exists():
             try:
-                with open(catalog_file, 'r') as f:
+                with open(catalog_file, "r") as f:
                     data = json.load(f)
-                    
-                    for skill_entry in data.get('skills', []):
+
+                    for skill_entry in data.get("skills", []):
                         # Convert catalog entry to SableCore Skill
                         skill = Skill.from_catalog(skill_entry)
                         self.skills_catalog[skill.skill_id] = skill
                         logger.info(f"📦 Loaded community skill: {skill.name}")
-                        
+
             except Exception as e:
                 logger.error(f"Failed to load community skills: {e}")
-    
+
     async def _load_local_catalog(self):
         """Load locally cached skills catalog"""
         if self.cache_file.exists():
             try:
-                with open(self.cache_file, 'r') as f:
+                with open(self.cache_file, "r") as f:
                     data = json.load(f)
-                    for skill_data in data.get('skills', []):
+                    for skill_data in data.get("skills", []):
                         skill = Skill(**skill_data)
                         self.skills_catalog[skill.skill_id] = skill
                 logger.info(f"Loaded {len(self.skills_catalog)} skills from cache")
             except Exception as e:
                 logger.warning(f"Failed to load cache: {e}")
-    
+
     async def _sync_with_remote(self):
         """Sync with remote skills repository (GitHub, etc)"""
         # For now, we'll populate with example skills
         # In production, this would fetch from a remote API
         await self._populate_example_skills()
-    
+
     async def _populate_example_skills(self):
         """Populate with example skills"""
         example_skills = [
@@ -176,7 +176,7 @@ class SkillsHub:
                 "downloads": 1250,
                 "rating": 4.8,
                 "tags": ["web", "scraping", "data"],
-                "dependencies": ["aiohttp", "beautifulsoup4", "playwright"]
+                "dependencies": ["aiohttp", "beautifulsoup4", "playwright"],
             },
             {
                 "skill_id": "crypto_tracker",
@@ -196,7 +196,7 @@ class SkillsHub:
                 "downloads": 890,
                 "rating": 4.5,
                 "tags": ["crypto", "finance", "trading"],
-                "dependencies": ["aiohttp"]
+                "dependencies": ["aiohttp"],
             },
             {
                 "skill_id": "ai_image_gen",
@@ -212,7 +212,7 @@ class SkillsHub:
                 "downloads": 2100,
                 "rating": 4.9,
                 "tags": ["ai", "image", "generation"],
-                "dependencies": ["diffusers", "torch"]
+                "dependencies": ["diffusers", "torch"],
             },
             {
                 "skill_id": "email_automation",
@@ -231,7 +231,7 @@ class SkillsHub:
                 "downloads": 670,
                 "rating": 4.3,
                 "tags": ["email", "automation", "productivity"],
-                "dependencies": ["aiosmtplib"]
+                "dependencies": ["aiosmtplib"],
             },
             {
                 "skill_id": "social_media_poster",
@@ -249,76 +249,78 @@ class SkillsHub:
                 "downloads": 1450,
                 "rating": 4.7,
                 "tags": ["social", "marketing", "automation"],
-                "dependencies": ["tweepy", "instabot", "python-linkedin"]
-            }
+                "dependencies": ["tweepy", "instabot", "python-linkedin"],
+            },
         ]
-        
+
         for skill_data in example_skills:
-            skill_data['created_at'] = datetime.utcnow().isoformat()
-            skill_data['updated_at'] = datetime.utcnow().isoformat()
+            skill_data["created_at"] = datetime.utcnow().isoformat()
+            skill_data["updated_at"] = datetime.utcnow().isoformat()
             skill = Skill(**skill_data)
             self.skills_catalog[skill.skill_id] = skill
-        
+
         # Save to cache
         await self._save_cache()
-    
+
     async def _save_cache(self):
         """Save catalog to cache"""
         try:
             data = {
-                'skills': [skill.to_dict() for skill in self.skills_catalog.values()],
-                'updated_at': datetime.utcnow().isoformat()
+                "skills": [skill.to_dict() for skill in self.skills_catalog.values()],
+                "updated_at": datetime.utcnow().isoformat(),
             }
-            with open(self.cache_file, 'w') as f:
+            with open(self.cache_file, "w") as f:
                 json.dump(data, f, indent=2)
         except Exception as e:
             logger.error(f"Failed to save cache: {e}")
-    
+
     async def browse_skills(self, category: Optional[str] = None, limit: int = 10) -> List[Skill]:
         """Browse skills, optionally filtered by category"""
         skills = list(self.skills_catalog.values())
-        
+
         if category:
             skills = [s for s in skills if s.category == category]
-        
+
         # Sort by downloads
         skills.sort(key=lambda s: s.downloads, reverse=True)
-        
+
         return skills[:limit]
-    
+
     async def search_skills(self, query: str) -> List[Skill]:
         """Search skills by keyword"""
         query = query.lower()
         results = []
-        
+
         for skill in self.skills_catalog.values():
-            if (query in skill.name.lower() or 
-                query in skill.description.lower() or
-                any(query in tag for tag in (skill.tags or []))):
+            if (
+                query in skill.name.lower()
+                or query in skill.description.lower()
+                or any(query in tag for tag in (skill.tags or []))
+            ):
                 results.append(skill)
-        
+
         # Sort by rating
         results.sort(key=lambda s: s.rating, reverse=True)
-        
+
         return results
-    
+
     async def get_skill(self, skill_id: str) -> Optional[Skill]:
         """Get skill by ID"""
         return self.skills_catalog.get(skill_id)
-    
+
     async def install_skill(self, skill_id: str) -> bool:
         """Install a skill from the marketplace"""
         skill = await self.get_skill(skill_id)
-        
+
         if not skill:
             logger.error(f"Skill {skill_id} not found")
             return False
-        
+
         try:
             # Create skill file
             skill_file = self.installed_dir / f"{skill_id}.py"
-            
-            with open(skill_file, 'w') as f:
+
+            with open(skill_file, "w") as f:
                 f.write(f'''"""
 {skill.name}
 {skill.description}
@@ -329,46 +331,44 @@ Version: {skill.version}
 
 {skill.code}
 ''')
-            
+
             # Install dependencies
             if skill.dependencies:
                 logger.info(f"Installing dependencies: {', '.join(skill.dependencies)}")
                 # In production, use pip to install dependencies
                 # subprocess.run(['pip', 'install'] + skill.dependencies)
-            
+
             # Update download count
             skill.downloads += 1
             await self._save_cache()
-            
+
             logger.info(f"✅ Installed skill: {skill.name}")
             return True
-            
+
         except Exception as e:
             logger.error(f"Failed to install skill {skill_id}: {e}")
             return False
-    
+
     async def publish_skill(self, skill: Skill) -> bool:
         """Publish a skill to the marketplace"""
         try:
             # Generate skill ID
             if not skill.skill_id:
-                skill.skill_id = hashlib.md5(
-                    (skill.name + skill.author).encode()
-                ).hexdigest()[:12]
-            
+                skill.skill_id = hashlib.md5((skill.name + skill.author).encode()).hexdigest()[:12]
+
             skill.created_at = datetime.utcnow().isoformat()
             skill.updated_at = datetime.utcnow().isoformat()
-            
+
             self.skills_catalog[skill.skill_id] = skill
             await self._save_cache()
-            
+
             logger.info(f"✅ Published skill: {skill.name}")
             return True
-            
+
         except Exception as e:
             logger.error(f"Failed to publish skill: {e}")
             return False
-    
+
     async def get_installed_skills(self) -> List[str]:
         """Get list of installed skill IDs"""
         installed = []
@@ -376,14 +376,14 @@ Version: {skill.version}
             if file.stem != "__init__":
                 installed.append(file.stem)
         return installed
-    
+
     async def get_categories(self) -> List[str]:
         """Get all skill categories"""
         categories = set()
         for skill in self.skills_catalog.values():
             categories.add(skill.category)
         return sorted(list(categories))
-    
+
     def format_skill_info(self, skill: Skill) -> str:
         """Format skill information for display"""
         info = f"""

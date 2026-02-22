@@ -3,12 +3,17 @@ Tests for Enterprise features - RBAC, Multi-tenancy, Audit, SSO.
 """
 
 import pytest
-from datetime import datetime
-from unittest.mock import patch
 
 from opensable.core.enterprise import (
-    RBAC, MultiTenancy, AuditLogger, SSOProvider,
-    Permission, AuditAction, Role, Tenant, User, AuditLog
+    RBAC,
+    MultiTenancy,
+    AuditLogger,
+    SSOProvider,
+    Permission,
+    AuditAction,
+    Role,
+    Tenant,
+    User,
 )
 
 

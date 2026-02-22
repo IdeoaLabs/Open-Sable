@@ -2,6 +2,7 @@
 """
 SableCore CLI - Command-line interface for all features
 """
+
 import asyncio
 import sys
 from pathlib import Path
@@ -19,19 +20,19 @@ async def show_skills_hub():
     config = OpenSableConfig()
     hub = SkillsHub(config)
     await hub.initialize()
-    
+
     while True:
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("🛒 Sable Skills Hub")
-        print("="*60)
+        print("=" * 60)
         print("\n1. Browse all skills")
         print("2. Search skills")
         print("3. View installed skills")
         print("4. Install a skill")
         print("5. Back to main menu")
-        
+
         choice = input("\nSelect option: ").strip()
-        
+
         if choice == "1":
             await browse_skills(hub)
         elif choice == "2":
@@ -47,14 +48,14 @@ async def show_skills_hub():
 async def browse_skills(hub):
     """Browse skills by category"""
     categories = await hub.get_categories()
-    
+
     print("\n📂 Categories:")
     for i, cat in enumerate(categories, 1):
         print(f"{i}. {cat.title()}")
     print(f"{len(categories)+1}. All skills")
-    
+
     choice = input("\nSelect category: ").strip()
-    
+
     try:
         idx = int(choice) - 1
         if idx == len(categories):
@@ -64,12 +65,12 @@ async def browse_skills(hub):
         else:
             print("❌ Invalid choice")
             return
-        
+
         print(f"\n📦 Found {len(skills)} skills:\n")
         for skill in skills:
             print(hub.format_skill_info(skill))
             print()
-            
+
     except ValueError:
         print("❌ Invalid input")
 
@@ -77,16 +78,16 @@ async def browse_skills(hub):
 async def search_skills(hub):
     """Search skills"""
     query = input("\n🔍 Enter search query: ").strip()
-    
+
     if not query:
         return
-    
+
     skills = await hub.search_skills(query)
-    
+
     if not skills:
         print(f"\n❌ No skills found for '{query}'")
         return
-    
+
     print(f"\n📦 Found {len(skills)} skills:\n")
     for skill in skills:
         print(hub.format_skill_info(skill))
@@ -96,11 +97,11 @@ async def search_skills(hub):
 async def show_installed(hub):
     """Show installed skills"""
     installed = await hub.get_installed_skills()
-    
+
     if not installed:
         print("\n📦 No skills installed yet")
         return
-    
+
     print(f"\n📦 Installed skills ({len(installed)}):\n")
     for skill_id in installed:
         skill = await hub.get_skill(skill_id)
@@ -112,22 +113,22 @@ async def show_installed(hub):
 async def install_skill(hub):
     """Install a skill"""
     skill_id = input("\n📥 Enter skill ID to install: ").strip()
-    
+
     if not skill_id:
         return
-    
+
     skill = await hub.get_skill(skill_id)
-    
+
     if not skill:
         print(f"\n❌ Skill '{skill_id}' not found")
         return
-    
+
     print("\nSkill details:")
     print(hub.format_skill_info(skill))
-    
+
     confirm = input("\nInstall this skill? (y/N): ").strip().lower()
-    
-    if confirm == 'y':
+
+    if confirm == "y":
         success = await hub.install_skill(skill_id)
         if success:
             print(f"\n✅ Successfully installed {skill.name}!")
@@ -137,10 +138,10 @@ async def install_skill(hub):
 
 async def main_menu():
     """Main CLI menu"""
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("🤖 SableCore - Advanced AI Assistant Platform")
-    print("="*60)
-    
+    print("=" * 60)
+
     print("\n📋 Main Menu:\n")
     print("1. 🎯 Run Onboarding Wizard")
     print("2. 🛒 Skills Marketplace")
@@ -150,9 +151,9 @@ async def main_menu():
     print("6. 🔧 System Configuration")
     print("7. 📊 View Statistics")
     print("8. 🚪 Exit")
-    
+
     choice = input("\nSelect option: ").strip()
-    
+
     if choice == "1":
         await run_onboarding()
     elif choice == "2":
@@ -179,11 +180,11 @@ async def main_menu():
 def show_config():
     """Show current configuration"""
     print("\n🔧 System Configuration:\n")
-    
+
     config_file = Path(__file__).parent / "config" / "config.yaml"
-    
+
     if config_file.exists():
-        with open(config_file, 'r') as f:
+        with open(config_file, "r") as f:
             print(f.read())
     else:
         print("No configuration file found. Run onboarding wizard to create one.")
@@ -192,20 +193,22 @@ def show_config():
 async def show_stats():
     """Show system statistics"""
     print("\n📊 System Statistics:\n")
-    
+
     # Check if processes are running
     import subprocess
-    
+
     try:
         # Check WhatsApp bridge
-        result = subprocess.run(['pgrep', '-f', 'bridge.js'], capture_output=True)
+        result = subprocess.run(["pgrep", "-f", "bridge.js"], capture_output=True)
         whatsapp = "🟢 Running" if result.returncode == 0 else "🔴 Stopped"
     except:
         whatsapp = "❓ Unknown"
-    
+
     print(f"WhatsApp Bridge: {whatsapp}")
-    print(f"Skills Installed: {len(list((Path(__file__).parent / 'opensable' / 'skills' / 'installed').glob('*.py')))}")
-    print(f"Memory Used: Check with 'python -m memory_profiler main.py'")
+    print(
+        f"Skills Installed: {len(list((Path(__file__).parent / 'opensable' / 'skills' / 'installed').glob('*.py')))}"
+    )
+    print("Memory Used: Check with 'python -m memory_profiler main.py'")
     print()
 
 
@@ -220,6 +223,7 @@ async def interactive_loop():
         except Exception as e:
             print(f"\n❌ Error: {e}")
             import traceback
+
             traceback.print_exc()
 
 

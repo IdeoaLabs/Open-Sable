@@ -2,10 +2,13 @@
 Tests for Image Skill - Generation, OCR, Analysis.
 """
 
-import pytest
 from opensable.skills.image_skill import (
-    ImageGenerator, OCREngine, ImageAnalyzer,
-    GeneratedImage, OCRResult, ImageAnalysis
+    ImageGenerator,
+    OCREngine,
+    ImageAnalyzer,
+    GeneratedImage,
+    OCRResult,
+    ImageAnalysis,
 )
 
 

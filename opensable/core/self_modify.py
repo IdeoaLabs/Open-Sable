@@ -8,19 +8,18 @@ Features:
 - Audit trail of all changes
 - Sandboxed code evaluation before applying
 """
+
 import ast
-import copy
 import hashlib
 import importlib
 import inspect
 import json
 import logging
 import sys
-import textwrap
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +27,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class Modification:
     """Record of a single self-modification."""
+
     mod_id: str
     target_module: str
     target_name: str
@@ -43,6 +43,7 @@ class Modification:
 @dataclass
 class ModificationResult:
     """Result of a modification attempt."""
+
     success: bool
     modification: Modification
     error: Optional[str] = None
@@ -80,12 +81,8 @@ class SelfModificationEngine:
             return {
                 "module": module_name,
                 "file": getattr(mod, "__file__", None),
-                "classes": [
-                    name for name, obj in members if inspect.isclass(obj)
-                ],
-                "functions": [
-                    name for name, obj in members if inspect.isfunction(obj)
-                ],
+                "classes": [name for name, obj in members if inspect.isclass(obj)],
+                "functions": [name for name, obj in members if inspect.isfunction(obj)],
                 "doc": inspect.getdoc(mod),
             }
         except Exception as e:
@@ -117,13 +114,9 @@ class SelfModificationEngine:
 
         # Extract defined names
         functions = [
-            n.name for n in ast.walk(tree)
-            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+            n.name for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
         ]
-        classes = [
-            n.name for n in ast.walk(tree)
-            if isinstance(n, ast.ClassDef)
-        ]
+        classes = [n.name for n in ast.walk(tree) if isinstance(n, ast.ClassDef)]
 
         return {
             "valid": True,
@@ -171,8 +164,7 @@ class SelfModificationEngine:
             if original is None:
                 mod.success = False
                 return ModificationResult(
-                    success=False, modification=mod,
-                    error=f"{func_name} not found in {module_name}"
+                    success=False, modification=mod, error=f"{func_name} not found in {module_name}"
                 )
 
             # 2. Snapshot original
@@ -183,8 +175,7 @@ class SelfModificationEngine:
             validation = self.validate_code(new_code)
             if not validation["valid"]:
                 return ModificationResult(
-                    success=False, modification=mod,
-                    error=validation["error"]
+                    success=False, modification=mod, error=validation["error"]
                 )
 
             # 4. Compile and extract the function
@@ -193,8 +184,7 @@ class SelfModificationEngine:
             new_func = namespace.get(func_name)
             if new_func is None:
                 return ModificationResult(
-                    success=False, modification=mod,
-                    error=f"New code does not define '{func_name}'"
+                    success=False, modification=mod, error=f"New code does not define '{func_name}'"
                 )
 
             # 5. Apply
@@ -265,15 +255,17 @@ class SelfModificationEngine:
             records = []
             if self._audit_file.exists():
                 records = json.loads(self._audit_file.read_text())
-            records.append({
-                "mod_id": mod.mod_id,
-                "module": mod.target_module,
-                "name": mod.target_name,
-                "type": mod.change_type,
-                "description": mod.description,
-                "applied_at": mod.applied_at,
-                "success": mod.success,
-            })
+            records.append(
+                {
+                    "mod_id": mod.mod_id,
+                    "module": mod.target_module,
+                    "name": mod.target_name,
+                    "type": mod.change_type,
+                    "description": mod.description,
+                    "applied_at": mod.applied_at,
+                    "success": mod.success,
+                }
+            )
             self._audit_file.write_text(json.dumps(records, indent=2))
         except Exception as e:
             logger.error(f"Failed to save audit log: {e}")

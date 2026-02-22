@@ -1,4 +1,4 @@
 # CLI package
 from .commands import cli
 
-__all__ = ['cli']
+__all__ = ["cli"]

@@ -11,20 +11,21 @@ Features:
 - Context assembly for LLM prompts
 - Collection management
 """
+
 import hashlib
-import json
 import logging
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
 try:
     import chromadb
     from chromadb.config import Settings
+
     CHROMADB_AVAILABLE = True
 except ImportError:
     CHROMADB_AVAILABLE = False
@@ -34,6 +35,7 @@ except ImportError:
 @dataclass
 class Document:
     """A document to be ingested into the RAG store."""
+
     doc_id: str
     content: str
     metadata: Dict[str, Any] = field(default_factory=dict)
@@ -44,6 +46,7 @@ class Document:
 @dataclass
 class Chunk:
     """A chunk of a document."""
+
     chunk_id: str
     doc_id: str
     content: str
@@ -54,6 +57,7 @@ class Chunk:
 @dataclass
 class SearchResult:
     """A single search result."""
+
     chunk_id: str
     content: str
     score: float
@@ -77,10 +81,10 @@ class Chunker:
     @staticmethod
     def by_sentences(text: str, max_sentences: int = 5) -> List[str]:
         """Split text into chunks of N sentences."""
-        sentences = re.split(r'(?<=[.!?])\s+', text)
+        sentences = re.split(r"(?<=[.!?])\s+", text)
         chunks = []
         for i in range(0, len(sentences), max_sentences):
-            chunk = " ".join(sentences[i:i + max_sentences])
+            chunk = " ".join(sentences[i : i + max_sentences])
             if chunk.strip():
                 chunks.append(chunk)
         return chunks
@@ -88,7 +92,7 @@ class Chunker:
     @staticmethod
     def by_paragraphs(text: str) -> List[str]:
         """Split text by paragraph boundaries."""
-        paragraphs = re.split(r'\n\s*\n', text)
+        paragraphs = re.split(r"\n\s*\n", text)
         return [p.strip() for p in paragraphs if p.strip()]
 
 
@@ -113,9 +117,7 @@ class RAGEngine:
 
         if CHROMADB_AVAILABLE:
             try:
-                persist_dir = str(
-                    Path(__file__).parent.parent.parent / "data" / "vectordb"
-                )
+                persist_dir = str(Path(__file__).parent.parent.parent / "data" / "vectordb")
                 self._client = chromadb.PersistentClient(path=persist_dir)
                 self._collection = self._client.get_or_create_collection(
                     name=collection_name,
@@ -205,9 +207,7 @@ class RAGEngine:
     # Search
     # ------------------------------------------------------------------
 
-    async def search(
-        self, query: str, top_k: int = 5
-    ) -> List[SearchResult]:
+    async def search(self, query: str, top_k: int = 5) -> List[SearchResult]:
         """Search for relevant chunks using vector similarity."""
         # ChromaDB search
         if self._collection is not None and self._collection.count() > 0:
@@ -221,12 +221,14 @@ class RAGEngine:
                     score = 1.0
                     if results.get("distances") and results["distances"][0]:
                         score = 1.0 - results["distances"][0][i]
-                    search_results.append(SearchResult(
-                        chunk_id=results["ids"][0][i],
-                        content=doc,
-                        score=score,
-                        metadata=results["metadatas"][0][i] if results.get("metadatas") else {},
-                    ))
+                    search_results.append(
+                        SearchResult(
+                            chunk_id=results["ids"][0][i],
+                            content=doc,
+                            score=score,
+                            metadata=results["metadatas"][0][i] if results.get("metadatas") else {},
+                        )
+                    )
                 return search_results
             except Exception as e:
                 logger.warning(f"ChromaDB search failed, using fallback: {e}")
@@ -259,9 +261,7 @@ class RAGEngine:
     # Context assembly
     # ------------------------------------------------------------------
 
-    async def get_context(
-        self, query: str, max_tokens: int = 2000, top_k: int = 5
-    ) -> str:
+    async def get_context(self, query: str, max_tokens: int = 2000, top_k: int = 5) -> str:
         """
         Retrieve relevant context for an LLM prompt.
 
@@ -305,9 +305,7 @@ class RAGEngine:
         if self._client is not None:
             try:
                 self._client.delete_collection(self.collection_name)
-                self._collection = self._client.get_or_create_collection(
-                    name=self.collection_name
-                )
+                self._collection = self._client.get_or_create_collection(name=self.collection_name)
             except Exception as e:
                 logger.warning(f"Failed to clear ChromaDB collection: {e}")
         logger.info("🗑️ RAG engine cleared")

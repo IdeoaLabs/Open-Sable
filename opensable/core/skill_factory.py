@@ -9,11 +9,11 @@ Skill structure:
   - Optional scripts/, references/, assets/ directories
   - Progressive disclosure: metadata → body → bundled resources
 """
+
 import json
 import logging
 import re
 import ast
-import hashlib
 import subprocess
 import tempfile
 import os
@@ -29,9 +29,11 @@ logger = logging.getLogger(__name__)
 # Skill Blueprint — describes a skill before it is generated
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class SkillBlueprint:
     """Blueprint describing what a skill should do before code is generated."""
+
     name: str
     description: str
     category: str
@@ -57,14 +59,10 @@ class SkillBlueprint:
         if self.examples:
             parts.append(f"Usage examples: {'; '.join(self.examples)}")
         if self.inputs:
-            inputs_str = ", ".join(
-                f"{i['name']}: {i.get('type', 'str')}" for i in self.inputs
-            )
+            inputs_str = ", ".join(f"{i['name']}: {i.get('type', 'str')}" for i in self.inputs)
             parts.append(f"Inputs: {inputs_str}")
         if self.outputs:
-            outputs_str = ", ".join(
-                f"{o['name']}: {o.get('type', 'Any')}" for o in self.outputs
-            )
+            outputs_str = ", ".join(f"{o['name']}: {o.get('type', 'Any')}" for o in self.outputs)
             parts.append(f"Expected outputs: {outputs_str}")
         if self.dependencies:
             parts.append(f"Allowed imports: {', '.join(self.dependencies)}")
@@ -100,7 +98,6 @@ async def {func_name}({params}) -> dict:
         except Exception as e:
             return {{"error": str(e)}}
 ''',
-
     "data_processor": '''"""
 {name} — {description}
 """
@@ -116,7 +113,6 @@ def {func_name}({params}) -> dict:
     except Exception as e:
         return {{"error": str(e)}}
 ''',
-
     "file_handler": '''"""
 {name} — {description}
 """
@@ -135,7 +131,6 @@ def {func_name}({params}) -> dict:
     except Exception as e:
         return {{"error": str(e)}}
 ''',
-
     "cli_wrapper": '''"""
 {name} — {description}
 """
@@ -158,7 +153,6 @@ def {func_name}({params}) -> dict:
     except Exception as e:
         return {{"error": str(e)}}
 ''',
-
     "storage_manager": '''"""
 {name} — {description}
 """
@@ -200,7 +194,6 @@ def remove_{item_name}(item_id: int) -> dict:
     _save(items)
     return {{"removed": item_id}}
 ''',
-
     "generic": '''"""
 {name} — {description}
 """
@@ -222,7 +215,7 @@ def {func_name}({params}) -> dict:
 # ---------------------------------------------------------------------------
 
 JS_TEMPLATES = {
-    "api_fetcher": '''// {name} — {description}
+    "api_fetcher": """// {name} — {description}
 
 /**
  * {description}
@@ -241,9 +234,8 @@ async function {func_name}({params}) {{
 }}
 
 module.exports = {{ {func_name} }};
-''',
-
-    "data_processor": '''// {name} — {description}
+""",
+    "data_processor": """// {name} — {description}
 
 /**
  * {description}
@@ -260,9 +252,8 @@ function {func_name}({params}) {{
 }}
 
 module.exports = {{ {func_name} }};
-''',
-
-    "file_handler": '''// {name} — {description}
+""",
+    "file_handler": """// {name} — {description}
 const fs = require("fs");
 const path = require("path");
 
@@ -283,9 +274,8 @@ function {func_name}(filePath) {{
 }}
 
 module.exports = {{ {func_name} }};
-''',
-
-    "cli_wrapper": '''// {name} — {description}
+""",
+    "cli_wrapper": """// {name} — {description}
 const {{ execSync }} = require("child_process");
 
 /**
@@ -303,9 +293,8 @@ function {func_name}(command) {{
 }}
 
 module.exports = {{ {func_name} }};
-''',
-
-    "generic": '''// {name} — {description}
+""",
+    "generic": """// {name} — {description}
 
 /**
  * {description}
@@ -322,12 +311,12 @@ function {func_name}({params}) {{
 }}
 
 module.exports = {{ {func_name} }};
-''',
+""",
 }
 
 
 RUST_TEMPLATES = {
-    "api_fetcher": '''//! {name} — {description}
+    "api_fetcher": """//! {name} — {description}
 
 use reqwest;
 use serde_json::Value;
@@ -340,9 +329,8 @@ pub async fn {func_name}({params}) -> Result<Value, Box<dyn Error>> {{
     let data: Value = resp.json().await?;
     Ok(data)
 }}
-''',
-
-    "data_processor": '''//! {name} — {description}
+""",
+    "data_processor": """//! {name} — {description}
 
 use serde_json::{{json, Value}};
 use std::error::Error;
@@ -353,9 +341,8 @@ pub fn {func_name}({params}) -> Result<Value, Box<dyn Error>> {{
     let result = {processing_logic};
     Ok(json!({{ "success": true, "result": result }}))
 }}
-''',
-
-    "file_handler": '''//! {name} — {description}
+""",
+    "file_handler": """//! {name} — {description}
 
 use std::fs;
 use std::path::Path;
@@ -377,9 +364,8 @@ pub fn {func_name}(file_path: &str) -> Result<Value, Box<dyn Error>> {{
         "size": size
     }}))
 }}
-''',
-
-    "cli_wrapper": '''//! {name} — {description}
+""",
+    "cli_wrapper": """//! {name} — {description}
 
 use std::process::Command;
 use serde_json::{{json, Value}};
@@ -396,9 +382,8 @@ pub fn {func_name}(cmd: &str, args: &[&str]) -> Result<Value, Box<dyn Error>> {{
         "stderr": stderr
     }}))
 }}
-''',
-
-    "generic": '''//! {name} — {description}
+""",
+    "generic": """//! {name} — {description}
 
 use serde_json::{{json, Value}};
 use std::error::Error;
@@ -409,7 +394,7 @@ pub fn {func_name}({params}) -> Result<Value, Box<dyn Error>> {{
     {implementation}
     Ok(json!({{ "success": true, "result": result }}))
 }}
-''',
+""",
 }
 
 
@@ -417,12 +402,19 @@ pub fn {func_name}({params}) -> Result<Value, Box<dyn Error>> {{
 # Validation helpers
 # ---------------------------------------------------------------------------
 
+
 class SkillValidator:
     """Validate generated skill code for safety and correctness."""
 
     FORBIDDEN_IMPORTS = {
-        "os.system", "subprocess.call", "eval", "exec",
-        "__import__", "importlib", "ctypes", "pickle.loads",
+        "os.system",
+        "subprocess.call",
+        "eval",
+        "exec",
+        "__import__",
+        "importlib",
+        "ctypes",
+        "pickle.loads",
     }
 
     DANGEROUS_PATTERNS = [
@@ -431,8 +423,8 @@ class SkillValidator:
         r"__import__\s*\(",
         r"eval\s*\(",
         r"exec\s*\(",
-        r"shutil\.rmtree\s*\(\s*['\"/]",   # rm root/home
-        r"open\s*\(['\"]\/etc",              # system files
+        r"shutil\.rmtree\s*\(\s*['\"/]",  # rm root/home
+        r"open\s*\(['\"]\/etc",  # system files
     ]
 
     @classmethod
@@ -477,8 +469,7 @@ class SkillValidator:
                 isinstance(node.body[0], ast.Expr)
                 and isinstance(node.body[0].value, (ast.Str, ast.Constant))
                 for node in ast.walk(tree)
-                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-                and node.body
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.body
             )
             return {
                 "has_functions": len(functions) > 0,
@@ -492,9 +483,7 @@ class SkillValidator:
     def run_sandbox_test(cls, code: str, timeout: int = 10) -> Dict[str, Any]:
         """Execute code in an isolated process to verify it loads cleanly."""
         test_code = code + "\n\nprint('__SKILL_LOAD_OK__')\n"
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".py", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
             f.write(test_code)
             f.flush()
             try:
@@ -551,6 +540,7 @@ class SkillValidator:
 # ---------------------------------------------------------------------------
 # SKILL.md Generator — creates portable skill definition files
 # ---------------------------------------------------------------------------
+
 
 class SkillMDGenerator:
     """Generate SKILL.md files with YAML frontmatter."""
@@ -609,6 +599,7 @@ class SkillMDGenerator:
 # ---------------------------------------------------------------------------
 # Skill Factory — the main engine
 # ---------------------------------------------------------------------------
+
 
 class SkillFactory:
     """
@@ -671,9 +662,7 @@ class SkillFactory:
         # Auto-detect properties from description
         desc_lower = description.lower()
 
-        async_required = any(
-            kw in desc_lower for kw in ["api", "http", "fetch", "download", "web"]
-        )
+        async_required = any(kw in desc_lower for kw in ["api", "http", "fetch", "download", "web"])
         needs_network = any(
             kw in desc_lower for kw in ["api", "web", "url", "http", "download", "fetch"]
         )
@@ -1011,8 +1000,7 @@ def {func_name}({params}) -> dict:
         if blueprint.inputs:
             # Rust-style parameters
             params = ", ".join(
-                f"{i['name']}: &{self._rust_type(i.get('type', 'str'))}"
-                for i in blueprint.inputs
+                f"{i['name']}: &{self._rust_type(i.get('type', 'str'))}" for i in blueprint.inputs
             )
             first_param = blueprint.inputs[0]["name"]
         else:
@@ -1030,8 +1018,8 @@ def {func_name}({params}) -> dict:
                 params=params,
                 first_param=first_param,
                 api_url="https://api.example.com/v1",
-                processing_logic=f'serde_json::to_value({first_param})?',
-                implementation=f'let result = serde_json::to_value({first_param})?;',
+                processing_logic=f"serde_json::to_value({first_param})?",
+                implementation=f"let result = serde_json::to_value({first_param})?;",
             )
         except KeyError:
             return templates["generic"].format(
@@ -1040,7 +1028,7 @@ def {func_name}({params}) -> dict:
                 func_name=func_name,
                 params=params,
                 first_param=first_param,
-                implementation=f'let result = serde_json::to_value({first_param})?;',
+                implementation=f"let result = serde_json::to_value({first_param})?;",
             )
 
     @staticmethod
@@ -1094,7 +1082,9 @@ def {func_name}({params}) -> dict:
             examples=examples,
             inputs=inputs,
         )
-        logger.info(f"  📋 Blueprint: {blueprint.complexity} complexity, template: {self.select_template(blueprint)}")
+        logger.info(
+            f"  📋 Blueprint: {blueprint.complexity} complexity, template: {self.select_template(blueprint)}"
+        )
 
         # Step 2: Generate code
         if custom_code:
@@ -1125,7 +1115,7 @@ def {func_name}({params}) -> dict:
             skill_body += f"- {ex}\n"
         skill_body += f"\n## Implementation\n\nSee `scripts/{skill_slug}.py` for the skill code.\n"
         if blueprint.triggers:
-            skill_body += f"\n## Triggers\n\n"
+            skill_body += "\n## Triggers\n\n"
             for t in blueprint.triggers:
                 skill_body += f"- `{t}`\n"
 
@@ -1186,9 +1176,7 @@ def {func_name}({params}) -> dict:
 
     def _register_in_catalog(self, blueprint: SkillBlueprint, code: str):
         """Register the new skill in the community skills catalog."""
-        catalog_path = (
-            self.skills_dir / "community" / "skills_catalog.json"
-        )
+        catalog_path = self.skills_dir / "community" / "skills_catalog.json"
         try:
             if catalog_path.exists():
                 catalog = json.loads(catalog_path.read_text())
@@ -1198,26 +1186,26 @@ def {func_name}({params}) -> dict:
             slug = blueprint.name.lower().replace(" ", "_").replace("-", "_")
 
             # Remove existing entry if any
-            catalog["skills"] = [
-                s for s in catalog["skills"] if s.get("id") != slug
-            ]
+            catalog["skills"] = [s for s in catalog["skills"] if s.get("id") != slug]
 
             # Add new entry
-            catalog["skills"].append({
-                "id": slug,
-                "name": blueprint.name,
-                "description": blueprint.description,
-                "category": blueprint.category,
-                "function": code,
-                "triggers": blueprint.triggers,
-                "examples": blueprint.examples,
-                "author": "SableCore SkillFactory",
-                "version": "1.0.0",
-                "rating": 0.0,
-                "downloads": 0,
-                "tags": [blueprint.category] + blueprint.triggers[:3],
-                "auto_generated": True,
-            })
+            catalog["skills"].append(
+                {
+                    "id": slug,
+                    "name": blueprint.name,
+                    "description": blueprint.description,
+                    "category": blueprint.category,
+                    "function": code,
+                    "triggers": blueprint.triggers,
+                    "examples": blueprint.examples,
+                    "author": "SableCore SkillFactory",
+                    "version": "1.0.0",
+                    "rating": 0.0,
+                    "downloads": 0,
+                    "tags": [blueprint.category] + blueprint.triggers[:3],
+                    "auto_generated": True,
+                }
+            )
 
             catalog["updated"] = datetime.now().isoformat()
             catalog_path.write_text(json.dumps(catalog, indent=2))
@@ -1229,9 +1217,7 @@ def {func_name}({params}) -> dict:
     # Batch creation — create multiple skills at once
     # -------------------------------------------------------------------
 
-    async def create_skills_batch(
-        self, skill_specs: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
+    async def create_skills_batch(self, skill_specs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Create multiple skills from a list of specifications."""
         results = []
         for spec in skill_specs:
@@ -1295,21 +1281,19 @@ def {func_name}({params}) -> dict:
                     name = match.group(1).strip() if match else skill_dir.name
                     match_desc = re.search(r"description:\s*(.+)", md)
                     desc = match_desc.group(1).strip() if match_desc else ""
-                    skills.append({
-                        "name": name,
-                        "description": desc,
-                        "directory": str(skill_dir),
-                        "slug": skill_dir.name,
-                    })
+                    skills.append(
+                        {
+                            "name": name,
+                            "description": desc,
+                            "directory": str(skill_dir),
+                            "slug": skill_dir.name,
+                        }
+                    )
         return skills
 
     def get_installed_skills(self) -> List[str]:
         """List all installed skill slugs."""
-        return [
-            f.stem
-            for f in self.installed_dir.glob("*.py")
-            if f.stem != "__init__"
-        ]
+        return [f.stem for f in self.installed_dir.glob("*.py") if f.stem != "__init__"]
 
     # -------------------------------------------------------------------
     # Helper methods
@@ -1323,11 +1307,31 @@ def {func_name}({params}) -> dict:
             if len(word) > 2:
                 triggers.append(word)
         # Add key nouns/verbs from description
-        keywords = re.findall(r'\b[a-z]{4,}\b', description.lower())
+        keywords = re.findall(r"\b[a-z]{4,}\b", description.lower())
         stop = {
-            "with", "from", "this", "that", "have", "will", "been", "were",
-            "does", "using", "also", "very", "just", "some", "more", "than",
-            "other", "into", "about", "between", "through", "after", "before",
+            "with",
+            "from",
+            "this",
+            "that",
+            "have",
+            "will",
+            "been",
+            "were",
+            "does",
+            "using",
+            "also",
+            "very",
+            "just",
+            "some",
+            "more",
+            "than",
+            "other",
+            "into",
+            "about",
+            "between",
+            "through",
+            "after",
+            "before",
         }
         for kw in keywords:
             if kw not in stop and kw not in triggers:
@@ -1346,10 +1350,19 @@ def {func_name}({params}) -> dict:
     def _category_emoji(self, category: str) -> str:
         """Map category to an emoji."""
         emoji_map = {
-            "search": "🔍", "utility": "🔧", "system": "🖥️",
-            "productivity": "📋", "development": "💻", "nlp": "📝",
-            "security": "🔒", "data": "📊", "web": "🌐",
-            "finance": "💰", "social": "👥", "ai": "🤖",
-            "communication": "💬", "media": "🎬",
+            "search": "🔍",
+            "utility": "🔧",
+            "system": "🖥️",
+            "productivity": "📋",
+            "development": "💻",
+            "nlp": "📝",
+            "security": "🔒",
+            "data": "📊",
+            "web": "🌐",
+            "finance": "💰",
+            "social": "👥",
+            "ai": "🤖",
+            "communication": "💬",
+            "media": "🎬",
         }
         return emoji_map.get(category, "⚡")

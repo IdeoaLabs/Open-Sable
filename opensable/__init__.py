@@ -13,7 +13,7 @@ __license__ = "MIT"
 try:
     from opensable.core.agent import SableAgent
     from opensable.core.config import load_config
-    
+
     __all__ = [
         "SableAgent",
         "load_config",

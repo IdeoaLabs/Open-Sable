@@ -131,6 +131,44 @@ target-version = ['py311']
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+exclude = [
+    "check_system.py",
+    "__pycache__",
+    "opensable.egg-info",
+    "venv",
+    "data",
+    "logs",
+    "whatsapp-bridge",
+    "venom-bot",
+]
+
+[tool.ruff.lint]
+select = ["F"]
+ignore = [
+    "F811",   # redefinition of unused name (overloads / re-exports)
+    "F841",   # local variable assigned but never used (common in try/except patterns)
+    "F821",   # undefined name (forward refs / conditional imports)
+]
+
+[tool.ruff.lint.per-file-ignores]
+# F401 in these files: imports inside try/except for availability checks
+"cli.py" = ["F401"]
+"demo.py" = ["F401"]
+"opensable/core/autonomous_mode.py" = ["F401"]
+"opensable/core/browser/browser_engine.py" = ["F401"]
+"opensable/core/computer_tools.py" = ["F401"]
+"opensable/core/pdf_parser.py" = ["F401"]
+"opensable/core/rag.py" = ["F401"]
+"opensable/core/voice.py" = ["F401"]
+"opensable/interfaces/discord_bot.py" = ["F401"]
+"opensable/interfaces/matrix_bot.py" = ["F401"]
+"opensable/interfaces/mobile_api.py" = ["F401"]
+"opensable/interfaces/whatsapp_bot.py" = ["F401"]
+"opensable/skills/advanced_scraper.py" = ["F401"]
+"opensable/skills/image_skill.py" = ["F401"]
+"opensable/skills/rag_skill.py" = ["F401"]
+"examples/*.py" = ["F401", "F841"]
+"tests/*.py" = ["F401"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

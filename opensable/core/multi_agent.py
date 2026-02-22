@@ -8,7 +8,7 @@ and distributed coordination across network nodes via the Gateway.
 
 import asyncio
 import logging
-from typing import Dict, List, Optional, Any, Callable
+from typing import Dict, List, Optional, Any
 from datetime import datetime
 from enum import Enum
 from dataclasses import dataclass, field
@@ -24,18 +24,20 @@ logger = logging.getLogger(__name__)
 
 class AgentRole(Enum):
     """Agent roles in multi-agent system"""
+
     COORDINATOR = "coordinator"  # Orchestrates other agents
-    RESEARCHER = "researcher"    # Searches and gathers information
-    ANALYST = "analyst"          # Analyzes data and provides insights
-    WRITER = "writer"            # Generates content
-    CODER = "coder"              # Writes code
-    REVIEWER = "reviewer"        # Reviews and validates output
-    EXECUTOR = "executor"        # Executes tasks
+    RESEARCHER = "researcher"  # Searches and gathers information
+    ANALYST = "analyst"  # Analyzes data and provides insights
+    WRITER = "writer"  # Generates content
+    CODER = "coder"  # Writes code
+    REVIEWER = "reviewer"  # Reviews and validates output
+    EXECUTOR = "executor"  # Executes tasks
 
 
 @dataclass
 class AgentTask:
     """Represents a task for an agent"""
+
     task_id: str
     role: AgentRole
     description: str
@@ -50,7 +52,7 @@ class AgentTask:
 
 class AgentPool:
     """Pool of specialized agents"""
-    
+
     # Role-specific system prompts
     ROLE_PROMPTS = {
         AgentRole.COORDINATOR: (
@@ -84,18 +86,18 @@ class AgentPool:
             "and suggest specific improvements."
         ),
     }
-    
+
     def __init__(self, config: Config):
         self.config = config
         self.agents: Dict[AgentRole, SableAgent] = {}
         self._initialized = False
-    
+
     async def initialize(self):
         """Initialize the agent pool — agents are created lazily on first use"""
         self._initialized = True
         logger.info(f"Initialized {len(self.ROLE_PROMPTS)} specialized agents")
         return self
-    
+
     async def _get_or_create_agent(self, role: AgentRole) -> SableAgent:
         """Lazily create and initialize an agent for the given role"""
         if role not in self.agents:
@@ -103,11 +105,11 @@ class AgentPool:
             await agent.initialize()
             self.agents[role] = agent
         return self.agents[role]
-    
+
     def get_agent(self, role: AgentRole) -> Optional[SableAgent]:
         """Get agent by role (may be None if not yet created)"""
         return self.agents.get(role)
-    
+
     def get_role_prompt(self, role: AgentRole) -> str:
         """Get the system prompt for a role"""
         return self.ROLE_PROMPTS.get(role, "")
@@ -115,131 +117,126 @@ class AgentPool:
 
 class MultiAgentOrchestrator:
     """Orchestrates multiple agents working together"""
-    
+
     def __init__(self, config: Config):
         self.config = config
         self.agent_pool = AgentPool(config)
         self.session_manager = SessionManager()
-        
+
         # Task tracking
         self.tasks: Dict[str, AgentTask] = {}
-        
+
         # Execution stats
         self.stats = {
-            'total_tasks': 0,
-            'completed_tasks': 0,
-            'failed_tasks': 0,
-            'total_agents_used': 0
+            "total_tasks": 0,
+            "completed_tasks": 0,
+            "failed_tasks": 0,
+            "total_agents_used": 0,
         }
-    
-    async def execute_workflow(self, 
-                               tasks: List[AgentTask],
-                               session_id: Optional[str] = None) -> Dict[str, Any]:
+
+    async def execute_workflow(
+        self, tasks: List[AgentTask], session_id: Optional[str] = None
+    ) -> Dict[str, Any]:
         """
         Execute a workflow of agent tasks
-        
+
         Args:
             tasks: List of tasks to execute
             session_id: Optional session ID for context
-            
+
         Returns:
             Dictionary with results and metadata
         """
         logger.info(f"Starting workflow with {len(tasks)} tasks")
-        
+
         # Store tasks
         for task in tasks:
             self.tasks[task.task_id] = task
-            self.stats['total_tasks'] += 1
-        
+            self.stats["total_tasks"] += 1
+
         # Build dependency graph
         dependency_graph = self._build_dependency_graph(tasks)
-        
+
         # Execute tasks in dependency order
         results = {}
-        
+
         for level in dependency_graph:
             # Execute all tasks in this level in parallel
             level_tasks = [self.tasks[task_id] for task_id in level]
-            
+
             logger.info(f"Executing {len(level_tasks)} tasks in parallel")
-            
-            level_results = await asyncio.gather(*[
-                self._execute_task(task, results, session_id)
-                for task in level_tasks
-            ])
-            
+
+            level_results = await asyncio.gather(
+                *[self._execute_task(task, results, session_id) for task in level_tasks]
+            )
+
             # Store results
             for task, result in zip(level_tasks, level_results):
                 results[task.task_id] = result
-        
+
         # Aggregate results
         successful = sum(1 for t in tasks if t.status == "completed")
         failed = sum(1 for t in tasks if t.status == "failed")
-        
+
         logger.info(f"Workflow completed: {successful} successful, {failed} failed")
-        
+
         return {
-            'success': failed == 0,
-            'total_tasks': len(tasks),
-            'successful_tasks': successful,
-            'failed_tasks': failed,
-            'results': results,
-            'tasks': [self._task_to_dict(t) for t in tasks]
+            "success": failed == 0,
+            "total_tasks": len(tasks),
+            "successful_tasks": successful,
+            "failed_tasks": failed,
+            "results": results,
+            "tasks": [self._task_to_dict(t) for t in tasks],
         }
-    
+
     def _build_dependency_graph(self, tasks: List[AgentTask]) -> List[List[str]]:
         """Build execution order based on dependencies"""
         # Simple topological sort
         task_map = {t.task_id: t for t in tasks}
         levels = []
         processed = set()
-        
+
         while len(processed) < len(tasks):
             # Find tasks with all dependencies satisfied
             current_level = []
-            
+
             for task in tasks:
                 if task.task_id in processed:
                     continue
-                
+
                 # Check if all dependencies are processed
-                deps_satisfied = all(
-                    dep in processed
-                    for dep in task.dependencies
-                )
-                
+                deps_satisfied = all(dep in processed for dep in task.dependencies)
+
                 if deps_satisfied:
                     current_level.append(task.task_id)
-            
+
             if not current_level:
                 # Circular dependency or error
                 logger.error("Circular dependency detected!")
                 break
-            
+
             levels.append(current_level)
             processed.update(current_level)
-        
+
         return levels
-    
-    async def _execute_task(self,
-                           task: AgentTask,
-                           previous_results: Dict[str, Any],
-                           session_id: Optional[str]) -> Any:
+
+    async def _execute_task(
+        self, task: AgentTask, previous_results: Dict[str, Any], session_id: Optional[str]
+    ) -> Any:
         """Execute a single agent task"""
         task.status = "running"
         task.started_at = datetime.utcnow()
-        
+
         try:
             # Get or create agent for this role (lazy init)
             agent = await self.agent_pool._get_or_create_agent(task.role)
-            
+
             if not agent:
                 raise ValueError(f"No agent found for role: {task.role}")
-            
+
             # Build context from dependencies
             context = self._build_context(task, previous_results)
-            
+
             # Build prompt with role-specific instructions
             role_prompt = self.agent_pool.get_role_prompt(task.role)
             prompt = f"""{role_prompt}
@@ -252,108 +249,102 @@ Input Data:
 {context}
 
 Complete this task and provide your output."""
-            
+
             # Get session
             session = None
             if session_id:
                 session = self.session_manager.get_session(session_id)
-            
+
             # Execute task
             logger.info(f"Agent {task.role.value} executing: {task.task_id}")
-            
+
             result = await agent.run(prompt, session)
-            
+
             # Mark completed
             task.status = "completed"
             task.completed_at = datetime.utcnow()
             task.result = result
-            
-            self.stats['completed_tasks'] += 1
-            self.stats['total_agents_used'] += 1
-            
+
+            self.stats["completed_tasks"] += 1
+            self.stats["total_agents_used"] += 1
+
             logger.info(f"Task completed: {task.task_id}")
-            
+
             return result
-            
+
         except Exception as e:
             logger.error(f"Task failed: {task.task_id} - {e}", exc_info=True)
-            
+
             task.status = "failed"
             task.completed_at = datetime.utcnow()
             task.error = str(e)
-            
-            self.stats['failed_tasks'] += 1
-            
+
+            self.stats["failed_tasks"] += 1
+
             return None
-    
+
     def _build_context(self, task: AgentTask, previous_results: Dict[str, Any]) -> str:
         """Build context from dependency results"""
         if not task.dependencies:
             return ""
-        
+
         context = "Previous Task Results:\n\n"
-        
+
         for dep_id in task.dependencies:
             dep_task = self.tasks.get(dep_id)
             result = previous_results.get(dep_id)
-            
+
             if dep_task and result:
                 context += f"Task: {dep_task.description}\n"
                 context += f"Result: {result}\n\n"
-        
+
         return context
-    
+
     def _task_to_dict(self, task: AgentTask) -> dict:
         """Convert task to dictionary"""
         return {
-            'task_id': task.task_id,
-            'role': task.role.value,
-            'description': task.description,
-            'status': task.status,
-            'dependencies': task.dependencies,
-            'started_at': task.started_at.isoformat() if task.started_at else None,
-            'completed_at': task.completed_at.isoformat() if task.completed_at else None,
-            'error': task.error
+            "task_id": task.task_id,
+            "role": task.role.value,
+            "description": task.description,
+            "status": task.status,
+            "dependencies": task.dependencies,
+            "started_at": task.started_at.isoformat() if task.started_at else None,
+            "completed_at": task.completed_at.isoformat() if task.completed_at else None,
+            "error": task.error,
         }
-    
-    async def delegate_task(self,
-                           description: str,
-                           role: AgentRole,
-                           context: Optional[str] = None) -> str:
+
+    async def delegate_task(
+        self, description: str, role: AgentRole, context: Optional[str] = None
+    ) -> str:
         """Delegate a single task to an agent"""
         import uuid
-        
+
         task = AgentTask(
             task_id=str(uuid.uuid4()),
             role=role,
             description=description,
-            input_data={'context': context} if context else {}
+            input_data={"context": context} if context else {},
         )
-        
+
         result = await self._execute_task(task, {}, None)
-        
+
         return result
-    
-    async def collaborative_task(self,
-                                description: str,
-                                roles: List[AgentRole]) -> Dict[str, Any]:
+
+    async def collaborative_task(self, description: str, roles: List[AgentRole]) -> Dict[str, Any]:
         """
         Have multiple agents collaborate on a task
         Each agent provides their perspective/contribution
         """
         logger.info(f"Collaborative task with {len(roles)} agents")
-        
+
         results = {}
-        
+
         # Execute in parallel
-        tasks = await asyncio.gather(*[
-            self.delegate_task(description, role)
-            for role in roles
-        ])
-        
+        tasks = await asyncio.gather(*[self.delegate_task(description, role) for role in roles])
+
         for role, result in zip(roles, tasks):
             results[role.value] = result
-        
+
         # Synthesize results
         synthesis_prompt = f"""Task: {description}
 
@@ -362,25 +353,24 @@ Multiple agents have provided their perspectives:
 {json.dumps(results, indent=2)}
 
 Synthesize these perspectives into a comprehensive, coherent response."""
-        
+
         # Use coordinator agent to synthesize
         coordinator = self.agent_pool.get_agent(AgentRole.COORDINATOR)
         final_result = await coordinator.run(synthesis_prompt, None)
-        
-        return {
-            'individual_results': results,
-            'synthesized_result': final_result
-        }
-    
+
+        return {"individual_results": results, "synthesized_result": final_result}
+
     def get_stats(self) -> dict:
         """Get orchestrator statistics"""
         return self.stats.copy()
 
-    async def route_complex_task(self, task_description: str, user_id: str = "default") -> Optional[str]:
+    async def route_complex_task(
+        self, task_description: str, user_id: str = "default"
+    ) -> Optional[str]:
         """
         Auto-route a complex task to the appropriate specialist(s).
         Returns the final synthesized result, or None if not applicable.
-        
+
         Routing heuristics:
         - Code-related → CODER + REVIEWER
         - Research/analysis → RESEARCHER + ANALYST
@@ -388,15 +378,42 @@ Synthesize these perspectives into a comprehensive, coherent response."""
         - Multi-step → full workflow
         """
         desc_lower = task_description.lower()
-        
+
         # Detect task type
-        code_keywords = ["write code", "implement", "programa", "function", "class", "script",
-                         "debug", "fix the code", "refactor", "code review", "algoritmo"]
-        research_keywords = ["research", "investigate", "analiza", "compare", "investiga",
-                            "pros and cons", "report on", "informe sobre"]
-        write_keywords = ["write an article", "write a blog", "escribe", "draft", "redacta",
-                         "essay", "summary of", "resumen"]
-        
+        code_keywords = [
+            "write code",
+            "implement",
+            "programa",
+            "function",
+            "class",
+            "script",
+            "debug",
+            "fix the code",
+            "refactor",
+            "code review",
+            "algoritmo",
+        ]
+        research_keywords = [
+            "research",
+            "investigate",
+            "analiza",
+            "compare",
+            "investiga",
+            "pros and cons",
+            "report on",
+            "informe sobre",
+        ]
+        write_keywords = [
+            "write an article",
+            "write a blog",
+            "escribe",
+            "draft",
+            "redacta",
+            "essay",
+            "summary of",
+            "resumen",
+        ]
+
         roles = []
         if any(kw in desc_lower for kw in code_keywords):
             roles = [AgentRole.CODER, AgentRole.REVIEWER]
@@ -404,10 +421,10 @@ Synthesize these perspectives into a comprehensive, coherent response."""
             roles = [AgentRole.RESEARCHER, AgentRole.ANALYST]
         elif any(kw in desc_lower for kw in write_keywords):
             roles = [AgentRole.WRITER, AgentRole.REVIEWER]
-        
+
         if not roles:
             return None  # Not a multi-agent task
-        
+
         logger.info(f"🤝 Multi-agent routing: {[r.value for r in roles]}")
         result = await self.collaborative_task(task_description, roles)
         return result.get("synthesized_result")
@@ -416,84 +433,86 @@ Synthesize these perspectives into a comprehensive, coherent response."""
 # Example workflow builders
 class WorkflowBuilder:
     """Helper to build common workflows"""
-    
+
     @staticmethod
     def research_and_write(topic: str) -> List[AgentTask]:
         """Build workflow: research → analyze → write → review"""
         import uuid
-        
+
         research_task = AgentTask(
             task_id=str(uuid.uuid4()),
             role=AgentRole.RESEARCHER,
             description=f"Research information about: {topic}",
-            input_data={'topic': topic}
+            input_data={"topic": topic},
         )
-        
+
         analysis_task = AgentTask(
             task_id=str(uuid.uuid4()),
             role=AgentRole.ANALYST,
             description=f"Analyze research findings about: {topic}",
-            input_data={'topic': topic},
-            dependencies=[research_task.task_id]
+            input_data={"topic": topic},
+            dependencies=[research_task.task_id],
         )
-        
+
         writing_task = AgentTask(
             task_id=str(uuid.uuid4()),
             role=AgentRole.WRITER,
             description=f"Write comprehensive article about: {topic}",
-            input_data={'topic': topic},
-            dependencies=[analysis_task.task_id]
+            input_data={"topic": topic},
+            dependencies=[analysis_task.task_id],
         )
-        
+
         review_task = AgentTask(
             task_id=str(uuid.uuid4()),
             role=AgentRole.REVIEWER,
             description=f"Review and improve article about: {topic}",
-            input_data={'topic': topic},
-            dependencies=[writing_task.task_id]
+            input_data={"topic": topic},
+            dependencies=[writing_task.task_id],
         )
-        
+
         return [research_task, analysis_task, writing_task, review_task]
-    
+
     @staticmethod
     def code_development(requirement: str) -> List[AgentTask]:
         """Build workflow: analyze → code → review"""
         import uuid
-        
+
         analysis_task = AgentTask(
             task_id=str(uuid.uuid4()),
             role=AgentRole.ANALYST,
             description=f"Analyze requirements and design solution for: {requirement}",
-            input_data={'requirement': requirement}
+            input_data={"requirement": requirement},
         )
-        
+
         coding_task = AgentTask(
             task_id=str(uuid.uuid4()),
             role=AgentRole.CODER,
             description=f"Implement solution for: {requirement}",
-            input_data={'requirement': requirement},
-            dependencies=[analysis_task.task_id]
+            input_data={"requirement": requirement},
+            dependencies=[analysis_task.task_id],
         )
-        
+
         review_task = AgentTask(
             task_id=str(uuid.uuid4()),
             role=AgentRole.REVIEWER,
             description=f"Review code for: {requirement}",
-            input_data={'requirement': requirement},
-            dependencies=[coding_task.task_id]
+            input_data={"requirement": requirement},
+            dependencies=[coding_task.task_id],
         )
-        
+
         return [analysis_task, coding_task, review_task]
 
 
 # ─── Distributed Multi-Agent Coordination ────────────────────────────────────
 
+
 @dataclass
 class RemoteNode:
     """Represents a remote agent node reachable over the Gateway."""
+
     node_id: str
     capabilities: List[str]
-    host: str = "local"          # "local" | hostname/IP
+    host: str = "local"  # "local" | hostname/IP
     last_seen: float = 0.0
     latency_ms: float = 0.0
     active_tasks: int = 0
@@ -523,7 +542,7 @@ class DistributedCoordinator:
         self.orchestrator = orchestrator
         self._nodes: Dict[str, RemoteNode] = {}
         self._pending: Dict[str, asyncio.Future] = {}  # request_id → Future
-        self._gateway = None   # set when gateway is available
+        self._gateway = None  # set when gateway is available
         self._heartbeat_task: Optional[asyncio.Task] = None
 
     # ── Node registry ─────────────────────────────────────────────────────────
@@ -531,6 +550,7 @@ class DistributedCoordinator:
     def register_node(self, node_id: str, capabilities: List[str], host: str = "local"):
         """Register a node (called when Gateway receives node.register)."""
         import time
+
         node = RemoteNode(
             node_id=node_id,
             capabilities=capabilities,
@@ -547,6 +567,7 @@ class DistributedCoordinator:
 
     def list_nodes(self) -> List[Dict[str, Any]]:
         import time
+
         now = time.time()
         return [
             {
@@ -565,9 +586,11 @@ class DistributedCoordinator:
     def _find_node_for_capability(self, capability: str) -> Optional[RemoteNode]:
         """Find the best node for a given capability (least loaded + alive)."""
         import time
+
         now = time.time()
         candidates = [
-            n for n in self._nodes.values()
+            n
+            for n in self._nodes.values()
             if capability in n.capabilities and (now - n.last_seen) < 120
         ]
         if not candidates:
@@ -598,18 +621,21 @@ class DistributedCoordinator:
         if self._gateway:
             # Broadcast to the node through the gateway's dispatch
             for client in self._gateway._clients:
-                if getattr(client, 'node_id', None) == node_id:
-                    await client.send({
-                        "type": "node.invoke",
-                        "capability": capability,
-                        "args": args,
-                        "request_id": request_id,
-                    })
+                if getattr(client, "node_id", None) == node_id:
+                    await client.send(
+                        {
+                            "type": "node.invoke",
+                            "capability": capability,
+                            "args": args,
+                            "request_id": request_id,
+                        }
+                    )
                     break
 
         try:
             result = await asyncio.wait_for(future, timeout=timeout)
             import time
+
             node.last_seen = time.time()
             return result
         except asyncio.TimeoutError:
@@ -638,8 +664,9 @@ class DistributedCoordinator:
 
         Falls back to local execution when no remote node matches.
         """
-        logger.info(f"🌐 Distributed workflow: {len(tasks)} tasks, "
-                     f"{len(self._nodes)} nodes available")
+        logger.info(
+            f"🌐 Distributed workflow: {len(tasks)} tasks, " f"{len(self._nodes)} nodes available"
+        )
 
         # Map roles to capabilities
         role_to_cap = {
@@ -656,9 +683,10 @@ class DistributedCoordinator:
         dependency_graph = self.orchestrator._build_dependency_graph(tasks)
 
         for level in dependency_graph:
-            level_tasks = [self.orchestrator.tasks.get(tid) or
-                          next(t for t in tasks if t.task_id == tid)
-                          for tid in level]
+            level_tasks = [
+                self.orchestrator.tasks.get(tid) or next(t for t in tasks if t.task_id == tid)
+                for tid in level
+            ]
 
             coros = []
             for task in level_tasks:
@@ -670,17 +698,19 @@ class DistributedCoordinator:
                     logger.info(f"🌐 Delegating '{task.task_id}' to node '{node.node_id}'")
                     coros.append(
                         self.delegate_to_node(
-                            node.node_id, cap,
-                            {"description": task.description, "input": task.input_data,
-                             "context": self.orchestrator._build_context(task, results)},
+                            node.node_id,
+                            cap,
+                            {
+                                "description": task.description,
+                                "input": task.input_data,
+                                "context": self.orchestrator._build_context(task, results),
+                            },
                         )
                     )
                 else:
                     # Local execution
                     logger.info(f"💻 Executing '{task.task_id}' locally")
-                    coros.append(
-                        self.orchestrator._execute_task(task, results, session_id)
-                    )
+                    coros.append(self.orchestrator._execute_task(task, results, session_id))
 
             level_results = await asyncio.gather(*coros, return_exceptions=True)
             for task, result in zip(level_tasks, level_results):
@@ -696,12 +726,12 @@ class DistributedCoordinator:
         remote_count = sum(1 for n in self._nodes.values() if n.active_tasks >= 0)
 
         return {
-            'success': failed == 0,
-            'total_tasks': len(tasks),
-            'successful_tasks': successful,
-            'failed_tasks': failed,
-            'nodes_used': remote_count,
-            'results': results,
+            "success": failed == 0,
+            "total_tasks": len(tasks),
+            "successful_tasks": successful,
+            "failed_tasks": failed,
+            "nodes_used": remote_count,
+            "results": results,
         }
 
     # ── Health monitoring ─────────────────────────────────────────────────────
@@ -712,12 +742,12 @@ class DistributedCoordinator:
 
     async def _health_loop(self, interval: float):
         import time
+
         while True:
             try:
                 await asyncio.sleep(interval)
                 now = time.time()
-                dead = [nid for nid, n in self._nodes.items()
-                        if (now - n.last_seen) > interval * 4]
+                dead = [nid for nid, n in self._nodes.items() if (now - n.last_seen) > interval * 4]
                 for nid in dead:
                     logger.warning(f"🌐 Node '{nid}' presumed dead, removing")
                     self.unregister_node(nid)
@@ -739,18 +769,18 @@ class DistributedCoordinator:
 
 if __name__ == "__main__":
     from opensable.core.config import load_config
-    
+
     config = load_config()
     orchestrator = MultiAgentOrchestrator(config)
-    
+
     async def test():
         # Build workflow
         workflow = WorkflowBuilder.research_and_write("quantum computing")
-        
+
         # Execute
         result = await orchestrator.execute_workflow(workflow)
-        
+
         print(f"Workflow result: {json.dumps(result, indent=2)}")
         print(f"Stats: {orchestrator.get_stats()}")
-    
+
     asyncio.run(test())

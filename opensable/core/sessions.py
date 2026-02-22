@@ -25,19 +25,20 @@ logger = logging.getLogger(__name__)
 @dataclass
 class Message:
     """Single message in conversation"""
+
     role: str  # "user", "assistant", "system"
     content: str
     timestamp: datetime = field(default_factory=datetime.utcnow)
     metadata: Dict[str, Any] = field(default_factory=dict)
-    
+
     def to_dict(self) -> dict:
         return {
             "role": self.role,
             "content": self.content,
             "timestamp": self.timestamp.isoformat(),
-            "metadata": self.metadata
+            "metadata": self.metadata,
         }
-    
+
     @classmethod
     def from_dict(cls, data: dict):
         data = data.copy()
@@ -48,10 +49,11 @@ class Message:
 @dataclass
 class SessionConfig:
     """Session-specific configuration — per-session overrides"""
+
     model: Optional[str] = None
-    thinking_level: str = "medium"   # off | minimal | low | medium | high | xhigh
+    thinking_level: str = "medium"  # off | minimal | low | medium | high | xhigh
     verbose: bool = False
-    use_voice: bool = False           # kept as use_voice for compat
+    use_voice: bool = False  # kept as use_voice for compat
     auto_compact: bool = True
     max_history: int = 50
 
@@ -63,11 +65,7 @@ class Session:
     """User conversation session — isolated per (channel, user_id)"""
 
     def __init__(
-        self,
-        session_id: str,
-        user_id: str,
-        channel: str,
-        config: Optional[SessionConfig] = None
+        self, session_id: str, user_id: str, channel: str, config: Optional[SessionConfig] = None
     ):
         self.id = session_id
         self.user_id = user_id
@@ -90,11 +88,7 @@ class Session:
 
     def add_message(self, role: str, content: str, metadata: Optional[dict] = None):
         """Append a message and auto-compact when limit is reached."""
-        self.messages.append(Message(
-            role=role,
-            content=content,
-            metadata=metadata or {}
-        ))
+        self.messages.append(Message(role=role, content=content, metadata=metadata or {}))
         self.message_count += 1
         self.updated_at = datetime.utcnow()
 
@@ -119,7 +113,9 @@ class Session:
     def _trim_history(self):
         """Internal trim when auto_compact kicks in."""
         system = [m for m in self.messages if m.role == "system"]
-        recent = [m for m in self.messages if m.role != "system"][-(self.config.max_history - len(system)):]
+        recent = [m for m in self.messages if m.role != "system"][
+            -(self.config.max_history - len(system)) :
+        ]
         self.messages = system + recent
 
     def get_history(self, limit: Optional[int] = None) -> List[dict]:
@@ -246,7 +242,9 @@ class SessionManager:
             # Honour caller's config overrides (e.g. default model)
             if config and config.model and not session.config.model:
                 session.config.model = config.model
-            logger.info(f"Loaded session {sid} ({channel}:{user_id}) — {len(session.messages)} msgs")
+            logger.info(
+                f"Loaded session {sid} ({channel}:{user_id}) — {len(session.messages)} msgs"
+            )
 
         self.active[sid] = session
         return session
@@ -268,8 +266,7 @@ class SessionManager:
     def cleanup_old_sessions(self):
         """Evict sessions inactive for > session_timeout from memory (keep on disk)."""
         now = datetime.utcnow()
-        evict = [sid for sid, s in self.active.items()
-                 if now - s.updated_at > self.session_timeout]
+        evict = [sid for sid, s in self.active.items() if now - s.updated_at > self.session_timeout]
         for sid in evict:
             self._save(self.active[sid])
             del self.active[sid]
@@ -324,4 +321,3 @@ class SessionManager:
                 pass
         if loaded:
             logger.info(f"SessionManager: restored {loaded} sessions from disk")
-

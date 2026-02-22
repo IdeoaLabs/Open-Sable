@@ -3,8 +3,7 @@ Tests for WhatsApp Bot Interface (mocked, no live bridge needed).
 """
 
 import pytest
-from unittest.mock import Mock, AsyncMock, patch, MagicMock
-from pathlib import Path
+from unittest.mock import Mock
 
 from opensable.interfaces.whatsapp_bot import WhatsAppBot
 

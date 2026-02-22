@@ -14,7 +14,6 @@ Works fully offline — no external API needed.
 """
 
 import logging
-import re
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -25,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 # ─── Emotion taxonomy ─────────────────────────────────────────────────────────
+
 
 class Emotion(Enum):
     JOY = "joy"
@@ -45,9 +45,10 @@ class Emotion(Enum):
 @dataclass
 class EmotionScore:
     """Score for a single detected emotion."""
+
     emotion: Emotion
-    confidence: float          # 0.0 – 1.0
-    triggers: List[str]        # words/patterns that triggered this
+    confidence: float  # 0.0 – 1.0
+    triggers: List[str]  # words/patterns that triggered this
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def to_dict(self) -> dict:
@@ -62,10 +63,11 @@ class EmotionScore:
 @dataclass
 class UserEmotionState:
     """Tracks emotional state for one user over time."""
+
     user_id: str
     history: List[EmotionScore] = field(default_factory=list)
     dominant_emotion: Emotion = Emotion.NEUTRAL
-    sentiment_trend: float = 0.0   # -1.0 (negative) to +1.0 (positive)
+    sentiment_trend: float = 0.0  # -1.0 (negative) to +1.0 (positive)
     interaction_count: int = 0
 
     def to_dict(self) -> dict:
@@ -80,6 +82,7 @@ class UserEmotionState:
 
 # ─── Emotion Detection ───────────────────────────────────────────────────────
 
+
 class EmotionDetector:
     """
     Detects emotions from text using multi-signal analysis:
@@ -92,103 +95,313 @@ class EmotionDetector:
     # Emotion lexicons (English + Spanish mixed for this project)
     LEXICON: Dict[Emotion, List[str]] = {
         Emotion.JOY: [
-            "happy", "glad", "great", "wonderful", "amazing", "love", "excellent",
-            "awesome", "fantastic", "perfect", "beautiful", "enjoy", "pleased",
-            "delighted", "cheerful", "blessed", "grateful", "thankful", "yay",
-            "feliz", "genial", "increíble", "maravilloso", "excelente", "perfecto",
-            "me encanta", "qué bien", "buenísimo",
+            "happy",
+            "glad",
+            "great",
+            "wonderful",
+            "amazing",
+            "love",
+            "excellent",
+            "awesome",
+            "fantastic",
+            "perfect",
+            "beautiful",
+            "enjoy",
+            "pleased",
+            "delighted",
+            "cheerful",
+            "blessed",
+            "grateful",
+            "thankful",
+            "yay",
+            "feliz",
+            "genial",
+            "increíble",
+            "maravilloso",
+            "excelente",
+            "perfecto",
+            "me encanta",
+            "qué bien",
+            "buenísimo",
         ],
         Emotion.SADNESS: [
-            "sad", "unhappy", "depressed", "miserable", "sorry", "miss", "lonely",
-            "heartbroken", "disappointed", "crying", "tears", "grief", "mourn",
-            "hopeless", "gloomy", "down", "blue",
-            "triste", "deprimido", "solo", "llorar", "extraño", "decepcionado",
+            "sad",
+            "unhappy",
+            "depressed",
+            "miserable",
+            "sorry",
+            "miss",
+            "lonely",
+            "heartbroken",
+            "disappointed",
+            "crying",
+            "tears",
+            "grief",
+            "mourn",
+            "hopeless",
+            "gloomy",
+            "down",
+            "blue",
+            "triste",
+            "deprimido",
+            "solo",
+            "llorar",
+            "extraño",
+            "decepcionado",
         ],
         Emotion.ANGER: [
-            "angry", "furious", "mad", "hate", "annoyed", "irritated", "outraged",
-            "pissed", "stupid", "idiot", "ridiculous", "terrible", "worst",
-            "unacceptable", "rage", "hostile",
-            "enojado", "furioso", "odio", "molesto", "irritado", "ridículo",
+            "angry",
+            "furious",
+            "mad",
+            "hate",
+            "annoyed",
+            "irritated",
+            "outraged",
+            "pissed",
+            "stupid",
+            "idiot",
+            "ridiculous",
+            "terrible",
+            "worst",
+            "unacceptable",
+            "rage",
+            "hostile",
+            "enojado",
+            "furioso",
+            "odio",
+            "molesto",
+            "irritado",
+            "ridículo",
         ],
         Emotion.FEAR: [
-            "afraid", "scared", "terrified", "anxious", "worried", "panic",
-            "nervous", "frightened", "dread", "horror", "alarmed", "uneasy",
-            "miedo", "asustado", "ansioso", "preocupado", "pánico", "nervioso",
+            "afraid",
+            "scared",
+            "terrified",
+            "anxious",
+            "worried",
+            "panic",
+            "nervous",
+            "frightened",
+            "dread",
+            "horror",
+            "alarmed",
+            "uneasy",
+            "miedo",
+            "asustado",
+            "ansioso",
+            "preocupado",
+            "pánico",
+            "nervioso",
         ],
         Emotion.SURPRISE: [
-            "surprised", "shocked", "amazed", "astonished", "unexpected",
-            "unbelievable", "wow", "whoa", "omg", "no way", "really",
-            "sorprendido", "impactado", "increíble", "no puede ser",
+            "surprised",
+            "shocked",
+            "amazed",
+            "astonished",
+            "unexpected",
+            "unbelievable",
+            "wow",
+            "whoa",
+            "omg",
+            "no way",
+            "really",
+            "sorprendido",
+            "impactado",
+            "increíble",
+            "no puede ser",
         ],
         Emotion.FRUSTRATION: [
-            "frustrated", "frustrating", "frustration", "stuck", "broken",
-            "doesn't work", "doesnt work", "not working", "nothing works",
-            "can't", "unable", "impossible", "ugh", "argh", "damn", "dammit",
-            "why won't", "keeps failing", "still broken", "help me",
-            "won't work", "wont work", "so annoying", "useless",
-            "frustrado", "no funciona", "no puedo", "atascado", "roto",
-            "no sirve", "no jala",
+            "frustrated",
+            "frustrating",
+            "frustration",
+            "stuck",
+            "broken",
+            "doesn't work",
+            "doesnt work",
+            "not working",
+            "nothing works",
+            "can't",
+            "unable",
+            "impossible",
+            "ugh",
+            "argh",
+            "damn",
+            "dammit",
+            "why won't",
+            "keeps failing",
+            "still broken",
+            "help me",
+            "won't work",
+            "wont work",
+            "so annoying",
+            "useless",
+            "frustrado",
+            "no funciona",
+            "no puedo",
+            "atascado",
+            "roto",
+            "no sirve",
+            "no jala",
         ],
         Emotion.CONFUSION: [
-            "confused", "don't understand", "what do you mean", "how does",
-            "i'm lost", "makes no sense", "unclear", "huh", "what",
-            "confundido", "no entiendo", "qué significa", "no me queda claro",
+            "confused",
+            "don't understand",
+            "what do you mean",
+            "how does",
+            "i'm lost",
+            "makes no sense",
+            "unclear",
+            "huh",
+            "what",
+            "confundido",
+            "no entiendo",
+            "qué significa",
+            "no me queda claro",
         ],
         Emotion.EXCITEMENT: [
-            "excited", "can't wait", "thrilled", "pumped", "hyped", "stoked",
-            "let's go", "finally", "yes!", "woohoo",
-            "emocionado", "no puedo esperar", "por fin", "vamos",
+            "excited",
+            "can't wait",
+            "thrilled",
+            "pumped",
+            "hyped",
+            "stoked",
+            "let's go",
+            "finally",
+            "yes!",
+            "woohoo",
+            "emocionado",
+            "no puedo esperar",
+            "por fin",
+            "vamos",
         ],
         Emotion.GRATITUDE: [
-            "thank you", "thanks", "appreciate", "grateful", "you're the best",
-            "helpful", "lifesaver", "saved me", "perfect thanks",
-            "gracias", "te agradezco", "eres el mejor", "me salvaste",
+            "thank you",
+            "thanks",
+            "appreciate",
+            "grateful",
+            "you're the best",
+            "helpful",
+            "lifesaver",
+            "saved me",
+            "perfect thanks",
+            "gracias",
+            "te agradezco",
+            "eres el mejor",
+            "me salvaste",
         ],
         Emotion.DISGUST: [
-            "disgusting", "gross", "nasty", "eww", "yuck", "revolting",
-            "horrible", "repulsive", "vile",
-            "asqueroso", "horrible", "qué asco",
+            "disgusting",
+            "gross",
+            "nasty",
+            "eww",
+            "yuck",
+            "revolting",
+            "horrible",
+            "repulsive",
+            "vile",
+            "asqueroso",
+            "horrible",
+            "qué asco",
         ],
         Emotion.TRUST: [
-            "trust", "reliable", "depend", "confident", "believe", "faith",
-            "honest", "loyal", "safe", "secure",
-            "confío", "confiable", "seguro",
+            "trust",
+            "reliable",
+            "depend",
+            "confident",
+            "believe",
+            "faith",
+            "honest",
+            "loyal",
+            "safe",
+            "secure",
+            "confío",
+            "confiable",
+            "seguro",
         ],
         Emotion.ANTICIPATION: [
-            "looking forward", "can't wait", "hoping", "planning", "soon",
-            "expect", "about to", "ready for", "preparing",
-            "esperando", "planeando", "listo para",
+            "looking forward",
+            "can't wait",
+            "hoping",
+            "planning",
+            "soon",
+            "expect",
+            "about to",
+            "ready for",
+            "preparing",
+            "esperando",
+            "planeando",
+            "listo para",
         ],
     }
 
     # Emoji → emotion mapping
     EMOJI_MAP: Dict[str, Emotion] = {
-        "😊": Emotion.JOY, "😃": Emotion.JOY, "😁": Emotion.JOY,
-        "❤️": Emotion.JOY, "🥰": Emotion.JOY, "😍": Emotion.JOY,
-        "👍": Emotion.TRUST, "💪": Emotion.EXCITEMENT,
-        "😢": Emotion.SADNESS, "😭": Emotion.SADNESS, "💔": Emotion.SADNESS,
-        "😡": Emotion.ANGER, "🤬": Emotion.ANGER, "💢": Emotion.ANGER,
-        "😰": Emotion.FEAR, "😨": Emotion.FEAR, "😱": Emotion.FEAR,
-        "😲": Emotion.SURPRISE, "🤯": Emotion.SURPRISE,
-        "😤": Emotion.FRUSTRATION, "🤦": Emotion.FRUSTRATION,
-        "😕": Emotion.CONFUSION, "🤔": Emotion.CONFUSION,
-        "🎉": Emotion.EXCITEMENT, "🚀": Emotion.EXCITEMENT,
-        "🙏": Emotion.GRATITUDE, "🤝": Emotion.TRUST,
+        "😊": Emotion.JOY,
+        "😃": Emotion.JOY,
+        "😁": Emotion.JOY,
+        "❤️": Emotion.JOY,
+        "🥰": Emotion.JOY,
+        "😍": Emotion.JOY,
+        "👍": Emotion.TRUST,
+        "💪": Emotion.EXCITEMENT,
+        "😢": Emotion.SADNESS,
+        "😭": Emotion.SADNESS,
+        "💔": Emotion.SADNESS,
+        "😡": Emotion.ANGER,
+        "🤬": Emotion.ANGER,
+        "💢": Emotion.ANGER,
+        "😰": Emotion.FEAR,
+        "😨": Emotion.FEAR,
+        "😱": Emotion.FEAR,
+        "😲": Emotion.SURPRISE,
+        "🤯": Emotion.SURPRISE,
+        "😤": Emotion.FRUSTRATION,
+        "🤦": Emotion.FRUSTRATION,
+        "😕": Emotion.CONFUSION,
+        "🤔": Emotion.CONFUSION,
+        "🎉": Emotion.EXCITEMENT,
+        "🚀": Emotion.EXCITEMENT,
+        "🙏": Emotion.GRATITUDE,
+        "🤝": Emotion.TRUST,
         "🤮": Emotion.DISGUST,
     }
 
     # Intensifiers multiply confidence
     INTENSIFIERS = [
-        "very", "really", "extremely", "so", "incredibly", "absolutely",
-        "totally", "completely", "super", "utterly",
-        "muy", "demasiado", "súper", "bastante", "totalmente",
+        "very",
+        "really",
+        "extremely",
+        "so",
+        "incredibly",
+        "absolutely",
+        "totally",
+        "completely",
+        "super",
+        "utterly",
+        "muy",
+        "demasiado",
+        "súper",
+        "bastante",
+        "totalmente",
     ]
 
     # Negation words flip emotion
     NEGATORS = [
-        "not", "no", "don't", "doesn't", "won't", "can't", "never",
-        "neither", "nor", "hardly", "barely",
-        "no", "nunca", "tampoco", "jamás",
+        "not",
+        "no",
+        "don't",
+        "doesn't",
+        "won't",
+        "can't",
+        "never",
+        "neither",
+        "nor",
+        "hardly",
+        "barely",
+        "no",
+        "nunca",
+        "tampoco",
+        "jamás",
     ]
 
     def detect(self, text: str) -> List[EmotionScore]:
@@ -209,7 +422,9 @@ class EmotionDetector:
                     triggers.append(word)
             if triggers:
                 # Single-word exact matches score higher (direct emotion words)
-                single_word_matches = sum(1 for t in triggers if " " not in t and t in text_lower.split())
+                single_word_matches = sum(
+                    1 for t in triggers if " " not in t and t in text_lower.split()
+                )
                 phrase_matches = len(triggers) - single_word_matches
                 base = min((single_word_matches * 0.35 + phrase_matches * 0.2), 0.95)
                 scores[emotion] = (base, triggers)
@@ -293,6 +508,7 @@ class EmotionDetector:
 
 # ─── Emotion State Tracker ────────────────────────────────────────────────────
 
+
 class EmotionTracker:
     """
     Maintains per-user emotional state over a rolling window.
@@ -309,9 +525,7 @@ class EmotionTracker:
         """Analyze text, update user state, and return it."""
         scores = self.detector.detect(text)
 
-        state = self._users.setdefault(
-            user_id, UserEmotionState(user_id=user_id)
-        )
+        state = self._users.setdefault(user_id, UserEmotionState(user_id=user_id))
 
         # Add scores to history
         state.history.extend(scores)
@@ -321,7 +535,7 @@ class EmotionTracker:
         cutoff = datetime.now(timezone.utc) - self.window
         state.history = [s for s in state.history if s.timestamp > cutoff]
         if len(state.history) > self.max_history:
-            state.history = state.history[-self.max_history:]
+            state.history = state.history[-self.max_history :]
 
         # Compute dominant emotion (weighted by recency + confidence)
         emotion_weights: Dict[Emotion, float] = defaultdict(float)
@@ -336,19 +550,24 @@ class EmotionTracker:
 
         # Compute sentiment trend
         SENTIMENT_MAP = {
-            Emotion.JOY: 1.0, Emotion.EXCITEMENT: 0.8,
-            Emotion.GRATITUDE: 0.9, Emotion.TRUST: 0.6,
-            Emotion.ANTICIPATION: 0.4, Emotion.SURPRISE: 0.2,
-            Emotion.NEUTRAL: 0.0, Emotion.CONFUSION: -0.2,
-            Emotion.FRUSTRATION: -0.5, Emotion.FEAR: -0.6,
-            Emotion.SADNESS: -0.7, Emotion.DISGUST: -0.8,
+            Emotion.JOY: 1.0,
+            Emotion.EXCITEMENT: 0.8,
+            Emotion.GRATITUDE: 0.9,
+            Emotion.TRUST: 0.6,
+            Emotion.ANTICIPATION: 0.4,
+            Emotion.SURPRISE: 0.2,
+            Emotion.NEUTRAL: 0.0,
+            Emotion.CONFUSION: -0.2,
+            Emotion.FRUSTRATION: -0.5,
+            Emotion.FEAR: -0.6,
+            Emotion.SADNESS: -0.7,
+            Emotion.DISGUST: -0.8,
             Emotion.ANGER: -0.9,
         }
         if state.history:
             recent = state.history[-10:]
             state.sentiment_trend = sum(
-                SENTIMENT_MAP.get(s.emotion, 0) * s.confidence
-                for s in recent
+                SENTIMENT_MAP.get(s.emotion, 0) * s.confidence for s in recent
             ) / len(recent)
 
         return state
@@ -361,6 +580,7 @@ class EmotionTracker:
 
 
 # ─── Response Adapter ─────────────────────────────────────────────────────────
+
 
 class ResponseAdapter:
     """
@@ -485,6 +705,7 @@ class ResponseAdapter:
 
 
 # ─── Integration point ────────────────────────────────────────────────────────
+
 
 class EmotionalIntelligence:
     """

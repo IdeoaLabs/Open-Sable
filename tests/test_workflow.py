@@ -6,8 +6,13 @@ import pytest
 from datetime import datetime
 
 from opensable.core.workflow_persistence import (
-    WorkflowEngine, WorkflowDefinition, WorkflowStep,
-    WorkflowStatus, RecoveryStrategy, Checkpoint, StepResult
+    WorkflowEngine,
+    WorkflowDefinition,
+    WorkflowStep,
+    WorkflowStatus,
+    RecoveryStrategy,
+    Checkpoint,
+    StepResult,
 )
 
 
@@ -63,9 +68,17 @@ class TestWorkflowStep:
         assert d["recovery_strategy"] == "retry"
 
     def test_from_dict(self):
-        data = {"id": "s1", "name": "S1", "action": "act", "params": {},
-                "depends_on": [], "retry_count": 0, "max_retries": 3,
-                "timeout": None, "recovery_strategy": "skip"}
+        data = {
+            "id": "s1",
+            "name": "S1",
+            "action": "act",
+            "params": {},
+            "depends_on": [],
+            "retry_count": 0,
+            "max_retries": 3,
+            "timeout": None,
+            "recovery_strategy": "skip",
+        }
         step = WorkflowStep.from_dict(data)
         assert step.recovery_strategy == RecoveryStrategy.SKIP
 
@@ -78,23 +91,19 @@ class TestWorkflowDefinition:
             WorkflowStep(id="a", name="A", action="do_a"),
             WorkflowStep(id="b", name="B", action="do_b", depends_on=["a"]),
         ]
-        defn = WorkflowDefinition(
-            id="wf1", name="Test", description="A test", steps=steps
-        )
+        defn = WorkflowDefinition(id="wf1", name="Test", description="A test", steps=steps)
         assert defn.id == "wf1"
         assert len(defn.steps) == 2
 
     def test_metadata(self):
         defn = WorkflowDefinition(
-            id="wf2", name="Meta", description="", steps=[],
-            metadata={"author": "test"}
+            id="wf2", name="Meta", description="", steps=[], metadata={"author": "test"}
         )
         assert defn.metadata["author"] == "test"
 
     def test_to_dict(self):
         defn = WorkflowDefinition(
-            id="wf", name="N", description="D",
-            steps=[WorkflowStep(id="s", name="S", action="a")]
+            id="wf", name="N", description="D", steps=[WorkflowStep(id="s", name="S", action="a")]
         )
         d = defn.to_dict()
         assert d["id"] == "wf"
@@ -102,12 +111,24 @@ class TestWorkflowDefinition:
 
     def test_from_dict(self):
         data = {
-            "id": "wf1", "name": "N", "description": "D",
-            "steps": [{"id": "s1", "name": "S1", "action": "a", "params": {},
-                       "depends_on": [], "retry_count": 0, "max_retries": 3,
-                       "timeout": None, "recovery_strategy": "retry"}],
+            "id": "wf1",
+            "name": "N",
+            "description": "D",
+            "steps": [
+                {
+                    "id": "s1",
+                    "name": "S1",
+                    "action": "a",
+                    "params": {},
+                    "depends_on": [],
+                    "retry_count": 0,
+                    "max_retries": 3,
+                    "timeout": None,
+                    "recovery_strategy": "retry",
+                }
+            ],
             "metadata": {},
-            "created_at": "2024-01-01T00:00:00"
+            "created_at": "2024-01-01T00:00:00",
         }
         defn = WorkflowDefinition.from_dict(data)
         assert defn.id == "wf1"
@@ -125,9 +146,12 @@ class TestStepResult:
     def test_duration(self):
         now = datetime.now()
         from datetime import timedelta
+
         r = StepResult(
-            step_id="s1", status=WorkflowStatus.COMPLETED,
-            started_at=now, completed_at=now + timedelta(seconds=5)
+            step_id="s1",
+            status=WorkflowStatus.COMPLETED,
+            started_at=now,
+            completed_at=now + timedelta(seconds=5),
         )
         assert r.duration_seconds == pytest.approx(5.0, abs=0.1)
 
@@ -187,6 +211,7 @@ class TestWorkflowEngine:
     def test_register_action(self, engine):
         async def handler(**kwargs):
             return "done"
+
         engine.register_action("my_action", handler)
         assert "my_action" in engine.action_handlers
 
@@ -197,8 +222,10 @@ class TestWorkflowEngine:
 
         engine.register_action("task1", handler)
         defn = WorkflowDefinition(
-            id="wf1", name="Test", description="",
-            steps=[WorkflowStep(id="s1", name="S1", action="task1")]
+            id="wf1",
+            name="Test",
+            description="",
+            steps=[WorkflowStep(id="s1", name="S1", action="task1")],
         )
         result = await engine.execute(defn)
         assert isinstance(result, dict)
@@ -209,8 +236,10 @@ class TestWorkflowEngine:
     async def test_execute_no_handler_fails(self, engine):
         """Steps with no handler should fail."""
         defn = WorkflowDefinition(
-            id="wf2", name="Fail", description="",
-            steps=[WorkflowStep(id="s1", name="S1", action="nonexistent")]
+            id="wf2",
+            name="Fail",
+            description="",
+            steps=[WorkflowStep(id="s1", name="S1", action="nonexistent")],
         )
         result = await engine.execute(defn)
         assert isinstance(result, dict)
@@ -225,11 +254,13 @@ class TestWorkflowEngine:
         engine.register_action("b", handler)
 
         defn = WorkflowDefinition(
-            id="wf3", name="Multi", description="",
+            id="wf3",
+            name="Multi",
+            description="",
             steps=[
                 WorkflowStep(id="s1", name="S1", action="a"),
                 WorkflowStep(id="s2", name="S2", action="b", depends_on=["s1"]),
-            ]
+            ],
         )
         result = await engine.execute(defn)
         assert result["status"] == "completed"

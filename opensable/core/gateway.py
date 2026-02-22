@@ -63,19 +63,20 @@ import stat
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set
 
 logger = logging.getLogger(__name__)
 
 # ─── Constants ────────────────────────────────────────────────────────────────
 
-SOCKET_PATH   = Path("/tmp/sable.sock")
-GATEWAY_VER   = "2.0.0"
-HEARTBEAT_INT = 30          # seconds between heartbeat frames
-WS_MAGIC      = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+SOCKET_PATH = Path("/tmp/sable.sock")
+GATEWAY_VER = "2.0.0"
+HEARTBEAT_INT = 30  # seconds between heartbeat frames
+WS_MAGIC = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
 
 # ─── Minimal WebSocket framing ────────────────────────────────────────────────
+
 
 class _WS:
     """
@@ -110,8 +111,8 @@ class _WS:
         except Exception:
             return None
 
-        lines   = raw.decode(errors="replace").split("\r\n")
-        req     = lines[0]            # e.g. "GET / HTTP/1.1"
+        lines = raw.decode(errors="replace").split("\r\n")
+        req = lines[0]  # e.g. "GET / HTTP/1.1"
         headers = {}
         for ln in lines[1:]:
             if ": " in ln:
@@ -126,6 +127,7 @@ class _WS:
 
         # ── Token auth: check ?token= in URL or Sec-WebSocket-Protocol ───────
         import urllib.parse
+
         parts = req.split(" ")
         url_path = parts[1] if len(parts) > 1 else "/"
         parsed = urllib.parse.urlparse(url_path)
@@ -137,7 +139,9 @@ class _WS:
             supplied = url_token or proto_token
             if not hmac.compare_digest(str(supplied or ""), webchat_token):
                 writer.write(b"HTTP/1.1 401 Unauthorized\r\nContent-Type: text/html\r\n\r\n")
-                writer.write(b"<html><body><h1>401 Unauthorized</h1><p>Invalid or missing token.</p></body></html>")
+                writer.write(
+                    b"<html><body><h1>401 Unauthorized</h1><p>Invalid or missing token.</p></body></html>"
+                )
                 await writer.drain()
                 writer.close()
                 return None
@@ -148,10 +152,8 @@ class _WS:
             return None
 
         # ── WebSocket upgrade ─────────────────────────────────────────────────
-        key    = headers.get("sec-websocket-key", "")
-        accept = base64.b64encode(
-            hashlib.sha1((key + WS_MAGIC).encode()).digest()
-        ).decode()
+        key = headers.get("sec-websocket-key", "")
+        accept = base64.b64encode(hashlib.sha1((key + WS_MAGIC).encode()).digest()).decode()
         resp = (
             "HTTP/1.1 101 Switching Protocols\r\n"
             "Upgrade: websocket\r\n"
@@ -167,13 +169,15 @@ class _WS:
     async def _serve_html(writer: asyncio.StreamWriter, html_path: Optional[Path]):
         if html_path and html_path.exists():
             body = html_path.read_bytes()
-            ct   = b"text/html; charset=utf-8"
+            ct = b"text/html; charset=utf-8"
         else:
             body = b"<!doctype html><title>Sable</title><body><h1>Sable Gateway</h1><p>WebChat not found.</p></body>"
-            ct   = b"text/html"
+            ct = b"text/html"
         hdr = (
-            b"HTTP/1.1 200 OK\r\nContent-Type: " + ct
-            + b"\r\nContent-Length: " + str(len(body)).encode()
+            b"HTTP/1.1 200 OK\r\nContent-Type: "
+            + ct
+            + b"\r\nContent-Length: "
+            + str(len(body)).encode()
             + b"\r\nConnection: close\r\n\r\n"
         )
         writer.write(hdr + body)
@@ -191,14 +195,14 @@ class _WS:
                 self.closed = True
                 return None
 
-            opcode  = hdr[0] & 0x0F
-            masked  = bool(hdr[1] & 0x80)
-            length  = hdr[1] & 0x7F
+            opcode = hdr[0] & 0x0F
+            masked = bool(hdr[1] & 0x80)
+            length = hdr[1] & 0x7F
 
-            if opcode == 0x8:       # close
+            if opcode == 0x8:  # close
                 self.closed = True
                 return None
-            if opcode == 0x9:       # ping → pong
+            if opcode == 0x9:  # ping → pong
                 await self._pong()
                 continue
 
@@ -208,7 +212,7 @@ class _WS:
                 length = int.from_bytes(await self.reader.readexactly(8), "big")
 
             mask_key = await self.reader.readexactly(4) if masked else b""
-            payload  = await self.reader.readexactly(length)
+            payload = await self.reader.readexactly(length)
             if masked:
                 payload = bytes(b ^ mask_key[i % 4] for i, b in enumerate(payload))
 
@@ -241,13 +245,14 @@ class _WS:
 
 # ─── Client wrapper ───────────────────────────────────────────────────────────
 
+
 class _Client:
     """Represents one connected gateway client (WebChat, CLI, or Node)."""
 
     def __init__(self, ws: _WS):
-        self.ws        = ws
-        self.cid       = f"c{id(self):x}"
-        self.node_id: Optional[str] = None   # set when client registers as a node
+        self.ws = ws
+        self.cid = f"c{id(self):x}"
+        self.node_id: Optional[str] = None  # set when client registers as a node
 
     async def send(self, payload: dict):
         try:
@@ -261,6 +266,7 @@ class _Client:
 
 # ─── Gateway ──────────────────────────────────────────────────────────────────
 
+
 class Gateway:
     """
     Zero-port internal control plane.
@@ -271,32 +277,30 @@ class Gateway:
     """
 
     def __init__(self, agent, config):
-        self.agent  = agent
+        self.agent = agent
         self.config = config
 
-        self._server:     Optional[asyncio.AbstractServer] = None
+        self._server: Optional[asyncio.AbstractServer] = None
         self._tcp_server: Optional[asyncio.AbstractServer] = None
-        self._clients:   Set[_Client] = set()
-        self._nodes:     Dict[str, _Client] = {}     # node_id → client
-        self._running    = False
-        self._hb_task:   Optional[asyncio.Task] = None
+        self._clients: Set[_Client] = set()
+        self._nodes: Dict[str, _Client] = {}  # node_id → client
+        self._running = False
+        self._hb_task: Optional[asyncio.Task] = None
         self._start_time = datetime.now(timezone.utc)
 
         # TCP WebChat settings (loopback only)
-        self._webchat_host  = getattr(config, "webchat_host", "127.0.0.1")
-        self._webchat_port  = int(getattr(config, "webchat_port", 8789))
+        self._webchat_host = getattr(config, "webchat_host", "127.0.0.1")
+        self._webchat_port = int(getattr(config, "webchat_port", 8789))
         self._webchat_token = getattr(config, "webchat_token", None) or None
-        self._webchat_ts    = getattr(config, "webchat_tailscale", False)
+        self._webchat_ts = getattr(config, "webchat_tailscale", False)
 
         # Path to the dashboard/webchat HTML (served over the socket)
-        self._webchat = (
-            Path(__file__).resolve().parent.parent.parent / "static" / "dashboard.html"
-        )
+        self._webchat = Path(__file__).resolve().parent.parent.parent / "static" / "dashboard.html"
 
         # Rate limiting: per-client message counters
         self._rate_limits: Dict[str, List[float]] = {}  # cid -> [timestamps]
-        self._rate_window  = 60    # seconds
-        self._rate_max     = 30    # max messages per window
+        self._rate_window = 60  # seconds
+        self._rate_max = 30  # max messages per window
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -315,7 +319,7 @@ class Gateway:
 
         # TCP listener for browser WebChat (127.0.0.1 only — loopback)
         bind_hosts = [self._webchat_host]
-        ts_ip      = self._get_tailscale_ip() if self._webchat_ts else None
+        ts_ip = self._get_tailscale_ip() if self._webchat_ts else None
         if ts_ip and ts_ip not in bind_hosts:
             bind_hosts.append(ts_ip)
 
@@ -328,8 +332,8 @@ class Gateway:
             )
             self._tcp_servers.append(srv)
 
-        self._running   = True
-        self._hb_task   = asyncio.create_task(self._heartbeat())
+        self._running = True
+        self._hb_task = asyncio.create_task(self._heartbeat())
 
         token_hint = f"?token={self._webchat_token}" if self._webchat_token else ""
         urls = [f"http://{h}:{self._webchat_port}{token_hint}" for h in bind_hosts]
@@ -359,6 +363,7 @@ class Gateway:
     def _get_tailscale_ip() -> Optional[str]:
         """Return the Tailscale IP (100.x.x.x) if Tailscale is running."""
         import subprocess, re
+
         try:
             result = subprocess.run(
                 ["tailscale", "ip", "-4"], capture_output=True, text=True, timeout=2
@@ -378,22 +383,18 @@ class Gateway:
         """Return a status dict for /status commands and health checks."""
         uptime = (datetime.now(timezone.utc) - self._start_time).total_seconds()
         return {
-            "version":    GATEWAY_VER,
-            "running":    self._running,
-            "socket":     str(SOCKET_PATH),
+            "version": GATEWAY_VER,
+            "running": self._running,
+            "socket": str(SOCKET_PATH),
             "uptime_sec": round(uptime, 1),
-            "clients":    len(self._clients),
-            "nodes":      list(self._nodes.keys()),
+            "clients": len(self._clients),
+            "nodes": list(self._nodes.keys()),
         }
 
     # ── Connection handler ────────────────────────────────────────────────────
 
-    async def _on_connect(
-        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
-    ):
-        ws = await _WS.server_handshake(
-            reader, writer, self._webchat, self._webchat_token
-        )
+    async def _on_connect(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+        ws = await _WS.server_handshake(reader, writer, self._webchat, self._webchat_token)
         if ws is None:
             # Was a plain HTTP request — already handled (HTML served or error)
             return
@@ -403,8 +404,7 @@ class Gateway:
         logger.debug(f"[Gateway] Client connected: {client.cid}")
 
         try:
-            await client.send({"type": "connected", "version": GATEWAY_VER,
-                               "ts": time.time()})
+            await client.send({"type": "connected", "version": GATEWAY_VER, "ts": time.time()})
             await self._client_loop(client)
         except Exception as e:
             logger.debug(f"[Gateway] {client.cid} error: {e}")
@@ -436,19 +436,29 @@ class Gateway:
         # Rate limiting for message types
         if t == "message":
             if not self._check_rate(client.cid):
-                await client.send({"type": "error",
-                                   "text": "Rate limit exceeded. Try again in a moment."})
+                await client.send(
+                    {"type": "error", "text": "Rate limit exceeded. Try again in a moment."}
+                )
                 return
 
-        if   t == "message":          await self._on_message(client, msg)
-        elif t == "command":          await self._on_command(client, msg)
-        elif t == "sessions.list":    await self._on_sessions_list(client)
-        elif t == "sessions.history": await self._on_sessions_history(client, msg)
-        elif t == "node.register":    await self._on_node_register(client, msg)
-        elif t == "node.invoke":      await self._on_node_invoke(client, msg)
-        elif t == "node.result":      await self._on_node_result(client, msg)
-        elif t == "status":           await client.send({"type": "status", **self.status()})
-        elif t == "ping":             await client.send({"type": "pong", "ts": time.time()})
+        if t == "message":
+            await self._on_message(client, msg)
+        elif t == "command":
+            await self._on_command(client, msg)
+        elif t == "sessions.list":
+            await self._on_sessions_list(client)
+        elif t == "sessions.history":
+            await self._on_sessions_history(client, msg)
+        elif t == "node.register":
+            await self._on_node_register(client, msg)
+        elif t == "node.invoke":
+            await self._on_node_invoke(client, msg)
+        elif t == "node.result":
+            await self._on_node_result(client, msg)
+        elif t == "status":
+            await client.send({"type": "status", **self.status()})
+        elif t == "ping":
+            await client.send({"type": "pong", "ts": time.time()})
         else:
             await client.send({"type": "error", "text": f"Unknown type: {t!r}"})
 
@@ -456,8 +466,8 @@ class Gateway:
 
     async def _on_message(self, client: _Client, msg: dict):
         """Stream an agent reply token-by-token back to the WebSocket client."""
-        sid     = msg.get("session_id", "webchat_default")
-        text    = msg.get("text", "").strip()
+        sid = msg.get("session_id", "webchat_default")
+        text = msg.get("text", "").strip()
         user_id = msg.get("user_id", "webchat_user")
 
         if not text:
@@ -467,8 +477,9 @@ class Gateway:
 
         try:
             import ollama
+
             ollama_cli = ollama.AsyncClient(host=self.config.ollama_base_url)
-            model      = (
+            model = (
                 self.agent.llm.current_model
                 if hasattr(self.agent, "llm") and hasattr(self.agent.llm, "current_model")
                 else getattr(self.config, "default_model", "llama3.1:8b")
@@ -483,59 +494,68 @@ class Gateway:
                 model=model,
                 messages=[
                     {"role": "system", "content": system},
-                    {"role": "user",   "content": text},
+                    {"role": "user", "content": text},
                 ],
                 stream=True,
             ):
                 delta = chunk.get("message", {}).get("content", "")
                 full += delta
-                await client.send({"type": "message.chunk", "session_id": sid,
-                                   "text": delta})
+                await client.send({"type": "message.chunk", "session_id": sid, "text": delta})
 
-            await client.send({"type": "message.done", "session_id": sid,
-                               "text": full})
+            await client.send({"type": "message.done", "session_id": sid, "text": full})
 
         except Exception as e:
             logger.warning(f"[Gateway] Streaming failed, falling back: {e}")
             try:
                 reply = await self.agent.process_message(user_id, text)
-                await client.send({"type": "message.done", "session_id": sid,
-                                   "text": reply})
+                await client.send({"type": "message.done", "session_id": sid, "text": reply})
             except Exception as e2:
-                await client.send({"type": "error", "session_id": sid,
-                                   "text": str(e2)})
+                await client.send({"type": "error", "session_id": sid, "text": str(e2)})
 
     async def _on_command(self, client: _Client, msg: dict):
         from opensable.core.commands import CommandHandler
         from opensable.core.session_manager import SessionManager
-        sm  = SessionManager()
-        ch  = CommandHandler(sm)
+
+        sm = SessionManager()
+        ch = CommandHandler(sm)
         sid = msg.get("session_id", "webchat_default")
-        uid = msg.get("user_id",    "webchat_user")
-        txt = msg.get("text",       "")
-        s   = sm.get_or_create_session(channel="webchat", user_id=uid)
+        uid = msg.get("user_id", "webchat_user")
+        txt = msg.get("text", "")
+        s = sm.get_or_create_session(channel="webchat", user_id=uid)
         res = await ch.handle_command(txt, s.id, uid, is_admin=True)
-        await client.send({"type": "command.result", "session_id": sid,
-                           "text": res.message, "success": res.success})
+        await client.send(
+            {
+                "type": "command.result",
+                "session_id": sid,
+                "text": res.message,
+                "success": res.success,
+            }
+        )
 
     async def _on_sessions_list(self, client: _Client):
         from opensable.core.session_manager import SessionManager
+
         sm = SessionManager()
         sessions = [
-            {"id": s.id, "channel": s.channel, "user_id": s.user_id,
-             "messages": len(s.messages), "updated_at": s.updated_at}
+            {
+                "id": s.id,
+                "channel": s.channel,
+                "user_id": s.user_id,
+                "messages": len(s.messages),
+                "updated_at": s.updated_at,
+            }
             for s in sm.list_sessions()
         ]
         await client.send({"type": "sessions.list.result", "sessions": sessions})
 
     async def _on_sessions_history(self, client: _Client, msg: dict):
         from opensable.core.session_manager import SessionManager
-        sm  = SessionManager()
+
+        sm = SessionManager()
         sid = msg.get("session_id", "")
-        s   = sm.get_session(sid)
+        s = sm.get_session(sid)
         msgs = [m.to_dict() for m in s.get_messages()] if s else []
-        await client.send({"type": "sessions.history.result",
-                           "session_id": sid, "messages": msgs})
+        await client.send({"type": "sessions.history.result", "session_id": sid, "messages": msgs})
 
     # ── Node system ───────────────────────────────────────────────────────────
 
@@ -547,14 +567,13 @@ class Gateway:
         Example node capabilities: ["system.run", "system.notify", "camera.capture"]
         """
         node_id = msg.get("node_id", client.cid)
-        caps    = msg.get("capabilities", [])
+        caps = msg.get("capabilities", [])
 
         self._nodes[node_id] = client
         client.node_id = node_id
 
         logger.info(f"[Gateway] Node registered: {node_id}  caps={caps}")
-        await client.send({"type": "node.registered", "node_id": node_id,
-                           "capabilities": caps})
+        await client.send({"type": "node.registered", "node_id": node_id, "capabilities": caps})
 
     async def _on_node_invoke(self, client: _Client, msg: dict):
         """
@@ -562,21 +581,27 @@ class Gateway:
         The response will come back via _on_node_result.
         """
         node_id = msg.get("node_id", "")
-        cap     = msg.get("capability", "")
-        args    = msg.get("args", {})
-        req_id  = msg.get("request_id", str(time.time()))
+        cap = msg.get("capability", "")
+        args = msg.get("args", {})
+        req_id = msg.get("request_id", str(time.time()))
 
         node = self._nodes.get(node_id)
         if not node:
-            await client.send({"type": "error",
-                               "text": f"Node '{node_id}' not connected",
-                               "request_id": req_id})
+            await client.send(
+                {"type": "error", "text": f"Node '{node_id}' not connected", "request_id": req_id}
+            )
             return
 
         # Forward to node — include a reply_to so the node knows where to respond
-        await node.send({"type": "node.invoke", "capability": cap,
-                         "args": args, "request_id": req_id,
-                         "reply_to": client.cid})
+        await node.send(
+            {
+                "type": "node.invoke",
+                "capability": cap,
+                "args": args,
+                "request_id": req_id,
+                "reply_to": client.cid,
+            }
+        )
 
     async def _on_node_result(self, client: _Client, msg: dict):
         """
@@ -584,7 +609,7 @@ class Gateway:
         We route it back to the original caller by cid.
         """
         reply_to = msg.get("reply_to", "")
-        target   = next((c for c in self._clients if c.cid == reply_to), None)
+        target = next((c for c in self._clients if c.cid == reply_to), None)
         if target:
             await target.send({**msg, "type": "node.result"})
 
@@ -609,7 +634,7 @@ class Gateway:
             try:
                 await asyncio.sleep(HEARTBEAT_INT)
                 dead = set()
-                ts   = time.time()
+                ts = time.time()
                 for c in list(self._clients):
                     try:
                         await c.send({"type": "heartbeat", "ts": ts})

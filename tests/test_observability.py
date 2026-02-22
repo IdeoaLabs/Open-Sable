@@ -5,8 +5,13 @@ Tests for Observability - Distributed Tracing and Log Aggregation.
 import pytest
 import time
 from opensable.core.observability import (
-    DistributedTracer, LogAggregator, Span, Trace,
-    SpanKind, LogLevel, LogEntry
+    DistributedTracer,
+    LogAggregator,
+    Span,
+    Trace,
+    SpanKind,
+    LogLevel,
+    LogEntry,
 )
 
 
@@ -37,6 +42,7 @@ class TestLogEntry:
 
     def test_create(self):
         from datetime import datetime
+
         entry = LogEntry(
             timestamp=datetime.now(),
             level=LogLevel.INFO,
@@ -49,6 +55,7 @@ class TestLogEntry:
 
     def test_to_dict(self):
         from datetime import datetime
+
         entry = LogEntry(
             timestamp=datetime.now(),
             level=LogLevel.ERROR,
@@ -63,7 +70,10 @@ class TestLogEntry:
 
     def test_defaults(self):
         from datetime import datetime
-        entry = LogEntry(timestamp=datetime.now(), level=LogLevel.DEBUG, message="x", logger_name="l")
+
+        entry = LogEntry(
+            timestamp=datetime.now(), level=LogLevel.DEBUG, message="x", logger_name="l"
+        )
         assert entry.trace_id is None
         assert entry.span_id is None
         assert entry.attributes == {}
@@ -75,44 +85,78 @@ class TestSpan:
 
     def test_create(self):
         s = Span(
-            trace_id="t1", span_id="s1", parent_span_id=None,
-            name="op", kind=SpanKind.INTERNAL, start_time=time.time()
+            trace_id="t1",
+            span_id="s1",
+            parent_span_id=None,
+            name="op",
+            kind=SpanKind.INTERNAL,
+            start_time=time.time(),
         )
         assert s.trace_id == "t1"
         assert s.name == "op"
         assert s.status == "ok"
 
     def test_add_event(self):
-        s = Span(trace_id="t", span_id="s", parent_span_id=None,
-                 name="op", kind=SpanKind.SERVER, start_time=time.time())
+        s = Span(
+            trace_id="t",
+            span_id="s",
+            parent_span_id=None,
+            name="op",
+            kind=SpanKind.SERVER,
+            start_time=time.time(),
+        )
         s.add_event("checkpoint", {"key": "val"})
         assert len(s.events) == 1
         assert s.events[0]["name"] == "checkpoint"
 
     def test_set_attribute(self):
-        s = Span(trace_id="t", span_id="s", parent_span_id=None,
-                 name="op", kind=SpanKind.CLIENT, start_time=time.time())
+        s = Span(
+            trace_id="t",
+            span_id="s",
+            parent_span_id=None,
+            name="op",
+            kind=SpanKind.CLIENT,
+            start_time=time.time(),
+        )
         s.set_attribute("http.method", "GET")
         assert s.attributes["http.method"] == "GET"
 
     def test_set_error(self):
-        s = Span(trace_id="t", span_id="s", parent_span_id=None,
-                 name="op", kind=SpanKind.INTERNAL, start_time=time.time())
+        s = Span(
+            trace_id="t",
+            span_id="s",
+            parent_span_id=None,
+            name="op",
+            kind=SpanKind.INTERNAL,
+            start_time=time.time(),
+        )
         s.set_error(ValueError("bad"))
         assert s.status == "error"
         assert s.error == "bad"
 
     def test_end_and_duration(self):
-        s = Span(trace_id="t", span_id="s", parent_span_id=None,
-                 name="op", kind=SpanKind.INTERNAL, start_time=time.time())
+        s = Span(
+            trace_id="t",
+            span_id="s",
+            parent_span_id=None,
+            name="op",
+            kind=SpanKind.INTERNAL,
+            start_time=time.time(),
+        )
         time.sleep(0.01)
         s.end()
         assert s.end_time is not None
         assert s.duration_ms > 0
 
     def test_to_dict(self):
-        s = Span(trace_id="t", span_id="s", parent_span_id=None,
-                 name="op", kind=SpanKind.INTERNAL, start_time=1000.0)
+        s = Span(
+            trace_id="t",
+            span_id="s",
+            parent_span_id=None,
+            name="op",
+            kind=SpanKind.INTERNAL,
+            start_time=1000.0,
+        )
         d = s.to_dict()
         assert d["trace_id"] == "t"
         assert d["kind"] == "internal"
@@ -182,15 +226,27 @@ class TestTrace:
 
     def test_add_span(self):
         t = Trace(trace_id="abc")
-        s = Span(trace_id="abc", span_id="s1", parent_span_id=None,
-                 name="op", kind=SpanKind.INTERNAL, start_time=time.time())
+        s = Span(
+            trace_id="abc",
+            span_id="s1",
+            parent_span_id=None,
+            name="op",
+            kind=SpanKind.INTERNAL,
+            start_time=time.time(),
+        )
         t.add_span(s)
         assert len(t.spans) == 1
 
     def test_get_root_span(self):
         t = Trace(trace_id="abc")
-        s = Span(trace_id="abc", span_id="s1", parent_span_id=None,
-                 name="root", kind=SpanKind.INTERNAL, start_time=time.time())
+        s = Span(
+            trace_id="abc",
+            span_id="s1",
+            parent_span_id=None,
+            name="root",
+            kind=SpanKind.INTERNAL,
+            start_time=time.time(),
+        )
         t.add_span(s)
         root = t.get_root_span()
         assert root is not None
@@ -215,7 +271,8 @@ class TestLogAggregator:
 
     def test_log_with_context(self, aggregator):
         aggregator.log(
-            LogLevel.ERROR, "failed",
+            LogLevel.ERROR,
+            "failed",
             logger_name="app",
             trace_id="t123",
             attributes={"key": "val"},

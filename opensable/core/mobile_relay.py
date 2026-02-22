@@ -91,27 +91,27 @@ import logging
 import os
 import secrets
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 RELAY_VERSION = "2.0.0"
-WS_MAGIC      = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
-QR_PATH       = Path.home() / ".opensable" / "mobile_qr.png"
-SECRET_PATH   = Path.home() / ".opensable" / "mobile_secret.txt"
-TOKEN_TTL     = 300  # HMAC tokens are valid for 5 minutes (rolling window)
+WS_MAGIC = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+QR_PATH = Path.home() / ".opensable" / "mobile_qr.png"
+SECRET_PATH = Path.home() / ".opensable" / "mobile_secret.txt"
+TOKEN_TTL = 300  # HMAC tokens are valid for 5 minutes (rolling window)
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
+
 
 def _load_or_create_secret() -> str:
     """Load persisted secret or generate a new one."""
     SECRET_PATH.parent.mkdir(parents=True, exist_ok=True)
     if SECRET_PATH.exists():
         return SECRET_PATH.read_text().strip()
-    secret = secrets.token_hex(32)   # 256-bit
+    secret = secrets.token_hex(32)  # 256-bit
     SECRET_PATH.write_text(secret)
     SECRET_PATH.chmod(0o600)
     logger.info(f"[Relay] Generated new mobile secret → {SECRET_PATH}")
@@ -149,6 +149,7 @@ def generate_qr(address: str, secret: str) -> str:
 
     try:
         import qrcode  # type: ignore
+
         img = qrcode.make(url)
         QR_PATH.parent.mkdir(parents=True, exist_ok=True)
         img.save(str(QR_PATH))
@@ -160,6 +161,7 @@ def generate_qr(address: str, secret: str) -> str:
 
 
 # ─── Minimal WebSocket framing (reused from gateway.py pattern) ───────────────
+
 
 class _WS:
     """Server-side WebSocket over asyncio streams."""
@@ -174,7 +176,7 @@ class _WS:
             raw = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), timeout=5)
         except Exception:
             return None
-        lines   = raw.decode(errors="replace").split("\r\n")
+        lines = raw.decode(errors="replace").split("\r\n")
         headers = {}
         for ln in lines[1:]:
             if ": " in ln:
@@ -185,14 +187,14 @@ class _WS:
             await writer.drain()
             writer.close()
             return None
-        key    = headers.get("sec-websocket-key", "")
-        accept = base64.b64encode(
-            hashlib.sha1((key + WS_MAGIC).encode()).digest()
-        ).decode()
-        writer.write((
-            f"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n"
-            f"Connection: Upgrade\r\nSec-WebSocket-Accept: {accept}\r\n\r\n"
-        ).encode())
+        key = headers.get("sec-websocket-key", "")
+        accept = base64.b64encode(hashlib.sha1((key + WS_MAGIC).encode()).digest()).decode()
+        writer.write(
+            (
+                f"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n"
+                f"Connection: Upgrade\r\nSec-WebSocket-Accept: {accept}\r\n\r\n"
+            ).encode()
+        )
         await writer.drain()
         return cls(reader, writer)
 
@@ -216,7 +218,7 @@ class _WS:
             elif length == 127:
                 length = int.from_bytes(await self.reader.readexactly(8), "big")
             mask_key = await self.reader.readexactly(4) if masked else b""
-            payload  = await self.reader.readexactly(length)
+            payload = await self.reader.readexactly(length)
             if masked:
                 payload = bytes(b ^ mask_key[i % 4] for i, b in enumerate(payload))
             return payload.decode("utf-8", errors="replace")
@@ -224,9 +226,15 @@ class _WS:
     async def send(self, text: str):
         payload = text.encode("utf-8")
         n = len(payload)
-        hdr = bytes([0x81, n]) if n < 126 else (
-              bytes([0x81, 126]) + n.to_bytes(2, "big") if n < 65536 else
-              bytes([0x81, 127]) + n.to_bytes(8, "big"))
+        hdr = (
+            bytes([0x81, n])
+            if n < 126
+            else (
+                bytes([0x81, 126]) + n.to_bytes(2, "big")
+                if n < 65536
+                else bytes([0x81, 127]) + n.to_bytes(8, "big")
+            )
+        )
         self.writer.write(hdr + payload)
         await self.writer.drain()
 
@@ -238,6 +246,7 @@ class _WS:
 
 
 # ─── Gateway bridge (forwards messages to /tmp/sable.sock) ───────────────────
+
 
 class _GatewayBridge:
     """
@@ -251,17 +260,16 @@ class _GatewayBridge:
         self.mobile_ws = mobile_ws
         self._gw_reader: Optional[asyncio.StreamReader] = None
         self._gw_writer: Optional[asyncio.StreamWriter] = None
-        self._gw_ws:     Optional[_WS] = None
+        self._gw_ws: Optional[_WS] = None
 
     async def connect_gateway(self) -> bool:
         """Open a connection to the local Unix socket Gateway."""
         from opensable.core.gateway import SOCKET_PATH
+
         try:
-            self._gw_reader, self._gw_writer = await asyncio.open_unix_connection(
-                str(SOCKET_PATH)
-            )
+            self._gw_reader, self._gw_writer = await asyncio.open_unix_connection(str(SOCKET_PATH))
             # Do client-side WS handshake with the gateway
-            key     = base64.b64encode(os.urandom(16)).decode()
+            key = base64.b64encode(os.urandom(16)).decode()
             request = (
                 f"GET /mobile HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\n"
                 f"Connection: Upgrade\r\nSec-WebSocket-Key: {key}\r\n"
@@ -269,9 +277,7 @@ class _GatewayBridge:
             )
             self._gw_writer.write(request.encode())
             await self._gw_writer.drain()
-            raw = await asyncio.wait_for(
-                self._gw_reader.readuntil(b"\r\n\r\n"), timeout=5
-            )
+            raw = await asyncio.wait_for(self._gw_reader.readuntil(b"\r\n\r\n"), timeout=5)
             if b"101" not in raw:
                 return False
             self._gw_ws = _WS(self._gw_reader, self._gw_writer)
@@ -286,10 +292,9 @@ class _GatewayBridge:
         Runs until either side disconnects.
         """
         if not await self.connect_gateway():
-            await self.mobile_ws.send(json.dumps({
-                "type": "error",
-                "text": "Gateway not reachable — is Sable running?"
-            }))
+            await self.mobile_ws.send(
+                json.dumps({"type": "error", "text": "Gateway not reachable — is Sable running?"})
+            )
             return
 
         async def mobile_to_gateway():
@@ -326,6 +331,7 @@ class _GatewayBridge:
 
 # ─── Mobile Relay server ──────────────────────────────────────────────────────
 
+
 class MobileRelay:
     """
     TCP server on 127.0.0.1:<port> that:
@@ -338,10 +344,10 @@ class MobileRelay:
     """
 
     def __init__(self, config):
-        self.config  = config
-        self.host    = getattr(config, "mobile_relay_host", "127.0.0.1")
-        self.port    = getattr(config, "mobile_relay_port", 7891)
-        self.secret  = getattr(config, "mobile_relay_secret", None) or _load_or_create_secret()
+        self.config = config
+        self.host = getattr(config, "mobile_relay_host", "127.0.0.1")
+        self.port = getattr(config, "mobile_relay_port", 7891)
+        self.secret = getattr(config, "mobile_relay_secret", None) or _load_or_create_secret()
 
         self._server: Optional[asyncio.AbstractServer] = None
         self._running = False
@@ -349,9 +355,7 @@ class MobileRelay:
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
     async def start(self):
-        self._server  = await asyncio.start_server(
-            self._on_connect, self.host, self.port
-        )
+        self._server = await asyncio.start_server(self._on_connect, self.host, self.port)
         self._running = True
         self._print_connection_info()
         logger.info(f"[Relay] Mobile relay listening on {self.host}:{self.port}")
@@ -364,7 +368,6 @@ class MobileRelay:
 
     def _print_connection_info(self):
         """Print startup info so the user knows how to connect."""
-        import socket
 
         # Try to detect Tailscale IP
         tailscale_ip = self._get_tailscale_ip()
@@ -402,6 +405,7 @@ class MobileRelay:
     def _get_tailscale_ip() -> Optional[str]:
         """Return the Tailscale IP (100.x.x.x) if available."""
         import subprocess, re
+
         try:
             result = subprocess.run(
                 ["tailscale", "ip", "-4"], capture_output=True, text=True, timeout=2
@@ -415,11 +419,9 @@ class MobileRelay:
 
     # ── Connection handler ────────────────────────────────────────────────────
 
-    async def _on_connect(
-        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
-    ):
+    async def _on_connect(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         peer = writer.get_extra_info("peername", "?")
-        ws   = await _WS.upgrade(reader, writer)
+        ws = await _WS.upgrade(reader, writer)
         if ws is None:
             return
 
@@ -436,7 +438,7 @@ class MobileRelay:
             return
 
         try:
-            msg   = json.loads(raw)
+            msg = json.loads(raw)
             token = msg.get("token", "")
         except Exception:
             await ws.send(json.dumps({"type": "auth.fail", "reason": "Bad frame"}))
@@ -451,11 +453,15 @@ class MobileRelay:
 
         # ── Step 2: authenticated — proxy to gateway ───────────────────────────
         logger.info(f"[Relay] Mobile client authenticated: {peer}")
-        await ws.send(json.dumps({
-            "type": "auth.ok",
-            "agent": "Sable",
-            "version": RELAY_VERSION,
-        }))
+        await ws.send(
+            json.dumps(
+                {
+                    "type": "auth.ok",
+                    "agent": "Sable",
+                    "version": RELAY_VERSION,
+                }
+            )
+        )
 
         bridge = _GatewayBridge(ws)
         try:

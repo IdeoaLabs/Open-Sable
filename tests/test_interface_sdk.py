@@ -3,11 +3,17 @@ Tests for Interface SDK - Custom chat interface framework.
 """
 
 import pytest
-import asyncio
 from opensable.core.interface_sdk import (
-    InterfaceType, MessageType, InterfaceConfig, Message,
-    InterfaceLifecycle, InterfaceRegistry, InterfaceBuilder,
-    WebSocketInterface, HTTPWebhookInterface, CustomCLIInterface
+    InterfaceType,
+    MessageType,
+    InterfaceConfig,
+    Message,
+    InterfaceLifecycle,
+    InterfaceRegistry,
+    InterfaceBuilder,
+    WebSocketInterface,
+    HTTPWebhookInterface,
+    CustomCLIInterface,
 )
 
 
@@ -76,7 +82,9 @@ class TestMessage:
         assert d["sender_id"] == "bot"
 
     def test_metadata(self):
-        msg = Message(id="m3", type=MessageType.TEXT, content="hi", sender_id="u", metadata={"key": "val"})
+        msg = Message(
+            id="m3", type=MessageType.TEXT, content="hi", sender_id="u", metadata={"key": "val"}
+        )
         assert msg.metadata["key"] == "val"
 
 
@@ -95,10 +103,17 @@ class TestInterfaceRegistry:
 
     def test_register_custom(self, registry):
         class Dummy(InterfaceLifecycle):
-            async def start(self): pass
-            async def stop(self): pass
-            async def send_message(self, m): return True
-            async def receive_message(self): return None
+            async def start(self):
+                pass
+
+            async def stop(self):
+                pass
+
+            async def send_message(self, m):
+                return True
+
+            async def receive_message(self):
+                return None
 
         registry.register("dummy", Dummy)
         assert "dummy" in registry.list_interfaces()
@@ -127,7 +142,9 @@ class TestWebSocketInterface:
 
     @pytest.fixture
     def ws(self):
-        cfg = InterfaceConfig(name="ws", type=InterfaceType.CHAT, settings={"host": "127.0.0.1", "port": 9000})
+        cfg = InterfaceConfig(
+            name="ws", type=InterfaceType.CHAT, settings={"host": "127.0.0.1", "port": 9000}
+        )
         return WebSocketInterface(cfg)
 
     @pytest.mark.asyncio
@@ -152,7 +169,9 @@ class TestHTTPWebhookInterface:
     """Test HTTP webhook interface."""
 
     def test_init(self):
-        cfg = InterfaceConfig(name="wh", type=InterfaceType.WEBHOOK, settings={"endpoint": "/hook", "secret": "s"})
+        cfg = InterfaceConfig(
+            name="wh", type=InterfaceType.WEBHOOK, settings={"endpoint": "/hook", "secret": "s"}
+        )
         wh = HTTPWebhookInterface(cfg)
         assert wh.endpoint == "/hook"
         assert wh.secret == "s"

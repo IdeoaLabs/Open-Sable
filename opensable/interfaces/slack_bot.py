@@ -19,7 +19,7 @@ import string
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 # ──────────────────────────────────────────────────────────────────────
 # Helpers
 # ──────────────────────────────────────────────────────────────────────
+
 
 def _generate_pair_code(length: int = 6) -> str:
     alphabet = string.ascii_uppercase + string.digits
@@ -36,6 +37,7 @@ def _generate_pair_code(length: int = 6) -> str:
 # ──────────────────────────────────────────────────────────────────────
 # Pairing store (mirrors Telegram's PairingStore)
 # ──────────────────────────────────────────────────────────────────────
+
 
 class SlackPairingStore:
     """
@@ -54,9 +56,12 @@ class SlackPairingStore:
         self._load()
 
         # Seed from env
-        for uid in (getattr(config, "slack_allowed_users", None) or []):
+        for uid in getattr(config, "slack_allowed_users", None) or []:
             if uid and uid not in self.allowlist:
-                self.allowlist[uid] = {"username": "env-seeded", "approved_at": datetime.utcnow().isoformat()}
+                self.allowlist[uid] = {
+                    "username": "env-seeded",
+                    "approved_at": datetime.utcnow().isoformat(),
+                }
 
     def is_allowed(self, user_id: str) -> bool:
         return user_id in self.allowlist
@@ -117,7 +122,9 @@ class SlackPairingStore:
         return next(iter(self.allowlist), None)
 
     def _save(self):
-        self._path.write_text(json.dumps({"allowlist": self.allowlist, "pending": self.pending}, indent=2))
+        self._path.write_text(
+            json.dumps({"allowlist": self.allowlist, "pending": self.pending}, indent=2)
+        )
 
     def _load(self):
         if self._path.exists():
@@ -133,11 +140,12 @@ class SlackPairingStore:
 # Main Slack Interface
 # ──────────────────────────────────────────────────────────────────────
 
+
 class SlackInterface:
     """Slack bot with streaming, pairing, multimodal, and commands."""
 
-    _STREAM_CHUNK = 100         # chars between edits
-    _STREAM_INTERVAL = 1.5      # seconds between edits
+    _STREAM_CHUNK = 100  # chars between edits
+    _STREAM_INTERVAL = 1.5  # seconds between edits
 
     def __init__(self, agent, config):
         self.agent = agent
@@ -179,6 +187,7 @@ class SlackInterface:
             # Optional multimodal
             try:
                 from opensable.core.image_analyzer import ImageAnalyzer
+
                 self.image_analyzer = ImageAnalyzer(self.config)
                 await self.image_analyzer.initialize()
             except Exception:
@@ -186,6 +195,7 @@ class SlackInterface:
 
             try:
                 from opensable.core.voice_handler import VoiceMessageHandler
+
                 self.voice_handler = VoiceMessageHandler(self.config, self.agent)
                 await self.voice_handler.initialize()
             except Exception:
@@ -292,7 +302,9 @@ class SlackInterface:
         if action == "approve" and len(args) > 1:
             result = self.pairing.approve_code(args[1])
             if result:
-                await say(f":white_check_mark: User *{result['username']}* (`{result['user_id']}`) approved.")
+                await say(
+                    f":white_check_mark: User *{result['username']}* (`{result['user_id']}`) approved."
+                )
             else:
                 await say(":x: Code not found or expired.")
 
@@ -351,7 +363,8 @@ class SlackInterface:
 
             # Session
             session = self.session_manager.get_or_create_session(
-                user_id=user_id, channel="slack",
+                user_id=user_id,
+                channel="slack",
             )
 
             # Check if it's a built-in command (pair, help, etc.)
@@ -424,9 +437,8 @@ class SlackInterface:
         full_text = ""
         try:
             import ollama as _ollama
-            ol_client = _ollama.AsyncClient(
-                host=self.config.ollama_base_url
-            )
+
+            ol_client = _ollama.AsyncClient(host=self.config.ollama_base_url)
 
             # Build messages
             if hasattr(self.agent, "_get_personality_prompt"):
@@ -495,7 +507,8 @@ class SlackInterface:
             except Exception as e2:
                 logger.error(f"[Slack] Fallback also failed: {e2}")
                 await client.chat_update(
-                    channel=channel_id, ts=ph_ts,
+                    channel=channel_id,
+                    ts=ph_ts,
                     text=":x: Sorry, I encountered an error.",
                 )
 
@@ -594,10 +607,13 @@ class SlackInterface:
 
             # ── Image ──
             if mimetype.startswith("image/") and self.image_analyzer:
-                await client.chat_postMessage(channel=channel_id, text=":frame_with_picture: Analysing image…")
+                await client.chat_postMessage(
+                    channel=channel_id, text=":frame_with_picture: Analysing image…"
+                )
 
                 # Download image
                 import aiohttp
+
                 url = file_data.get("url_private_download") or file_data.get("url_private")
                 if not url:
                     return
@@ -608,6 +624,7 @@ class SlackInterface:
 
                 # Analyse
                 import tempfile
+
                 with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
                     tmp.write(image_bytes)
                     tmp_path = tmp.name
@@ -623,9 +640,12 @@ class SlackInterface:
 
             # ── Audio ──
             if mimetype.startswith("audio/") and self.voice_handler:
-                await client.chat_postMessage(channel=channel_id, text=":microphone: Processing voice…")
+                await client.chat_postMessage(
+                    channel=channel_id, text=":microphone: Processing voice…"
+                )
 
                 import aiohttp
+
                 url = file_data.get("url_private_download") or file_data.get("url_private")
                 if not url:
                     return

@@ -2,8 +2,8 @@
 Open-Sable Autonomous Agent Demo
 Shows the agent executing commands, modifying files, and running autonomously
 """
+
 import asyncio
-from pathlib import Path
 from rich.console import Console
 from rich.panel import Panel
 from rich.syntax import Syntax
@@ -13,101 +13,87 @@ console = Console()
 
 async def demo_computer_control():
     """Demo: Computer control capabilities (execute commands, modify files)"""
-    console.print("\n" + "="*60)
-    console.print(Panel.fit(
-        "🖥️  COMPUTER CONTROL - Full System Access",
-        style="bold cyan"
-    ))
-    console.print("="*60 + "\n")
-    
+    console.print("\n" + "=" * 60)
+    console.print(Panel.fit("🖥️  COMPUTER CONTROL - Full System Access", style="bold cyan"))
+    console.print("=" * 60 + "\n")
+
     from core.computer_tools import ComputerTools
-    
+
     class FakeConfig:
         pass
-    
+
     computer = ComputerTools(FakeConfig(), sandbox_mode=False)
-    
+
     # 1. Execute commands
     console.print("[bold]1. Execute Shell Commands[/bold]")
-    
-    commands = [
-        "ls -la /home",
-        "whoami",
-        "uname -a",
-        "df -h",
-        "free -h"
-    ]
-    
+
+    commands = ["ls -la /home", "whoami", "uname -a", "df -h", "free -h"]
+
     for cmd in commands:
         console.print(f"\n  💻 Executing: [cyan]{cmd}[/cyan]")
         result = await computer.execute_command(cmd)
-        
-        if result['success']:
-            output = result['stdout'][:500]  # Truncate
+
+        if result["success"]:
+            output = result["stdout"][:500]  # Truncate
             console.print(f"  ✅ Success (exit code: {result['exit_code']})")
             console.print(f"  Output:\n{output}")
         else:
             console.print(f"  ❌ Failed: {result['stderr']}")
-    
+
     # 2. File operations
     console.print("\n[bold]2. File Operations[/bold]")
-    
+
     test_file = "/tmp/opensable_test.txt"
-    
+
     # Write file
     console.print(f"\n  📝 Writing file: {test_file}")
     result = await computer.write_file(
-        test_file,
-        "Hello from Open-Sable!\nThis is an autonomous AI agent.\n"
+        test_file, "Hello from Open-Sable!\nThis is an autonomous AI agent.\n"
     )
     console.print(f"  ✅ Wrote {result['bytes_written']} bytes")
-    
+
     # Read file
     console.print(f"\n  📖 Reading file: {test_file}")
     result = await computer.read_file(test_file)
     console.print(f"  Content:\n{result['content']}")
-    
+
     # Edit file
-    console.print(f"\n  ✏️  Editing file...")
-    result = await computer.edit_file(
-        test_file,
-        "autonomous AI agent",
-        "SUPER AUTONOMOUS AI AGENT"
-    )
+    console.print("\n  ✏️  Editing file...")
+    result = await computer.edit_file(test_file, "autonomous AI agent", "SUPER AUTONOMOUS AI AGENT")
     console.print(f"  ✅ Made {result['replacements']} replacement(s)")
-    
+
     # Read again
     result = await computer.read_file(test_file)
     console.print(f"  New content:\n{result['content']}")
-    
+
     # 3. Directory operations
     console.print("\n[bold]3. Directory Operations[/bold]")
-    
+
     test_dir = "/tmp/opensable_test_dir"
-    
+
     # Create directory
     console.print(f"\n  📁 Creating directory: {test_dir}")
     result = await computer.create_directory(test_dir)
     console.print(f"  ✅ Created: {result['path']}")
-    
+
     # List directory
-    console.print(f"\n  📂 Listing /tmp")
+    console.print("\n  📂 Listing /tmp")
     result = await computer.list_directory("/tmp", include_hidden=False)
-    files = result['files'][:10]  # Show first 10
+    files = result["files"][:10]  # Show first 10
     for f in files:
-        icon = "📁" if f['type'] == 'directory' else "📄"
+        icon = "📁" if f["type"] == "directory" else "📄"
         console.print(f"  {icon} {f['name']}")
-    
+
     # Search files
-    console.print(f"\n  🔍 Searching for 'opensable' in /tmp")
+    console.print("\n  🔍 Searching for 'opensable' in /tmp")
     result = await computer.search_files("/tmp", "opensable", content_search=False)
-    for match in result['matches'][:5]:
+    for match in result["matches"][:5]:
         console.print(f"  • {match['path']}")
-    
+
     # 4. System info
     console.print("\n[bold]4. System Information[/bold]")
     result = await computer.get_system_info()
-    
+
     console.print(f"""
   💻 Platform: {result['system']} ({result['platform']})
   🐍 Python: {result['python_version']}
@@ -115,7 +101,7 @@ async def demo_computer_control():
   💾 Memory: {result['memory_available'] / (1024**3):.2f} GB available ({result['memory_percent']}% used)
   💿 Disk: {result['disk_usage']['free'] / (1024**3):.2f} GB free ({result['disk_usage']['percent']}% used)
 """)
-    
+
     # Cleanup
     console.print("\n[bold]5. Cleanup[/bold]")
     await computer.delete_file(test_file)
@@ -125,13 +111,12 @@ async def demo_computer_control():
 
 async def demo_autonomous_workflow():
     """Demo: Autonomous workflow"""
-    console.print("\n" + "="*60)
-    console.print(Panel.fit(
-        "🤖 AUTONOMOUS WORKFLOW - Self-Directed Operation",
-        style="bold yellow"
-    ))
-    console.print("="*60 + "\n")
-    
+    console.print("\n" + "=" * 60)
+    console.print(
+        Panel.fit("🤖 AUTONOMOUS WORKFLOW - Self-Directed Operation", style="bold yellow")
+    )
+    console.print("=" * 60 + "\n")
+
     console.print("""
 [bold]What This Agent Can Do Autonomously:[/bold]
 
@@ -176,29 +161,29 @@ async def demo_autonomous_workflow():
 
 [bold yellow]Running Example:[/bold yellow]
 """)
-    
+
     # Simulate autonomous operation
     from core.computer_tools import ComputerTools
-    
+
     class FakeConfig:
         pass
-    
+
     computer = ComputerTools(FakeConfig())
-    
+
     console.print("🤖 Agent: I'll check system health and take action...\n")
-    
+
     # Step 1: Check system
     console.print("  [1/4] Getting system info...")
     await asyncio.sleep(1)
     result = await computer.get_system_info()
-    
-    disk_usage = result['disk_usage']['percent']
+
+    disk_usage = result["disk_usage"]["percent"]
     console.print(f"  ✅ Disk usage: {disk_usage}%")
-    
+
     # Step 2: Conditional action
     if disk_usage > 70:
         console.print("  ⚠️  Disk usage high! Taking action...")
-        
+
         # Execute cleanup
         console.print("  [2/4] Finding large files...")
         await asyncio.sleep(1)
@@ -206,7 +191,7 @@ async def demo_autonomous_workflow():
             "find /tmp -type f -size +10M 2>/dev/null | head -5"
         )
         console.print(f"  Found: {len(cmd_result['stdout'].splitlines())} large files")
-        
+
         # Create report
         console.print("  [3/4] Creating cleanup report...")
         await asyncio.sleep(1)
@@ -220,16 +205,16 @@ Recommendation: Clean /tmp directory
 """
         await computer.write_file("/tmp/cleanup_report.txt", report)
         console.print("  ✅ Report saved to /tmp/cleanup_report.txt")
-        
+
         # Send notification (simulated)
         console.print("  [4/4] Sending notification...")
         await asyncio.sleep(1)
         console.print("  📬 Notification sent to Telegram")
-        
+
         console.print("\n✅ Autonomous task completed successfully!")
     else:
         console.print("  ✅ System healthy, no action needed")
-    
+
     console.print("""
 [bold green]Full autonomous agent capabilities![/bold green]
 
@@ -250,13 +235,10 @@ Recommendation: Clean /tmp directory
 
 async def demo_integration_with_llm():
     """Demo: Integration with LLM for intelligent automation"""
-    console.print("\n" + "="*60)
-    console.print(Panel.fit(
-        "🧠 LLM + COMPUTER CONTROL = Autonomous Agent",
-        style="bold magenta"
-    ))
-    console.print("="*60 + "\n")
-    
+    console.print("\n" + "=" * 60)
+    console.print(Panel.fit("🧠 LLM + COMPUTER CONTROL = Autonomous Agent", style="bold magenta"))
+    console.print("=" * 60 + "\n")
+
     console.print("""
 [bold]How It Works:[/bold]
 
@@ -282,7 +264,7 @@ async def demo_integration_with_llm():
 
 [bold cyan]Example Workflow Code:[/bold cyan]
 """)
-    
+
     code = '''async def autonomous_debug_workflow(user_request: str):
     """Example: Agent debugging a service issue"""
     
@@ -313,10 +295,10 @@ async def demo_integration_with_llm():
             await tools.execute_command("systemctl restart app")
     
     return "✅ Issue fixed and service restarted"'''
-    
+
     syntax = Syntax(code, "python", theme="monokai", line_numbers=True)
     console.print(syntax)
-    
+
     console.print("""
 [bold green]The secret sauce:[/bold green]
 LLM brain + Computer hands = Autonomous problem solver
@@ -357,22 +339,23 @@ async def main():
 ╚════════════════════════════════════════════════════════════╝
 [/bold cyan]
 """)
-    
+
     # Run demos
     await demo_computer_control()
     await asyncio.sleep(2)
-    
+
     await demo_autonomous_workflow()
     await asyncio.sleep(2)
-    
+
     await demo_integration_with_llm()
-    
-    console.print("\n" + "="*60)
-    console.print(Panel.fit(
-        "✅ Demo Complete - Open-Sable is Ready for Autonomous Operation!",
-        style="bold green"
-    ))
-    console.print("="*60 + "\n")
+
+    console.print("\n" + "=" * 60)
+    console.print(
+        Panel.fit(
+            "✅ Demo Complete - Open-Sable is Ready for Autonomous Operation!", style="bold green"
+        )
+    )
+    console.print("=" * 60 + "\n")
 
 
 if __name__ == "__main__":

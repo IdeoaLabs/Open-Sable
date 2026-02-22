@@ -46,7 +46,6 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import hashlib
 import json
 import logging
 import os
@@ -54,17 +53,17 @@ import platform
 import shutil
 import subprocess
 import sys
-import time
 from pathlib import Path
 from typing import Any, Callable, Coroutine, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
 SOCKET_PATH = Path("/tmp/sable.sock")
-MAX_FILE_READ = 1024 * 512   # 512 KB safety limit for fs.read
+MAX_FILE_READ = 1024 * 512  # 512 KB safety limit for fs.read
 
 
 # ─── Node Client SDK ──────────────────────────────────────────────────────────
+
 
 class GatewayNodeClient:
     """
@@ -83,11 +82,11 @@ class GatewayNodeClient:
         handler: Callable[[str, dict], Coroutine[Any, Any, dict]],
         reconnect_delay: float = 5.0,
     ):
-        self.node_id         = node_id
-        self.capabilities    = capabilities
-        self.handler         = handler
+        self.node_id = node_id
+        self.capabilities = capabilities
+        self.handler = handler
         self.reconnect_delay = reconnect_delay
-        self._running        = False
+        self._running = False
 
     async def run(self):
         """Connect to the gateway and serve requests, reconnecting on drops."""
@@ -111,11 +110,15 @@ class GatewayNodeClient:
         ws = await self._handshake(reader, writer)
 
         # Register
-        await ws.send(json.dumps({
-            "type": "node.register",
-            "node_id": self.node_id,
-            "capabilities": self.capabilities,
-        }))
+        await ws.send(
+            json.dumps(
+                {
+                    "type": "node.register",
+                    "node_id": self.node_id,
+                    "capabilities": self.capabilities,
+                }
+            )
+        )
 
         logger.info(f"[Node:{self.node_id}] registered  caps={self.capabilities}")
 
@@ -133,26 +136,30 @@ class GatewayNodeClient:
         mtype = msg.get("type", "")
 
         if mtype == "node.invoke":
-            cap    = msg.get("capability", "")
-            args   = msg.get("args", {})
+            cap = msg.get("capability", "")
+            args = msg.get("args", {})
             req_id = msg.get("request_id", "")
-            rto    = msg.get("reply_to", "")
+            rto = msg.get("reply_to", "")
 
             try:
                 result = await self.handler(cap, args)
             except Exception as e:
                 result = {"error": str(e)}
 
-            await ws.send(json.dumps({
-                "type": "node.result",
-                "request_id": req_id,
-                "reply_to": rto,
-                "node_id": self.node_id,
-                "output": result,
-            }))
+            await ws.send(
+                json.dumps(
+                    {
+                        "type": "node.result",
+                        "request_id": req_id,
+                        "reply_to": rto,
+                        "node_id": self.node_id,
+                        "output": result,
+                    }
+                )
+            )
 
         elif mtype in ("heartbeat", "pong", "node.registered"):
-            pass   # silently ignored
+            pass  # silently ignored
 
         else:
             logger.debug(f"[Node:{self.node_id}] unhandled msg type: {mtype}")
@@ -161,7 +168,7 @@ class GatewayNodeClient:
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
     ) -> "_WSClient":
         """Minimal HTTP→WebSocket upgrade as a client."""
-        key     = base64.b64encode(os.urandom(16)).decode()
+        key = base64.b64encode(os.urandom(16)).decode()
         request = (
             f"GET / HTTP/1.1\r\n"
             f"Host: localhost\r\n"
@@ -216,9 +223,9 @@ class _WSClient:
 
     async def send(self, text: str):
         """Send a masked text frame (client→server direction requires masking)."""
-        payload  = text.encode("utf-8")
+        payload = text.encode("utf-8")
         mask_key = os.urandom(4)
-        masked   = bytes(b ^ mask_key[i % 4] for i, b in enumerate(payload))
+        masked = bytes(b ^ mask_key[i % 4] for i, b in enumerate(payload))
         n = len(payload)
         if n < 126:
             hdr = bytes([0x81, 0x80 | n])
@@ -236,6 +243,7 @@ class _WSClient:
 
 # ─── Built-in Local Node ──────────────────────────────────────────────────────
 
+
 class LocalNode:
     """
     Built-in node that runs on the same host as the Sable Gateway.
@@ -252,13 +260,45 @@ class LocalNode:
     # Only these shell commands may be executed via system.run.
     # Add more carefully — this is a security boundary.
     ALLOWED_COMMANDS = {
-        "ls", "pwd", "echo", "date", "whoami", "uname", "df", "du",
-        "free", "uptime", "ps", "top", "cat", "head", "tail", "grep",
-        "find", "wc", "sort", "uniq", "cut", "awk", "sed", "tr",
-        "curl", "wget", "ping", "netstat", "ss", "ip",
-        "python3", "python", "pip", "pip3",
-        "git", "make", "cmake",
-        "systemctl", "journalctl",
+        "ls",
+        "pwd",
+        "echo",
+        "date",
+        "whoami",
+        "uname",
+        "df",
+        "du",
+        "free",
+        "uptime",
+        "ps",
+        "top",
+        "cat",
+        "head",
+        "tail",
+        "grep",
+        "find",
+        "wc",
+        "sort",
+        "uniq",
+        "cut",
+        "awk",
+        "sed",
+        "tr",
+        "curl",
+        "wget",
+        "ping",
+        "netstat",
+        "ss",
+        "ip",
+        "python3",
+        "python",
+        "pip",
+        "pip3",
+        "git",
+        "make",
+        "cmake",
+        "systemctl",
+        "journalctl",
     }
 
     CAPABILITIES = [
@@ -271,7 +311,7 @@ class LocalNode:
     ]
 
     def __init__(self, config=None):
-        self.config  = config
+        self.config = config
         self._client = GatewayNodeClient(
             node_id="local",
             capabilities=self.CAPABILITIES,
@@ -289,12 +329,18 @@ class LocalNode:
     # ── Capability handlers ───────────────────────────────────────────────────
 
     async def _handle(self, capability: str, args: dict) -> dict:
-        if   capability == "system.run":    return await self._system_run(args)
-        elif capability == "system.notify": return self._system_notify(args)
-        elif capability == "system.info":   return self._system_info()
-        elif capability == "fs.read":       return self._fs_read(args)
-        elif capability == "fs.write":      return self._fs_write(args)
-        elif capability == "fs.list":       return self._fs_list(args)
+        if capability == "system.run":
+            return await self._system_run(args)
+        elif capability == "system.notify":
+            return self._system_notify(args)
+        elif capability == "system.info":
+            return self._system_info()
+        elif capability == "fs.read":
+            return self._fs_read(args)
+        elif capability == "fs.write":
+            return self._fs_write(args)
+        elif capability == "fs.list":
+            return self._fs_list(args)
         else:
             return {"error": f"Unknown capability: {capability}"}
 
@@ -310,7 +356,7 @@ class LocalNode:
             return {"error": f"Command '{base}' is not in the allowed list"}
 
         timeout = min(int(args.get("timeout", 30)), 120)
-        cwd     = args.get("cwd") or str(Path.home())
+        cwd = args.get("cwd") or str(Path.home())
 
         try:
             proc = await asyncio.create_subprocess_shell(
@@ -321,9 +367,9 @@ class LocalNode:
             )
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
             return {
-                "stdout":      stdout.decode(errors="replace"),
-                "stderr":      stderr.decode(errors="replace"),
-                "returncode":  proc.returncode,
+                "stdout": stdout.decode(errors="replace"),
+                "stderr": stderr.decode(errors="replace"),
+                "returncode": proc.returncode,
             }
         except asyncio.TimeoutError:
             return {"error": f"Command timed out after {timeout}s"}
@@ -332,12 +378,12 @@ class LocalNode:
 
     def _system_notify(self, args: dict) -> dict:
         """Send a desktop notification."""
-        title   = args.get("title", "Sable")
+        title = args.get("title", "Sable")
         message = args.get("message", "")
         try:
-            if shutil.which("notify-send"):                     # Linux
+            if shutil.which("notify-send"):  # Linux
                 subprocess.Popen(["notify-send", title, message])
-            elif sys.platform == "darwin":                      # macOS
+            elif sys.platform == "darwin":  # macOS
                 script = f'display notification "{message}" with title "{title}"'
                 subprocess.Popen(["osascript", "-e", script])
             else:
@@ -349,18 +395,19 @@ class LocalNode:
     def _system_info(self) -> dict:
         """Return OS/hardware information."""
         info: Dict[str, Any] = {
-            "os":         platform.system(),
+            "os": platform.system(),
             "os_release": platform.release(),
-            "machine":    platform.machine(),
-            "python":     sys.version,
-            "hostname":   platform.node(),
-            "cwd":        str(Path.cwd()),
-            "home":       str(Path.home()),
+            "machine": platform.machine(),
+            "python": sys.version,
+            "hostname": platform.node(),
+            "cwd": str(Path.cwd()),
+            "home": str(Path.home()),
         }
         try:
             import psutil
-            info["cpu_count"]    = psutil.cpu_count()
-            info["cpu_percent"]  = psutil.cpu_percent(interval=0.1)
+
+            info["cpu_count"] = psutil.cpu_count()
+            info["cpu_percent"] = psutil.cpu_percent(interval=0.1)
             mem = psutil.virtual_memory()
             info["mem_total_gb"] = round(mem.total / 1e9, 1)
             info["mem_used_pct"] = mem.percent
@@ -385,7 +432,7 @@ class LocalNode:
 
     def _fs_write(self, args: dict) -> dict:
         """Write content to a file."""
-        path    = Path(args.get("path", "")).expanduser()
+        path = Path(args.get("path", "")).expanduser()
         content = args.get("content", "")
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -402,11 +449,13 @@ class LocalNode:
         try:
             entries = []
             for entry in sorted(path.iterdir()):
-                entries.append({
-                    "name":  entry.name,
-                    "type":  "dir" if entry.is_dir() else "file",
-                    "size":  entry.stat().st_size if entry.is_file() else None,
-                })
+                entries.append(
+                    {
+                        "name": entry.name,
+                        "type": "dir" if entry.is_dir() else "file",
+                        "size": entry.stat().st_size if entry.is_file() else None,
+                    }
+                )
             return {"path": str(path), "entries": entries}
         except Exception as e:
             return {"error": str(e)}

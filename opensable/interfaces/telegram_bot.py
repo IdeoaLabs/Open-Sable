@@ -16,7 +16,6 @@ Features:
 
 import asyncio
 import logging
-import os
 import re
 import secrets
 import string
@@ -24,8 +23,8 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional
 
-from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import Command, CommandStart
+from aiogram import Bot, Dispatcher, F
+from aiogram.filters import CommandStart
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from aiogram.enums import ParseMode, ChatType
 
@@ -43,6 +42,7 @@ logger = logging.getLogger(__name__)
 
 _MD2_CHARS = r"_*[]()~`>#+-=|{}.!"
 
+
 def _escape_md2(text: str) -> str:
     return re.sub(r"([" + re.escape(_MD2_CHARS) + r"])", r"\\\1", text)
 
@@ -55,6 +55,7 @@ def _generate_pair_code(length: int = 6) -> str:
 # ──────────────────────────────────────────────────────────────────────────────
 # Pairing store  (in-memory + persisted to ~/.opensable/pairing.json)
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 class PairingStore:
     """
@@ -83,7 +84,10 @@ class PairingStore:
         # Seed allowlist from env if provided
         for uid in config.telegram_allowed_users:
             if uid and uid not in self.allowlist:
-                self.allowlist[uid] = {"username": "env-seeded", "approved_at": datetime.utcnow().isoformat()}
+                self.allowlist[uid] = {
+                    "username": "env-seeded",
+                    "approved_at": datetime.utcnow().isoformat(),
+                }
 
     # ------------------------------------------------------------------
 
@@ -173,7 +177,6 @@ class PairingStore:
         return next(iter(self.allowlist), None)
 
     def _save(self):
-        import json
         self._path.write_text(
             __import__("json").dumps(
                 {"allowlist": self.allowlist, "pending": self.pending}, indent=2
@@ -182,6 +185,7 @@ class PairingStore:
 
     def _load(self):
         import json
+
         if self._path.exists():
             try:
                 data = json.loads(self._path.read_text())
@@ -195,11 +199,12 @@ class PairingStore:
 # Main Telegram Interface
 # ──────────────────────────────────────────────────────────────────────────────
 
+
 class TelegramInterface:
     """Telegram bot with streaming, pairing, persistent sessions, and commands."""
 
     # Streaming: edit the placeholder message every N chars or N seconds
-    _STREAM_CHUNK = 80      # characters before editing
+    _STREAM_CHUNK = 80  # characters before editing
     _STREAM_INTERVAL = 1.5  # seconds between edits (Telegram rate-limit ~20 edits/min)
 
     def __init__(self, agent, config):
@@ -210,16 +215,16 @@ class TelegramInterface:
         self.session_manager = SessionManager()
         self.command_handler = CommandHandler(
             self.session_manager,
-            plugin_manager=getattr(agent, 'plugins', None),
+            plugin_manager=getattr(agent, "plugins", None),
         )
         self.pairing = PairingStore(config)
-        
+
         # Heartbeat manager for proactive checking
         self.heartbeat = HeartbeatManager(agent, config)
-        
+
         # Voice message handler
         self.voice_handler = VoiceMessageHandler(config, agent)
-        
+
         # Image analyzer
         self.image_analyzer = ImageAnalyzer(config)
 
@@ -240,26 +245,33 @@ class TelegramInterface:
         self.dp.message.register(self._h_voice, F.voice)
         self.dp.message.register(self._h_photo, F.photo)
         self.dp.message.register(self._h_message)  # catch-all: slash commands + regular text
-        
+
         # Register callback query handler for inline buttons
         self.dp.callback_query.register(self._h_callback)
-        
+
         # Start heartbeat for proactive checking
-        from opensable.core.heartbeat import check_system_health, check_pending_tasks, check_idle_time
+        from opensable.core.heartbeat import (
+            check_system_health,
+            check_pending_tasks,
+            check_idle_time,
+        )
+
         self.heartbeat.register_check(check_system_health, "System Health")
         self.heartbeat.register_check(check_pending_tasks, "Pending Goals")
         self.heartbeat.register_check(check_idle_time, "Idle Check")
-        
+
         # Wire heartbeat alerts to Telegram
         owner_id = self.pairing.owner_id()
         if owner_id:
+
             async def _tg_notify(msg: str):
                 try:
                     await self.bot.send_message(int(owner_id), msg)
                 except Exception as e:
                     logger.debug(f"Heartbeat Telegram notify failed: {e}")
+
             self.agent._telegram_notify = _tg_notify
-        
+
         await self.heartbeat.start()
 
         logger.info("Telegram bot starting (long-polling, no open ports)...")
@@ -335,11 +347,14 @@ class TelegramInterface:
             return
         user_id = str(message.from_user.id)
         session = self.session_manager.get_or_create_session(
-            user_id=user_id, channel="telegram",
+            user_id=user_id,
+            channel="telegram",
             config=SessionConfig(model=self.config.default_model),
         )
         name = message.from_user.first_name or "there"
-        age_h = (datetime.now(timezone.utc) - session.created_at.replace(tzinfo=timezone.utc)).total_seconds() / 3600
+        age_h = (
+            datetime.now(timezone.utc) - session.created_at.replace(tzinfo=timezone.utc)
+        ).total_seconds() / 3600
         is_new = age_h < 0.1
         if is_new:
             text = (
@@ -376,18 +391,16 @@ class TelegramInterface:
             "/help — this message\n\n"
             "Just chat naturally for everything else!"
         )
-        
+
         # Example inline buttons
         buttons = [
             [
                 {"text": "📊 Status", "callback_data": "cmd:/status"},
-                {"text": "🔄 Reset", "callback_data": "cmd:/reset"}
+                {"text": "🔄 Reset", "callback_data": "cmd:/reset"},
             ],
-            [
-                {"text": "🌐 Search Web", "callback_data": "cmd:search latest AI news"}
-            ]
+            [{"text": "🌐 Search Web", "callback_data": "cmd:search latest AI news"}],
         ]
-        
+
         await self._safe_reply(message, text, buttons=buttons)
 
     async def _h_pair(self, message: Message):
@@ -419,7 +432,7 @@ class TelegramInterface:
                 try:
                     await self.bot.send_message(
                         result["user_id"],
-                        f"✅ You've been approved! You can now use Sable.",
+                        "✅ You've been approved! You can now use Sable.",
                     )
                 except Exception:
                     pass
@@ -450,126 +463,120 @@ class TelegramInterface:
 
         else:
             await message.answer("❌ Unknown pair action. Use: approve|deny|revoke")
-    
+
     async def _h_callback(self, callback: CallbackQuery):
         """Handle inline button clicks."""
         user_id = str(callback.from_user.id)
-        
+
         # Auth check
         if not self.pairing.is_allowed(user_id):
             await callback.answer("⛔ Not authorized", show_alert=True)
             return
-        
+
         data = callback.data or ""
-        
+
         # Parse callback data format: "cmd:action"
         if ":" in data:
             prefix, action = data.split(":", 1)
-            
+
             if prefix == "cmd":
                 # Execute command action
                 session = self.session_manager.get_or_create_session(
-                    user_id=user_id, channel="telegram",
+                    user_id=user_id,
+                    channel="telegram",
                     config=SessionConfig(model=self.config.default_model),
                 )
-                
+
                 # Process the action through the agent
                 history = session.get_llm_messages(limit=20)
                 response = await self.agent.process_message(user_id, action, history=history)
-                
+
                 # Send response and close button
                 await callback.message.answer(response, parse_mode=ParseMode.MARKDOWN)
                 await callback.answer("✅ Executed")
-                
+
                 # Update session
                 session.add_message("user", f"[Button: {action}]")
                 session.add_message("assistant", response)
                 self.session_manager._save_session(session)
             else:
                 await callback.answer("Unknown action")
-    
+
     async def _h_voice(self, message: Message):
         """Handle voice messages"""
         if not await self._check_auth(message):
             return
-        
+
         user_id = str(message.from_user.id)
         session = self.session_manager.get_or_create_session(
-            user_id=user_id, channel="telegram",
+            user_id=user_id,
+            channel="telegram",
             config=SessionConfig(model=self.config.default_model),
         )
-        
+
         try:
             await message.bot.send_chat_action(message.chat.id, "typing")
-            
+
             # Download voice file
             voice_file = await message.voice.download_to_drive()
             audio_bytes = Path(voice_file.name).read_bytes()
-            
+
             # Check if user wants voice response
             voice_enabled = session.config.use_voice
-            
+
             # Process voice message
             status_msg = await message.answer("🎙️ Processing voice message...")
-            
+
             result = await self.voice_handler.process_voice_message(
-                audio_bytes,
-                user_id,
-                respond_with_voice=voice_enabled
+                audio_bytes, user_id, respond_with_voice=voice_enabled
             )
-            
+
             await status_msg.delete()
-            
+
             if not result.get("success"):
                 await message.answer(f"❌ {result.get('error', 'Voice processing failed')}")
                 return
-            
+
             # Send transcription + text response
             transcription = result.get("transcription", "")
             response_text = result.get("response_text", "")
-            
+
             formatted_response = f"🎙️ *You said:* {transcription}\n\n{response_text}"
             await self._safe_reply(message, formatted_response)
-            
+
             # Send voice response if enabled
             if voice_enabled and "voice_data" in result:
                 voice_bytes = result["voice_data"]
-                await message.answer_voice(
-                    voice=voice_bytes,
-                    caption="🔊 Voice response"
-                )
-            
+                await message.answer_voice(voice=voice_bytes, caption="🔊 Voice response")
+
             # Update session history
             session.add_message("user", f"[Voice: {transcription}]")
             session.add_message("assistant", response_text)
             self.session_manager._save_session(session)
-            
+
         except Exception as e:
             logger.error(f"Voice message error: {e}", exc_info=True)
             await message.answer(f"❌ Voice processing error: {str(e)}")
-    
+
     async def _h_photo(self, message: Message):
         """Handle photo messages"""
         if not await self._check_auth(message):
             return
-        
+
         user_id = str(message.from_user.id)
-        
+
         try:
             await message.bot.send_chat_action(message.chat.id, "typing")
-            
+
             status_msg = await message.answer("🖼️ Analyzing image...")
-            
+
             response = await handle_telegram_photo(
-                message,
-                self.image_analyzer,
-                self.agent,
-                user_id
+                message, self.image_analyzer, self.agent, user_id
             )
-            
+
             await status_msg.delete()
             await self._safe_reply(message, response)
-            
+
         except Exception as e:
             logger.error(f"Photo handling error: {e}", exc_info=True)
             await message.answer(f"❌ Image analysis error: {str(e)}")
@@ -589,7 +596,8 @@ class TelegramInterface:
         is_group = message.chat.type in (ChatType.GROUP, ChatType.SUPERGROUP)
         if is_group:
             session_tmp = self.session_manager.get_or_create_session(
-                user_id=user_id, channel=f"telegram_group_{message.chat.id}",
+                user_id=user_id,
+                channel=f"telegram_group_{message.chat.id}",
                 config=SessionConfig(model=self.config.default_model),
             )
             activation = session_tmp.metadata.get("activation_mode", "mention")
@@ -602,7 +610,8 @@ class TelegramInterface:
         # Session — per user, per channel
         channel_key = f"telegram_group_{message.chat.id}" if is_group else "telegram"
         session = self.session_manager.get_or_create_session(
-            user_id=user_id, channel=channel_key,
+            user_id=user_id,
+            channel=channel_key,
             config=SessionConfig(model=self.config.default_model),
         )
 
@@ -610,7 +619,7 @@ class TelegramInterface:
 
         # ── Slash command handling ──────────────────────────────────────
         if text.startswith("/"):
-            is_admin = (user_id == self.pairing.owner_id())
+            is_admin = user_id == self.pairing.owner_id()
             result = await self.command_handler.handle_command(
                 text, session.id, user_id, is_admin=is_admin, is_group=is_group
             )
@@ -656,10 +665,30 @@ class TelegramInterface:
 
     # Keywords that signal the user wants the agent to use a tool (web search, etc.)
     _TOOL_TRIGGERS = (
-        "search", "busca", "buscar", "look up", "lookup", "find", "encuentra",
-        "google", "bing", "what is", "who is", "quien es", "que es",
-        "latest", "current", "news", "noticias", "weather", "clima",
-        "scrape", "fetch", "download", "url", "http",
+        "search",
+        "busca",
+        "buscar",
+        "look up",
+        "lookup",
+        "find",
+        "encuentra",
+        "google",
+        "bing",
+        "what is",
+        "who is",
+        "quien es",
+        "que es",
+        "latest",
+        "current",
+        "news",
+        "noticias",
+        "weather",
+        "clima",
+        "scrape",
+        "fetch",
+        "download",
+        "url",
+        "http",
     )
 
     def _needs_tools(self, text: str) -> bool:
@@ -683,6 +712,7 @@ class TelegramInterface:
 
         try:
             import ollama
+
             client = ollama.AsyncClient(host=self.config.ollama_base_url)
 
             # Prepare messages for Ollama
@@ -705,7 +735,11 @@ class TelegramInterface:
             ollama_messages.append({"role": "user", "content": text})
 
             async for chunk in await client.chat(
-                model=self.agent.llm.current_model if hasattr(self.agent.llm, "current_model") else "llama3.1:8b",
+                model=(
+                    self.agent.llm.current_model
+                    if hasattr(self.agent.llm, "current_model")
+                    else "llama3.1:8b"
+                ),
                 messages=ollama_messages,
                 stream=True,
             ):
@@ -746,11 +780,11 @@ class TelegramInterface:
     # ------------------------------------------------------------------
     # Safe send helpers
     # ------------------------------------------------------------------
-    
+
     def _build_inline_keyboard(self, buttons: list) -> InlineKeyboardMarkup:
         """
         Build inline keyboard from button data.
-        
+
         Format: [[{"text": "Button 1", "callback_data": "cmd:action1"}], ...]
         Each inner list is a row of buttons.
         """
@@ -762,25 +796,24 @@ class TelegramInterface:
                     # Security: limit callback_data to 64 chars (Telegram limit)
                     callback_data = btn["callback_data"][:64]
                     button_row.append(
-                        InlineKeyboardButton(
-                            text=btn["text"],
-                            callback_data=callback_data
-                        )
+                        InlineKeyboardButton(text=btn["text"], callback_data=callback_data)
                     )
             if button_row:
                 keyboard.append(button_row)
-        
+
         return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
     async def _safe_reply(self, message: Message, text: str, buttons: list = None):
         """Send reply — try Markdown, fall back to plain text. Optionally add inline buttons."""
         reply_markup = self._build_inline_keyboard(buttons) if buttons else None
-        
+
         try:
             await message.answer(text, parse_mode=ParseMode.MARKDOWN, reply_markup=reply_markup)
         except Exception:
             try:
-                await message.answer(_escape_md2(text), parse_mode=ParseMode.MARKDOWN_V2, reply_markup=reply_markup)
+                await message.answer(
+                    _escape_md2(text), parse_mode=ParseMode.MARKDOWN_V2, reply_markup=reply_markup
+                )
             except Exception:
                 await message.answer(text, reply_markup=reply_markup)
 

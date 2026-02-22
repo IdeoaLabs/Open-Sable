@@ -12,9 +12,9 @@ Features:
 - Pause / resume support
 - Event-driven triggers
 """
+
 import asyncio
 import hashlib
-import json
 import logging
 import time
 from dataclasses import dataclass, field
@@ -46,6 +46,7 @@ class WorkflowStatus(Enum):
 @dataclass
 class StepResult:
     """Result of a single workflow step."""
+
     step_id: str
     status: StepStatus
     output: Any = None
@@ -57,11 +58,12 @@ class StepResult:
 @dataclass
 class WorkflowStep:
     """Definition of a single workflow step."""
+
     step_id: str
     name: str
     handler: Optional[Callable] = None
     description: str = ""
-    timeout: float = 300.0   # seconds
+    timeout: float = 300.0  # seconds
     max_retries: int = 0
     retry_delay: float = 1.0
     condition: Optional[Callable] = None  # skip if returns False
@@ -71,6 +73,7 @@ class WorkflowStep:
 @dataclass
 class Workflow:
     """A complete workflow definition."""
+
     workflow_id: str
     name: str
     description: str = ""
@@ -92,10 +95,7 @@ class Workflow:
             "description": self.description,
             "status": self.status.value,
             "steps": len(self.steps),
-            "completed": sum(
-                1 for r in self.results.values()
-                if r.status == StepStatus.COMPLETED
-            ),
+            "completed": sum(1 for r in self.results.values() if r.status == StepStatus.COMPLETED),
             "created_at": self.created_at,
             "started_at": self.started_at,
             "finished_at": self.finished_at,
@@ -133,9 +133,7 @@ class WorkflowEngine:
         metadata: Optional[Dict] = None,
     ) -> Workflow:
         """Create a new workflow."""
-        wf_id = hashlib.sha256(
-            f"{name}-{datetime.now().isoformat()}".encode()
-        ).hexdigest()[:12]
+        wf_id = hashlib.sha256(f"{name}-{datetime.now().isoformat()}".encode()).hexdigest()[:12]
 
         wf = Workflow(
             workflow_id=wf_id,
@@ -177,9 +175,7 @@ class WorkflowEngine:
     # Execution
     # ------------------------------------------------------------------
 
-    async def run(
-        self, workflow_id: str, context: Optional[Dict] = None
-    ) -> Dict[str, Any]:
+    async def run(self, workflow_id: str, context: Optional[Dict] = None) -> Dict[str, Any]:
         """Run a workflow to completion."""
         wf = self._workflows.get(workflow_id)
         if wf is None:
@@ -240,14 +236,11 @@ class WorkflowEngine:
             "success": True,
             "workflow": wf.to_dict(),
             "results": {
-                sid: {"status": r.status.value, "output": r.output}
-                for sid, r in wf.results.items()
+                sid: {"status": r.status.value, "output": r.output} for sid, r in wf.results.items()
             },
         }
 
-    async def _execute_step(
-        self, step: WorkflowStep, context: Dict
-    ) -> StepResult:
+    async def _execute_step(self, step: WorkflowStep, context: Dict) -> StepResult:
         """Execute a single step with timeout and retries."""
         if step.handler is None:
             return StepResult(
@@ -366,9 +359,7 @@ class WorkflowEngine:
 
         tmpl = templates.get(template)
         if tmpl is None:
-            raise ValueError(
-                f"Unknown template '{template}'. Available: {list(templates.keys())}"
-            )
+            raise ValueError(f"Unknown template '{template}'. Available: {list(templates.keys())}")
 
         wf = self.create_workflow(tmpl["name"], tmpl["description"])
         for step_id, step_name in tmpl["steps"]:
