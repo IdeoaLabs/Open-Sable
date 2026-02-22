@@ -98,15 +98,14 @@ class ContextWindow:
 
 Summary:"""
             
-            # Generate summary using LLM
-            from opensable.core.agent import SableAgent
-            agent = SableAgent(self.config)
-            
-            summary = await agent.run(
-                summary_prompt,
-                session=None,
-                model=self.summary_model
+            # Generate summary using LLM directly (avoid reinitializing the agent)
+            from opensable.core.llm import OllamaLLM
+            llm = OllamaLLM(self.config)
+            resp = await llm.invoke_with_tools(
+                [{"role": "user", "content": summary_prompt}],
+                [],
             )
+            summary = resp.get("text", "")
             
             # Update compressed history
             if self.compressed_history:

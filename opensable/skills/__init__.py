@@ -48,7 +48,10 @@ class ImageSkill:
         """Initialize image engines"""
         try:
             from .image_skill import ImageGenerator, ImageAnalyzer
-            self._generator = ImageGenerator(self.config)
+            self._generator = ImageGenerator(
+                provider=getattr(self.config, 'image_api', 'stable-diffusion'),
+                api_key=getattr(self.config, 'openai_api_key', None),
+            )
             self._analyzer = ImageAnalyzer()
             logger.info("Image skill initialized")
         except Exception as e:
@@ -242,7 +245,9 @@ class APIClient:
         try:
             from .api_client import APIClient as APIClientImpl
             
-            client = APIClientImpl(self.config)
+            client = APIClientImpl(
+                base_url=getattr(self.config, 'api_base_url', '') or url.rsplit('/', 1)[0],
+            )
             result = await client.request(
                 method=method,
                 url=url,

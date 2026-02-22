@@ -50,26 +50,6 @@ async def async_main():
     except:
         pass
     
-    # Check if ports are in use and kill those processes
-    def kill_process_on_port(port):
-        try:
-            result = subprocess.run(
-                ["lsof", "-ti", f":{port}"],
-                capture_output=True, text=True
-            )
-            if result.stdout.strip():
-                pids = result.stdout.strip().split('\n')
-                for pid in pids:
-                    if pid and int(pid) != current_pid:
-                        subprocess.run(["kill", "-9", pid], 
-                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except:
-            pass
-    
-    # Kill any processes on common ports (we won't use them but just in case)
-    for port in [8000, 8080, 5000, 3000]:
-        kill_process_on_port(port)
-    
     console.print("[bold cyan]🚀 Starting Open-Sable...[/bold cyan]")
     
     logger = logging.getLogger("opensable")  # defined before try so except can use it
@@ -174,8 +154,8 @@ async def async_main():
         
         # WhatsApp
         if getattr(config, 'whatsapp_enabled', False):
-            from opensable.interfaces.whatsapp_bot import WhatsAppInterface
-            whatsapp = WhatsAppInterface(agent, config)
+            from opensable.interfaces.whatsapp_bot import WhatsAppBot
+            whatsapp = WhatsAppBot(config, agent)
             interfaces.append(whatsapp)
             logger.info("WhatsApp interface enabled")
         
@@ -186,11 +166,23 @@ async def async_main():
             interfaces.append(slack)
             logger.info("Slack interface enabled")
         
-        if not interfaces:
+        if not interfaces and not gateway:
             logger.warning("No chat interfaces configured. Check your .env file.")
-            console.print("[yellow]⚠️  No chat interfaces configured. Add tokens to .env[/yellow]")
+            console.print("[yellow]⚠️  No chat interfaces or gateway running.[/yellow]")
             console.print("[dim]Available: Telegram, Discord, WhatsApp, Slack[/dim]")
             console.print("[dim]To enable CLI mode, set CLI_ENABLED=true in .env[/dim]")
+            return
+        
+        if not interfaces and gateway:
+            console.print("[bold green]✅ Open-Sable is running with WebChat only[/bold green]")
+            console.print(f"[dim]Agent: {config.agent_name} | Personality: {config.agent_personality}[/dim]")
+            console.print("[dim]Add tokens to .env for Telegram, Discord, WhatsApp, Slack[/dim]")
+            console.print("[dim]Type Ctrl+C to stop[/dim]")
+            try:
+                await asyncio.Event().wait()
+            finally:
+                if gateway:
+                    await gateway.stop()
             return
         
         console.print(f"[bold green]✅ Open-Sable is running with {len(interfaces)} interface(s)[/bold green]")

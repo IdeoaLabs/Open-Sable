@@ -345,6 +345,80 @@ class ToolRegistry:
                     }
                 }
             },
+            # ── File & system tools ─────────────────────────────
+            {
+                "type": "function",
+                "function": {
+                    "name": "edit_file",
+                    "description": "Edit a file by replacing specific text",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "path": {"type": "string", "description": "File path"},
+                            "old_content": {"type": "string", "description": "Text to find"},
+                            "new_content": {"type": "string", "description": "Replacement text"}
+                        },
+                        "required": ["path", "old_content", "new_content"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "delete_file",
+                    "description": "Delete a file or empty directory",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "path": {"type": "string", "description": "Path to delete"}
+                        },
+                        "required": ["path"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "move_file",
+                    "description": "Move or rename a file",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "source": {"type": "string", "description": "Source path"},
+                            "destination": {"type": "string", "description": "Destination path"}
+                        },
+                        "required": ["source", "destination"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "search_files",
+                    "description": "Search for files by name pattern or content",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "pattern": {"type": "string", "description": "Search pattern (glob or text)"},
+                            "path": {"type": "string", "description": "Directory to search in (default '.')"},
+                            "content": {"type": "string", "description": "Search inside file contents for this text"}
+                        },
+                        "required": ["pattern"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "system_info",
+                    "description": "Get system information: OS, CPU, memory, disk usage",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    }
+                }
+            },
             # ── Desktop control tools ─────────────────────────────
             {
                 "type": "function",
@@ -454,6 +528,12 @@ class ToolRegistry:
         "vector_search":    ("vector_search",   lambda a: a),
         "create_skill":     ("create_skill",    lambda a: a),
         "list_skills":      ("list_skills",     lambda a: a),
+        # File & system tools
+        "edit_file":        ("edit_file",       lambda a: a),
+        "delete_file":      ("delete_file",     lambda a: a),
+        "move_file":        ("move_file",       lambda a: a),
+        "search_files":     ("search_files",    lambda a: a),
+        "system_info":      ("system_info",     lambda a: a),
         # Desktop control
         "desktop_screenshot":  ("desktop_screenshot",  lambda a: a),
         "desktop_click":       ("desktop_click",       lambda a: a),
@@ -852,39 +932,6 @@ class ToolRegistry:
         Use refs from snapshot for stable automation
         """
         url = params.get("url")
-        action = params.get("action", "")
-        ref = params.get("ref")
-        selector = params.get("selector")
-        value = params.get("value")
-        
-        if not action:
-            return "⚠️ Missing action parameter"
-        
-        try:
-            result = await self.browser_engine.execute_action(
-                url=url,
-                action=action,
-                ref=ref,
-                selector=selector,
-                value=value
-            )
-            
-            if result.get("success"):
-                action_name = result.get('action', action).capitalize()
-                details = ""
-                
-                if "value" in result:
-                    details = f": '{result['value']}'"
-                elif "key" in result:
-                    details = f": {result['key']}"
-                elif "result" in result:
-                    details = f" -> {result['result']}"
-                
-                return f"✅ {action_name}{details}"
-            else:
-                return f"❌ {result.get('error', 'Unknown error')}"
-        except Exception as e:
-            return f"❌ Error: {str(e)}"
         action = params.get("action", "")
         ref = params.get("ref")
         selector = params.get("selector")

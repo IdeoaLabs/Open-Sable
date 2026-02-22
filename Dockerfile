@@ -42,4 +42,4 @@ COPY . .
 RUN mkdir -p data logs config
 
 # Run the agent
-CMD ["python", "main.py"]
+CMD ["python", "-m", "opensable"]

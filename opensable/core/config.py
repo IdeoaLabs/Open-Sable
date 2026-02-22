@@ -165,6 +165,8 @@ def load_config() -> OpenSableConfig:
         "memory_retention_days": int(os.getenv("MEMORY_RETENTION_DAYS", "90")),
         "vector_db_path": Path(os.getenv("VECTOR_DB_PATH", "./data/vectordb")),
         
+        "cli_enabled": os.getenv("CLI_ENABLED", "false").lower() == "true",
+
         "log_level": os.getenv("LOG_LEVEL", "INFO"),
         "log_file": Path(os.getenv("LOG_FILE", "./logs/opensable.log")),
 
