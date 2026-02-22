@@ -1,6 +1,7 @@
 """
 LLM integration for Open-Sable - Ollama with native tool calling
-Dynamic model switching based on task requirements
+Dynamic model switching based on task requirements.
+Supports: Ollama (local), OpenAI, Anthropic cloud providers with full tool calling.
 """
 
 import logging
@@ -247,23 +248,170 @@ def get_llm(config):
     except Exception as e:
         logger.warning(f"Ollama not available: {e}")
 
-        # Fallback to cloud APIs
+        # Fallback to cloud APIs — wrapped in CloudLLM for tool calling support
         if config.openai_api_key:
-            from langchain_openai import ChatOpenAI
-
-            logger.info("Falling back to OpenAI")
-            return ChatOpenAI(api_key=config.openai_api_key, model="gpt-3.5-turbo", temperature=0.7)
+            logger.info("Falling back to OpenAI with tool calling")
+            return CloudLLM(provider="openai", config=config)
         elif config.anthropic_api_key:
-            from langchain_anthropic import ChatAnthropic
-
-            logger.info("Falling back to Anthropic")
-            return ChatAnthropic(
-                api_key=config.anthropic_api_key, model="claude-3-haiku-20240307", temperature=0.7
-            )
+            logger.info("Falling back to Anthropic with tool calling")
+            return CloudLLM(provider="anthropic", config=config)
         else:
             raise Exception(
                 "No LLM available. Install Ollama or provide OPENAI_API_KEY/ANTHROPIC_API_KEY"
             )
+
+
+class CloudLLM:
+    """Cloud LLM provider (OpenAI / Anthropic) with full tool calling parity.
+
+    Implements the same interface as AdaptiveLLM so the agent loop can use
+    it transparently: invoke_with_tools(), ainvoke(), current_model, etc.
+    """
+
+    # Default models per provider
+    _DEFAULTS = {
+        "openai": "gpt-4o-mini",
+        "anthropic": "claude-3-5-haiku-20241022",
+    }
+
+    def __init__(self, provider: str, config):
+        self.provider = provider
+        self.config = config
+        self.current_model = self._DEFAULTS.get(provider, "gpt-4o-mini")
+        self.available_models = [self.current_model]
+        self._client = None
+
+    # ---- OpenAI ----------------------------------------------------------
+
+    async def _openai_invoke(self, messages: List[Dict], tools: List[Dict]) -> Dict[str, Any]:
+        try:
+            from openai import AsyncOpenAI
+        except ImportError:
+            raise ImportError("pip install openai  — required for OpenAI cloud provider")
+
+        client = AsyncOpenAI(api_key=self.config.openai_api_key)
+        kwargs: dict = {
+            "model": self.current_model,
+            "messages": messages,
+        }
+        if tools:
+            kwargs["tools"] = tools
+
+        resp = await client.chat.completions.create(**kwargs)
+        choice = resp.choices[0]
+        msg = choice.message
+
+        if msg.tool_calls:
+            parsed = []
+            for tc in msg.tool_calls:
+                args = tc.function.arguments
+                if isinstance(args, str):
+                    try:
+                        args = json.loads(args)
+                    except Exception:
+                        args = {}
+                parsed.append({"name": tc.function.name, "arguments": args})
+            return {"tool_call": parsed[0], "tool_calls": parsed, "text": None}
+
+        return {"tool_call": None, "tool_calls": [], "text": msg.content or ""}
+
+    # ---- Anthropic -------------------------------------------------------
+
+    async def _anthropic_invoke(self, messages: List[Dict], tools: List[Dict]) -> Dict[str, Any]:
+        try:
+            from anthropic import AsyncAnthropic
+        except ImportError:
+            raise ImportError("pip install anthropic  — required for Anthropic cloud provider")
+
+        client = AsyncAnthropic(api_key=self.config.anthropic_api_key)
+
+        # Convert OpenAI-style tool schemas → Anthropic format
+        anthropic_tools = []
+        for t in tools:
+            fn = t.get("function", t)
+            anthropic_tools.append(
+                {
+                    "name": fn["name"],
+                    "description": fn.get("description", ""),
+                    "input_schema": fn.get("parameters", {"type": "object", "properties": {}}),
+                }
+            )
+
+        # Separate system message from conversation messages
+        system_text = ""
+        conv_msgs = []
+        for m in messages:
+            if m["role"] == "system":
+                system_text += m["content"] + "\n"
+            else:
+                conv_msgs.append({"role": m["role"], "content": m["content"]})
+
+        kwargs: dict = {
+            "model": self.current_model,
+            "max_tokens": 4096,
+            "messages": conv_msgs or [{"role": "user", "content": "Hello"}],
+        }
+        if system_text.strip():
+            kwargs["system"] = system_text.strip()
+        if anthropic_tools:
+            kwargs["tools"] = anthropic_tools
+
+        resp = await client.messages.create(**kwargs)
+
+        # Parse response — Anthropic returns content blocks
+        text_parts = []
+        parsed_calls = []
+        for block in resp.content:
+            if block.type == "text":
+                text_parts.append(block.text)
+            elif block.type == "tool_use":
+                parsed_calls.append({"name": block.name, "arguments": block.input or {}})
+
+        if parsed_calls:
+            return {"tool_call": parsed_calls[0], "tool_calls": parsed_calls, "text": None}
+
+        return {"tool_call": None, "tool_calls": [], "text": "\n".join(text_parts)}
+
+    # ---- Public interface (same as AdaptiveLLM) --------------------------
+
+    async def invoke_with_tools(self, messages: List[Dict], tools: List[Dict]) -> Dict[str, Any]:
+        """Call cloud LLM with native tool calling."""
+        try:
+            if self.provider == "openai":
+                return await self._openai_invoke(messages, tools)
+            elif self.provider == "anthropic":
+                return await self._anthropic_invoke(messages, tools)
+            else:
+                raise ValueError(f"Unknown provider: {self.provider}")
+        except ImportError:
+            raise
+        except Exception as e:
+            logger.error(f"Cloud LLM ({self.provider}) failed: {e}")
+            return {"tool_call": None, "tool_calls": [], "text": f"Error: {e}"}
+
+    async def ainvoke(self, messages):
+        """Plain text invoke (LangChain compat)."""
+        result = await self.invoke_with_tools(
+            [
+                {"role": m.type if hasattr(m, "type") else "user", "content": m.content}
+                for m in messages
+            ],
+            [],
+        )
+        # Return a simple object with .content for LangChain compat
+        from types import SimpleNamespace
+
+        return SimpleNamespace(content=result.get("text", ""))
+
+    def invoke(self, messages):
+        """Sync invoke — uses asyncio.run for simple scripts."""
+        import asyncio
+
+        return asyncio.run(self.ainvoke(messages))
+
+    async def auto_switch_model(self, task_type: str) -> bool:
+        """Cloud models don't auto-switch (always use the configured one)."""
+        return False
 
 
 async def check_ollama_models(base_url: str = "http://localhost:11434") -> list:

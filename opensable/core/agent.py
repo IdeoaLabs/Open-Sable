@@ -48,6 +48,15 @@ class Plan:
         if self.current_step >= len(self.steps):
             self.is_complete = True
 
+    def mark_step_failed(self, error: str):
+        """Record that the current step failed (for replanning)."""
+        self.results[self.current_step] = f"FAILED: {error}"
+
+    def replace_remaining_steps(self, new_steps: List[str]):
+        """Replace all steps from current_step onward with a revised plan."""
+        self.steps = self.steps[: self.current_step] + new_steps
+        self.is_complete = False
+
     def summary(self) -> str:
         lines = []
         for i, s in enumerate(self.steps):
@@ -270,6 +279,47 @@ class SableAgent:
             logger.warning(f"Planning failed: {e}")
         return None
 
+    async def _replan(self, plan: Plan, failure_reason: str, system_prompt: str) -> bool:
+        """Regenerate remaining plan steps after a failure. Returns True if replanned."""
+        completed = "\n".join(f"  ✅ {plan.steps[i]}" for i in range(plan.current_step))
+        failed_step = plan.steps[plan.current_step] if plan.next_step() else "unknown"
+        prompt = (
+            "A multi-step plan encountered a failure. Revise the REMAINING steps.\n\n"
+            f"Original goal: {plan.goal}\n\n"
+            f"Completed steps:\n{completed}\n\n"
+            f"Failed step: {failed_step}\n"
+            f"Failure reason: {failure_reason}\n\n"
+            "Rules:\n"
+            "- Output ONLY a numbered list of revised remaining steps\n"
+            "- Try a different approach for the failed step\n"
+            "- Keep it to 1-4 steps\n"
+            "- The last step should be synthesizing results"
+        )
+        try:
+            response = await asyncio.wait_for(
+                self.llm.invoke_with_tools(
+                    [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": prompt},
+                    ],
+                    [],
+                ),
+                timeout=_LLM_TIMEOUT,
+            )
+            text = response.get("text", "")
+            new_steps = []
+            for line in text.split("\n"):
+                match = re.match(r"^\d+[\.\)]\s*(.+)", line.strip())
+                if match:
+                    new_steps.append(match.group(1).strip())
+            if new_steps:
+                plan.replace_remaining_steps(new_steps)
+                logger.info(f"🔄 Replanned: {len(new_steps)} new steps")
+                return True
+        except Exception as e:
+            logger.warning(f"Replanning failed: {e}")
+        return False
+
     # ------------------------------------------------------------------
     # Advanced memory retrieval
     # ------------------------------------------------------------------
@@ -363,13 +413,13 @@ class SableAgent:
         "desktop_screenshot": "Taking screenshot",
     }
 
-    async def _execute_tool(self, name: str, arguments: dict) -> str:
+    async def _execute_tool(self, name: str, arguments: dict, user_id: str = "default") -> str:
         emoji = self._TOOL_EMOJIS.get(name, "🔧")
         label = self._TOOL_LABELS.get(name, name.replace("_", " ").title())
         await self._notify_progress(f"{emoji} {label}...")
         try:
             result = await asyncio.wait_for(
-                self.tools.execute_schema_tool(name, arguments),
+                self.tools.execute_schema_tool(name, arguments, user_id=user_id),
                 timeout=_LLM_TIMEOUT,
             )
             return f"**{name}:** {result}"
@@ -379,15 +429,23 @@ class SableAgent:
         except Exception as e:
             return f"**{name}:** ❌ {e}"
 
-    async def _execute_tools_parallel(self, tool_calls: List[dict]) -> List[str]:
+    async def _execute_tools_parallel(
+        self, tool_calls: List[dict], user_id: str = "default"
+    ) -> List[str]:
         if len(tool_calls) == 1:
-            return [await self._execute_tool(tool_calls[0]["name"], tool_calls[0]["arguments"])]
+            return [
+                await self._execute_tool(
+                    tool_calls[0]["name"], tool_calls[0]["arguments"], user_id=user_id
+                )
+            ]
 
         names = [tc["name"] for tc in tool_calls]
         emojis = " ".join(self._TOOL_EMOJIS.get(n, "🔧") for n in names)
         await self._notify_progress(f"{emojis} Running {len(tool_calls)} tools in parallel...")
 
-        tasks = [self._execute_tool(tc["name"], tc["arguments"]) for tc in tool_calls]
+        tasks = [
+            self._execute_tool(tc["name"], tc["arguments"], user_id=user_id) for tc in tool_calls
+        ]
         return list(await asyncio.gather(*tasks))
 
     # ──────────────────────────────────────────────
@@ -481,7 +539,9 @@ class SableAgent:
             query = task
             for filler in ["search for", "busca", "find", "look up", "google", "what is", "who is"]:
                 query = query.replace(filler, "", 1).strip()
-            result = await self._execute_tool("browser_search", {"query": query, "num_results": 5})
+            result = await self._execute_tool(
+                "browser_search", {"query": query, "num_results": 5}, user_id=user_id
+            )
             tool_results.append(result)
 
         # Planning
@@ -556,7 +616,7 @@ class SableAgent:
                     names = [tc["name"] for tc in all_tool_calls]
                     logger.info(f"🔧 LLM chose {len(all_tool_calls)} tool(s): {names}")
 
-                    results = await self._execute_tools_parallel(all_tool_calls)
+                    results = await self._execute_tools_parallel(all_tool_calls, user_id=user_id)
                     tool_results.extend(results)
 
                     # Code feedback loop
@@ -586,6 +646,30 @@ class SableAgent:
                     # Plan advancement
                     if plan and not plan.is_complete:
                         step_result = "\n".join(results)
+                        # Check if ALL results for this step failed
+                        all_failed = all("❌" in r for r in results)
+                        if all_failed:
+                            plan.mark_step_failed(step_result)
+                            await self._notify_progress("🔄 Step failed — replanning...")
+                            replanned = await self._replan(plan, step_result, base_system)
+                            if replanned and plan.next_step():
+                                await self._notify_progress(f"📋 Revised plan:\n{plan.summary()}")
+                                messages.append(
+                                    {"role": "assistant", "content": f"Step failed:\n{step_result}"}
+                                )
+                                messages.append(
+                                    {
+                                        "role": "user",
+                                        "content": (
+                                            f"Previous step failed. New plan:\n{plan.summary()}\n\n"
+                                            f"Execute: {plan.next_step()}"
+                                        ),
+                                    }
+                                )
+                                continue
+                            # Replanning failed — fall through to synthesis
+                            break
+
                         plan.advance(step_result)
                         if not plan.is_complete:
                             await self._notify_progress(

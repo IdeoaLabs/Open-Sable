@@ -26,9 +26,41 @@ logger = logging.getLogger(__name__)
 class ToolRegistry:
     """Registry of all available tools/actions"""
 
+    # Map tool schema names → security ActionType for RBAC checking
+    _TOOL_PERMISSIONS = {
+        "execute_command": "system_command",
+        "read_file": "file_read",
+        "write_file": "file_write",
+        "edit_file": "file_write",
+        "delete_file": "file_delete",
+        "move_file": "file_write",
+        "copy_file": "file_write",
+        "create_directory": "file_write",
+        "browser_search": "browser_navigate",
+        "browser_scrape": "browser_navigate",
+        "browser_snapshot": "browser_navigate",
+        "browser_action": "browser_navigate",
+        "execute_code": "system_command",
+        "desktop_screenshot": "system_command",
+        "desktop_click": "system_command",
+        "desktop_type": "system_command",
+        "desktop_hotkey": "system_command",
+    }
+
     def __init__(self, config):
         self.config = config
         self.tools: Dict[str, Callable] = {}
+        self._permission_manager = None
+
+        # Initialize permission manager for RBAC
+        try:
+            from .security import PermissionManager
+
+            self._permission_manager = PermissionManager(config)
+            self._permission_manager.initialize()
+            logger.info("✅ Permission manager loaded for tool RBAC")
+        except Exception as e:
+            logger.debug(f"Permission manager not available: {e}")
 
         # Calendar storage
         self.calendar_file = Path.home() / ".opensable" / "calendar.json"
@@ -624,10 +656,30 @@ class ToolRegistry:
         "desktop_mouse_move": ("desktop_mouse_move", lambda a: a),
     }
 
-    async def execute_schema_tool(self, schema_name: str, arguments: Dict[str, Any]) -> str:
+    async def execute_schema_tool(
+        self, schema_name: str, arguments: Dict[str, Any], user_id: str = "default"
+    ) -> str:
         """Execute a tool by its schema name (as returned by Ollama tool calling)"""
         if schema_name not in self._SCHEMA_TO_TOOL:
             return f"⚠️ Unknown tool: {schema_name}"
+
+        # RBAC check — if a permission manager is loaded and the tool is mapped
+        if self._permission_manager and schema_name in self._TOOL_PERMISSIONS:
+            from .security import ActionType
+
+            action_str = self._TOOL_PERMISSIONS[schema_name]
+            try:
+                action = ActionType(action_str)
+                allowed = await self._permission_manager.check_permission(
+                    user_id, action, {"tool": schema_name, "arguments": arguments}
+                )
+                if not allowed:
+                    logger.warning(f"🔒 RBAC denied {schema_name} for user {user_id}")
+                    return f"🔒 Permission denied: {schema_name} requires '{action_str}' permission"
+            except Exception as e:
+                # Don't block tools if RBAC check itself fails
+                logger.debug(f"RBAC check error (allowing): {e}")
+
         internal_name, arg_mapper = self._SCHEMA_TO_TOOL[schema_name]
         mapped_args = arg_mapper(arguments)
         return await self.execute(internal_name, mapped_args)

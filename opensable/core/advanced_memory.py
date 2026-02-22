@@ -29,6 +29,39 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+# ── Lightweight embedding helper ─────────────────────────────────────
+def _simple_embedding(text: str, dim: int = 128) -> List[float]:
+    """Generate a deterministic bag-of-character-trigram embedding.
+
+    This is a *lightweight, zero-dependency* fallback that still enables
+    cosine-similarity search over memory.  It maps character trigrams to
+    fixed dimensions via hashing, then L2-normalises the resulting vector.
+    For production quality, replace with a SentenceTransformer or OpenAI
+    embedding call.
+    """
+    vec = [0.0] * dim
+    text_lower = text.lower()
+    for i in range(len(text_lower) - 2):
+        trigram = text_lower[i : i + 3]
+        idx = hash(trigram) % dim
+        vec[idx] += 1.0
+    # L2 normalise
+    norm = sum(v * v for v in vec) ** 0.5
+    if norm > 0:
+        vec = [v / norm for v in vec]
+    return vec
+
+
+def _cosine_similarity(a: List[float], b: List[float]) -> float:
+    """Cosine similarity between two vectors (pure Python, no numpy needed)."""
+    dot = sum(x * y for x, y in zip(a, b))
+    na = sum(x * x for x in a) ** 0.5
+    nb = sum(x * x for x in b) ** 0.5
+    if na == 0 or nb == 0:
+        return 0.0
+    return dot / (na * nb)
+
+
 class MemoryType(Enum):
     """Types of memory."""
 
@@ -228,6 +261,7 @@ class EpisodicMemory:
             context=context,
             importance=importance,
             timestamp=datetime.utcnow(),
+            embedding=_simple_embedding(event),
         )
 
         # Auto-categorize
@@ -271,8 +305,25 @@ class EpisodicMemory:
 
         return memories
 
-    def recall_recent(self, n: int = 10) -> List[Memory]:
-        """Recall n most recent memories."""
+    def recall_recent(self, n: int = 10, query: str = None) -> List[Memory]:
+        """Recall n most recent memories, optionally ranked by query similarity."""
+        if query and self.memories:
+            q_emb = _simple_embedding(query)
+            scored = []
+            for mid, mem in self.memories.items():
+                if mem.embedding:
+                    sim = _cosine_similarity(q_emb, mem.embedding)
+                else:
+                    sim = 0.0
+                # Blend similarity with recency (newer = higher bonus)
+                recency = 1.0 if mid in self.timeline[-50:] else 0.5
+                scored.append((sim * 0.7 + recency * 0.3, mem))
+            scored.sort(reverse=True, key=lambda x: x[0])
+            results = [m for _, m in scored[:n]]
+            for m in results:
+                m.access()
+            return results
+
         recent_ids = self.timeline[-n:]
         return [self.memories[mid] for mid in reversed(recent_ids) if mid in self.memories]
 
@@ -351,6 +402,7 @@ class SemanticMemory:
             importance=importance,
             timestamp=datetime.utcnow(),
             metadata={"concepts": concepts},
+            embedding=_simple_embedding(fact),
         )
 
         self.memories[memory_id] = memory
@@ -375,32 +427,43 @@ class SemanticMemory:
 
     def recall_by_query(self, query: str, top_k: int = 5) -> List[Memory]:
         """
-        Recall knowledge relevant to query.
-
-        Simple keyword matching - could be enhanced with embeddings.
+        Recall knowledge relevant to query using embedding similarity + keyword boost.
         """
         query_lower = query.lower()
+        q_emb = _simple_embedding(query)
         scored_memories = []
 
         for memory in self.memories.values():
+            # Embedding similarity (primary signal)
+            if memory.embedding:
+                emb_score = _cosine_similarity(q_emb, memory.embedding)
+            else:
+                emb_score = 0.0
+
+            # Keyword overlap (secondary boost)
             content_lower = memory.content.lower()
             concepts = memory.metadata.get("concepts", [])
-
-            # Score based on keyword overlap
-            score = 0.0
+            kw_score = 0.0
             for word in query_lower.split():
+                if len(word) < 3:
+                    continue
                 if word in content_lower:
-                    score += 1.0
+                    kw_score += 1.0
                 if word in " ".join(concepts).lower():
-                    score += 0.5
+                    kw_score += 0.5
+            # Normalise keyword score
+            kw_norm = kw_score / max(len(query_lower.split()), 1)
 
-            if score > 0:
-                scored_memories.append((score, memory))
+            combined = emb_score * 0.6 + kw_norm * 0.4
+            if combined > 0.05:
+                scored_memories.append((combined, memory))
 
-        # Sort by score
         scored_memories.sort(reverse=True, key=lambda x: x[0])
 
-        return [mem for _, mem in scored_memories[:top_k]]
+        results = [mem for _, mem in scored_memories[:top_k]]
+        for mem in results:
+            mem.access()
+        return results
 
     def update_knowledge(self, memory_id: str, new_content: str):
         """Update existing knowledge."""
@@ -686,7 +749,7 @@ class AdvancedMemorySystem:
         if memory_type == MemoryType.EPISODIC or memory_type is None:
             return self.recall_experiences(query=query, n=limit)
         elif memory_type == MemoryType.SEMANTIC:
-            return self.recall_knowledge(concepts=[query] if query else [], n=limit)
+            return self.recall_knowledge(query=query or "", top_k=limit)
         else:
             return []
 
@@ -732,7 +795,7 @@ class AdvancedMemorySystem:
         Recall experiences from episodic memory.
 
         Args:
-            query: Search query (not implemented in simple version)
+            query: Search query — uses embedding similarity when provided
             timeframe: (start, end) datetime tuple
             context_filter: Context key-value to filter
             n: Max results
@@ -746,10 +809,10 @@ class AdvancedMemorySystem:
             key, value = list(context_filter.items())[0]
             return self.episodic.recall_by_context(key, value)
         else:
-            return self.episodic.recall_recent(n)
+            return self.episodic.recall_recent(n, query=query)
 
     def recall_knowledge(self, query: str, top_k: int = 5) -> List[Memory]:
-        """Recall knowledge from semantic memory."""
+        """Recall knowledge from semantic memory using embedding similarity."""
         return self.semantic.recall_by_query(query, top_k)
 
     def get_working_memory(self) -> List[Memory]:
