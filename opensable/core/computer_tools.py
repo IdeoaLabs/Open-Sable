@@ -97,8 +97,8 @@ class ComputerTools:
         dangerous_patterns = [
             'dd if=', 'dd of=/dev',
             '> /dev/sd', '> /dev/nvme',
-            'wget ', 'curl ', 'nc ', 'ncat ', 'netcat ',  # network exfil
-            'ssh ', 'scp ', 'rsync ',                      # remote access
+            'nc ', 'ncat ', 'netcat ',  # network exfil tools
+            'ssh ', 'scp ', 'rsync ',   # remote access
             'shutdown', 'reboot', 'halt', 'poweroff', 'init 0', 'init 6',
             'passwd', 'useradd', 'userdel', 'usermod',
             'iptables', 'ufw ',

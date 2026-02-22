@@ -752,18 +752,95 @@ class ToolRegistry:
     # Built-in tools (simplified implementations)
     
     async def _email_tool(self, params: Dict) -> str:
-        """Email operations"""
+        """Email operations via SMTP/IMAP"""
         action = params.get("action", "read")
-        
-        if action == "read":
-            return "📧 Email functionality not configured. Set up SMTP/IMAP credentials in .env to enable."
-        elif action == "send":
-            to = params.get("to")
-            subject = params.get("subject")
-            body = params.get("body")
-            return f"⚠️ Cannot send email to {to}. Email functionality requires SMTP configuration in .env file."
+
+        if action == "send":
+            host = getattr(self.config, 'smtp_host', None)
+            if not host:
+                return ("⚠️ SMTP not configured. Add to .env:\n"
+                        "  SMTP_HOST=smtp.gmail.com\n"
+                        "  SMTP_USER=you@gmail.com\n"
+                        "  SMTP_PASSWORD=your-app-password")
+
+            to      = params.get("to", "")
+            subject = params.get("subject", "(no subject)")
+            body    = params.get("body", "")
+            if not to:
+                return "⚠️ Missing 'to' field — who should I send the email to?"
+
+            try:
+                import smtplib
+                from email.mime.text import MIMEText
+                from email.mime.multipart import MIMEMultipart
+
+                msg = MIMEMultipart()
+                msg["From"]    = getattr(self.config, 'smtp_from', None) or self.config.smtp_user
+                msg["To"]      = to
+                msg["Subject"] = subject
+                msg.attach(MIMEText(body, "plain"))
+
+                port = int(getattr(self.config, 'smtp_port', 587))
+                with smtplib.SMTP(host, port) as server:
+                    server.starttls()
+                    server.login(self.config.smtp_user, self.config.smtp_password)
+                    server.send_message(msg)
+
+                logger.info(f"📧 Email sent to {to}: {subject}")
+                return f"✅ Email sent to **{to}**\nSubject: {subject}"
+            except Exception as e:
+                logger.error(f"Email send failed: {e}")
+                return f"❌ Failed to send email: {e}"
+
+        elif action == "read":
+            host = getattr(self.config, 'imap_host', None)
+            if not host:
+                return ("⚠️ IMAP not configured. Add to .env:\n"
+                        "  IMAP_HOST=imap.gmail.com\n"
+                        "  IMAP_USER=you@gmail.com\n"
+                        "  IMAP_PASSWORD=your-app-password")
+
+            count  = int(params.get("count", 5))
+            folder = params.get("folder", "INBOX")
+
+            try:
+                import imaplib
+                import email as email_lib
+                from email.header import decode_header
+
+                port = int(getattr(self.config, 'imap_port', 993))
+                with imaplib.IMAP4_SSL(host, port) as imap:
+                    imap.login(
+                        getattr(self.config, 'imap_user', None) or self.config.smtp_user,
+                        getattr(self.config, 'imap_password', None) or self.config.smtp_password,
+                    )
+                    imap.select(folder, readonly=True)
+                    _, data = imap.search(None, "ALL")
+                    ids = data[0].split()
+                    if not ids:
+                        return f"📧 No emails in {folder}."
+
+                    latest = ids[-count:]
+                    latest.reverse()
+                    results = []
+                    for mid in latest:
+                        _, msg_data = imap.fetch(mid, "(RFC822)")
+                        raw = msg_data[0][1]
+                        msg = email_lib.message_from_bytes(raw)
+                        subj = ""
+                        for part, enc in decode_header(msg["Subject"] or ""):
+                            subj += part.decode(enc or "utf-8") if isinstance(part, bytes) else str(part)
+                        frm = msg["From"] or ""
+                        date = msg["Date"] or ""
+                        results.append(f"• **{subj}**\n  From: {frm}\n  Date: {date}")
+
+                return f"📧 **Latest {len(results)} emails ({folder}):**\n\n" + "\n\n".join(results)
+            except Exception as e:
+                logger.error(f"Email read failed: {e}")
+                return f"❌ Failed to read email: {e}"
+
         else:
-            return f"Unknown email action: {action}"
+            return f"Unknown email action: {action}. Use: send, read"
     
     async def _calendar_tool(self, params: Dict) -> str:
         """Internal calendar operations (stored locally)"""

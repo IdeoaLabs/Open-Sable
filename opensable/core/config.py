@@ -45,12 +45,22 @@ class OpenSableConfig(BaseModel):
     slack_bot_token: Optional[str] = None
     slack_app_token: Optional[str] = None
     slack_signing_secret: Optional[str] = None
+    slack_allowed_users: Optional[list] = None
     
     # Email & Calendar
     gmail_enabled: bool = True
     gmail_credentials_path: Path = Path("./config/gmail_credentials.json")
     calendar_enabled: bool = True
     calendar_credentials_path: Path = Path("./config/calendar_credentials.json")
+    smtp_host: Optional[str] = None
+    smtp_port: int = 587
+    smtp_user: Optional[str] = None
+    smtp_password: Optional[str] = None
+    smtp_from: Optional[str] = None
+    imap_host: Optional[str] = None
+    imap_port: int = 993
+    imap_user: Optional[str] = None
+    imap_password: Optional[str] = None
     
     # Security
     enable_sandbox: bool = True
@@ -145,9 +155,19 @@ def load_config() -> OpenSableConfig:
         "slack_bot_token": os.getenv("SLACK_BOT_TOKEN"),
         "slack_app_token": os.getenv("SLACK_APP_TOKEN"),
         "slack_signing_secret": os.getenv("SLACK_SIGNING_SECRET"),
+        "slack_allowed_users": [u.strip() for u in os.getenv("SLACK_ALLOWED_USERS", "").split(",") if u.strip()],
         
         "gmail_enabled": os.getenv("GMAIL_ENABLED", "true").lower() == "true",
         "gmail_credentials_path": Path(os.getenv("GMAIL_CREDENTIALS_PATH", "./config/gmail_credentials.json")),
+        "smtp_host": os.getenv("SMTP_HOST"),
+        "smtp_port": int(os.getenv("SMTP_PORT", "587")),
+        "smtp_user": os.getenv("SMTP_USER"),
+        "smtp_password": os.getenv("SMTP_PASSWORD"),
+        "smtp_from": os.getenv("SMTP_FROM") or os.getenv("SMTP_USER"),
+        "imap_host": os.getenv("IMAP_HOST"),
+        "imap_port": int(os.getenv("IMAP_PORT", "993")),
+        "imap_user": os.getenv("IMAP_USER") or os.getenv("SMTP_USER"),
+        "imap_password": os.getenv("IMAP_PASSWORD") or os.getenv("SMTP_PASSWORD"),
         "calendar_enabled": os.getenv("CALENDAR_ENABLED", "true").lower() == "true",
         "calendar_credentials_path": Path(os.getenv("CALENDAR_CREDENTIALS_PATH", "./config/calendar_credentials.json")),
         

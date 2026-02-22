@@ -3,150 +3,211 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SableCore Dashboard - Modern AI Control Center</title>
-    
+    <title>SableCore Dashboard — Modern AI Control Center</title>
+
     <!-- React & ReactDOM from CDN -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    
-    <!-- Chart.js for visualizations -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    
+
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    
+
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-        
+
         body {
             font-family: 'Inter', sans-serif;
             margin: 0;
             padding: 0;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         }
-        
+
         .glass {
             background: rgba(255, 255, 255, 0.1);
             backdrop-filter: blur(10px);
             border: 1px solid rgba(255, 255, 255, 0.2);
         }
-        
+
         .glow {
             box-shadow: 0 0 20px rgba(124, 58, 237, 0.5);
         }
-        
+
         .chat-scroll {
             scrollbar-width: thin;
             scrollbar-color: rgba(124, 58, 237, 0.5) transparent;
         }
-        
-        .chat-scroll::-webkit-scrollbar {
-            width: 6px;
-        }
-        
+
+        .chat-scroll::-webkit-scrollbar { width: 6px; }
         .chat-scroll::-webkit-scrollbar-thumb {
             background: rgba(124, 58, 237, 0.5);
             border-radius: 3px;
         }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+        .typing-dot { animation: blink 1.2s infinite; }
     </style>
 </head>
 <body>
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useRef } = React;
+        const { useState, useEffect, useRef, useCallback } = React;
 
-        // Main Dashboard Component
+        /* ── Helpers ───────────────────────────────────────────── */
+        function getWSUrl() {
+            const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+            const params = new URLSearchParams(location.search);
+            const token = params.get('token');
+            return token
+                ? proto + '://' + location.host + '/?token=' + encodeURIComponent(token)
+                : proto + '://' + location.host + '/';
+        }
+
+        function fmtTime(iso) {
+            try { return new Date(iso).toLocaleTimeString(); } catch { return ''; }
+        }
+
+        /* ── Main Dashboard ────────────────────────────────────── */
         function Dashboard() {
-            const [activeTab, setActiveTab] = useState('chat');
-            const [messages, setMessages] = useState([]);
-            const [input, setInput] = useState('');
-            const [stats, setStats] = useState({
-                messages: 0,
-                uptime: '0h 0m',
-                memory: '0 MB',
-                skills: 0
-            });
-            const [skills, setSkills] = useState([]);
-            const [isConnected, setIsConnected] = useState(false);
+            const [activeTab, setActiveTab]   = useState('chat');
+            const [messages, setMessages]     = useState([]);
+            const [input, setInput]           = useState('');
+            const [isConnected, setConnected] = useState(false);
+            const [isStreaming, setStreaming]  = useState(false);
+            const [stats, setStats]           = useState({ version: '\u2014', uptime_sec: 0, clients: 0, nodes: [] });
+            const [sessions, setSessions]     = useState([]);
+            const wsRef     = useRef(null);
+            const streamBuf = useRef('');
 
-            useEffect(() => {
-                // Fetch initial data
-                fetchStats();
-                fetchSkills();
-                connectWebSocket();
-                
-                // Update stats every 5 seconds
-                const interval = setInterval(fetchStats, 5000);
-                return () => clearInterval(interval);
+            /* ── WebSocket lifecycle ───────────────────────────── */
+            const connect = useCallback(() => {
+                const ws = new WebSocket(getWSUrl());
+                wsRef.current = ws;
+
+                ws.onopen = () => {
+                    setConnected(true);
+                    ws.send(JSON.stringify({ type: 'status' }));
+                    ws.send(JSON.stringify({ type: 'sessions.list' }));
+                };
+
+                ws.onclose = () => {
+                    setConnected(false);
+                    setTimeout(connect, 3000);
+                };
+
+                ws.onmessage = (evt) => {
+                    let msg;
+                    try { msg = JSON.parse(evt.data); } catch { return; }
+
+                    switch (msg.type) {
+                        case 'connected':
+                            break;
+
+                        /* ── Streaming protocol ──────────────── */
+                        case 'message.start':
+                            streamBuf.current = '';
+                            setStreaming(true);
+                            break;
+
+                        case 'message.chunk':
+                            streamBuf.current += msg.text;
+                            setMessages(prev => {
+                                const copy = [...prev];
+                                if (copy.length && copy[copy.length - 1]._streaming) {
+                                    copy[copy.length - 1] = {
+                                        ...copy[copy.length - 1],
+                                        content: streamBuf.current,
+                                    };
+                                } else {
+                                    copy.push({
+                                        role: 'assistant',
+                                        content: streamBuf.current,
+                                        timestamp: new Date().toISOString(),
+                                        _streaming: true,
+                                    });
+                                }
+                                return copy;
+                            });
+                            break;
+
+                        case 'message.done':
+                            setStreaming(false);
+                            setMessages(prev => {
+                                const copy = [...prev];
+                                if (copy.length && copy[copy.length - 1]._streaming) {
+                                    copy[copy.length - 1] = {
+                                        role: 'assistant',
+                                        content: msg.text,
+                                        timestamp: new Date().toISOString(),
+                                    };
+                                } else {
+                                    copy.push({ role: 'assistant', content: msg.text, timestamp: new Date().toISOString() });
+                                }
+                                return copy;
+                            });
+                            break;
+
+                        case 'error':
+                            setStreaming(false);
+                            setMessages(prev => [...prev, {
+                                role: 'assistant',
+                                content: '\u26A0\uFE0F ' + msg.text,
+                                timestamp: new Date().toISOString(),
+                            }]);
+                            break;
+
+                        /* ── Status / sessions ───────────────── */
+                        case 'status':
+                            setStats(msg);
+                            break;
+
+                        case 'sessions.list.result':
+                            setSessions(msg.sessions || []);
+                            break;
+
+                        default:
+                            break;
+                    }
+                };
             }, []);
 
-            const fetchStats = async () => {
-                try {
-                    const response = await fetch('/api/stats');
-                    const data = await response.json();
-                    setStats(data);
-                } catch (error) {
-                    console.error('Failed to fetch stats:', error);
-                }
-            };
+            useEffect(() => {
+                connect();
+                const iv = setInterval(() => {
+                    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                        wsRef.current.send(JSON.stringify({ type: 'status' }));
+                    }
+                }, 5000);
+                return () => clearInterval(iv);
+            }, [connect]);
 
-            const fetchSkills = async () => {
-                try {
-                    const response = await fetch('/api/skills');
-                    const data = await response.json();
-                    setSkills(data.skills || []);
-                } catch (error) {
-                    console.error('Failed to fetch skills:', error);
-                }
-            };
-
-            const connectWebSocket = () => {
-                const ws = new WebSocket(`ws://${window.location.host}/ws`);
-                
-                ws.onopen = () => setIsConnected(true);
-                ws.onclose = () => setIsConnected(false);
-                
-                ws.onmessage = (event) => {
-                    const message = JSON.parse(event.data);
-                    setMessages(prev => [...prev, message]);
-                };
-            };
-
-            const sendMessage = async (e) => {
+            /* ── Send ──────────────────────────────────────────── */
+            const sendMessage = (e) => {
                 e.preventDefault();
-                if (!input.trim()) return;
+                const text = input.trim();
+                if (!text || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
 
-                const userMessage = {
-                    role: 'user',
-                    content: input,
-                    timestamp: new Date().toISOString()
-                };
-
-                setMessages(prev => [...prev, userMessage]);
+                setMessages(prev => [...prev, { role: 'user', content: text, timestamp: new Date().toISOString() }]);
                 setInput('');
 
-                try {
-                    const response = await fetch('/api/chat', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ message: input })
-                    });
-
-                    const data = await response.json();
-                    
-                    const botMessage = {
-                        role: 'assistant',
-                        content: data.response,
-                        timestamp: new Date().toISOString()
-                    };
-
-                    setMessages(prev => [...prev, botMessage]);
-                } catch (error) {
-                    console.error('Failed to send message:', error);
+                if (text.startsWith('/')) {
+                    wsRef.current.send(JSON.stringify({ type: 'command', text: text }));
+                } else {
+                    wsRef.current.send(JSON.stringify({ type: 'message', text: text, session_id: 'webchat_default' }));
                 }
             };
+
+            /* ── Derived ───────────────────────────────────────── */
+            const uptimeStr = (() => {
+                const s = stats.uptime_sec || 0;
+                const h = Math.floor(s / 3600);
+                const m = Math.floor((s % 3600) / 60);
+                return h + 'h ' + m + 'm';
+            })();
 
             return (
                 <div className="min-h-screen p-6">
@@ -155,7 +216,7 @@
                         <div className="flex items-center justify-between">
                             <div className="flex items-center space-x-4">
                                 <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center">
-                                    <span className="text-2xl">🤖</span>
+                                    <span className="text-2xl">{'\uD83E\uDD16'}</span>
                                 </div>
                                 <div>
                                     <h1 className="text-3xl font-bold text-white">SableCore Dashboard</h1>
@@ -163,9 +224,9 @@
                                 </div>
                             </div>
                             <div className="flex items-center space-x-4">
-                                <div className={`px-4 py-2 rounded-lg ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}>
+                                <div className={'px-4 py-2 rounded-lg ' + (isConnected ? 'bg-green-500' : 'bg-red-500')}>
                                     <span className="text-white font-medium">
-                                        {isConnected ? '🟢 Connected' : '🔴 Disconnected'}
+                                        {isConnected ? '\uD83D\uDFE2 Connected' : '\uD83D\uDD34 Disconnected'}
                                     </span>
                                 </div>
                             </div>
@@ -174,60 +235,94 @@
 
                     {/* Stats Grid */}
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
-                        <StatCard icon="💬" label="Messages" value={stats.messages} />
-                        <StatCard icon="⏱️" label="Uptime" value={stats.uptime} />
-                        <StatCard icon="🧠" label="Memory" value={stats.memory} />
-                        <StatCard icon="🛠️" label="Skills" value={stats.skills} />
+                        <StatCard icon={'\uD83D\uDCAC'} label="Messages" value={messages.length} />
+                        <StatCard icon={'\u23F1\uFE0F'} label="Uptime"   value={uptimeStr} />
+                        <StatCard icon={'\uD83D\uDC65'} label="Clients"  value={stats.clients || 0} />
+                        <StatCard icon={'\uD83D\uDD0C'} label="Nodes"    value={(stats.nodes || []).length} />
+                    </div>
+
+                    {/* Tabs */}
+                    <div className="flex space-x-2 mb-6">
+                        {['chat', 'sessions'].map(tab => (
+                            <button
+                                key={tab}
+                                onClick={() => {
+                                    setActiveTab(tab);
+                                    if (tab === 'sessions' && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                                        wsRef.current.send(JSON.stringify({ type: 'sessions.list' }));
+                                    }
+                                }}
+                                className={'px-5 py-2 rounded-lg font-medium transition ' + (
+                                    activeTab === tab
+                                        ? 'bg-purple-500 text-white'
+                                        : 'bg-white/10 text-purple-200 hover:bg-white/20'
+                                )}
+                            >
+                                {tab === 'chat' ? '\uD83D\uDCAC Chat' : '\uD83D\uDCCB Sessions'}
+                            </button>
+                        ))}
                     </div>
 
                     {/* Main Content */}
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                        {/* Chat Panel */}
-                        <div className="lg:col-span-2">
-                            <div className="glass rounded-2xl p-6 h-[600px] flex flex-col">
-                                <div className="flex items-center justify-between mb-4">
-                                    <h2 className="text-2xl font-bold text-white">💬 Chat</h2>
-                                    <button 
-                                        onClick={() => setMessages([])}
-                                        className="px-4 py-2 bg-red-500 hover:bg-red-600 rounded-lg text-white transition"
+                    {activeTab === 'chat' ? (
+                        <div className="glass rounded-2xl p-6 h-[600px] flex flex-col">
+                            <div className="flex items-center justify-between mb-4">
+                                <h2 className="text-2xl font-bold text-white">{'\uD83D\uDCAC'} Chat</h2>
+                                <button
+                                    onClick={() => setMessages([])}
+                                    className="px-4 py-2 bg-red-500 hover:bg-red-600 rounded-lg text-white transition"
+                                >
+                                    Clear
+                                </button>
+                            </div>
+
+                            <ChatMessages messages={messages} isStreaming={isStreaming} />
+
+                            <form onSubmit={sendMessage} className="mt-4">
+                                <div className="flex space-x-2">
+                                    <input
+                                        type="text"
+                                        value={input}
+                                        onChange={(e) => setInput(e.target.value)}
+                                        placeholder="Type your message... (start with / for commands)"
+                                        disabled={isStreaming}
+                                        className="flex-1 px-4 py-3 rounded-lg bg-white/10 text-white placeholder-purple-200 border border-white/20 focus:outline-none focus:border-purple-400 disabled:opacity-50"
+                                    />
+                                    <button
+                                        type="submit"
+                                        disabled={isStreaming}
+                                        className="px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 rounded-lg text-white font-medium transition disabled:opacity-50"
                                     >
-                                        Clear
+                                        Send
                                     </button>
                                 </div>
-                                
-                                <ChatMessages messages={messages} />
-                                
-                                <form onSubmit={sendMessage} className="mt-4">
-                                    <div className="flex space-x-2">
-                                        <input
-                                            type="text"
-                                            value={input}
-                                            onChange={(e) => setInput(e.target.value)}
-                                            placeholder="Type your message..."
-                                            className="flex-1 px-4 py-3 rounded-lg bg-white/10 text-white placeholder-purple-200 border border-white/20 focus:outline-none focus:border-purple-400"
-                                        />
-                                        <button
-                                            type="submit"
-                                            className="px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 rounded-lg text-white font-medium transition"
-                                        >
-                                            Send
-                                        </button>
-                                    </div>
-                                </form>
-                            </div>
+                            </form>
                         </div>
-
-                        {/* Skills Panel */}
+                    ) : (
                         <div className="glass rounded-2xl p-6">
-                            <h2 className="text-2xl font-bold text-white mb-4">🛠️ Skills Hub</h2>
-                            <SkillsList skills={skills} />
+                            <h2 className="text-2xl font-bold text-white mb-4">{'\uD83D\uDCCB'} Sessions</h2>
+                            {sessions.length === 0 ? (
+                                <p className="text-purple-200">No sessions yet.</p>
+                            ) : (
+                                <div className="space-y-3">
+                                    {sessions.map((s, i) => (
+                                        <div key={i} className="bg-white/10 rounded-lg p-4 border border-white/20">
+                                            <div className="flex justify-between">
+                                                <span className="text-white font-medium">{s.channel}:{s.user_id}</span>
+                                                <span className="text-purple-200 text-sm">{s.messages} msgs</span>
+                                            </div>
+                                            <p className="text-xs text-purple-300 mt-1">{s.id}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
-                    </div>
+                    )}
                 </div>
             );
         }
 
-        // Stat Card Component
+        /* ── Stat Card ─────────────────────────────────────────── */
         function StatCard({ icon, label, value }) {
             return (
                 <div className="glass rounded-2xl p-6 hover:glow transition">
@@ -242,12 +337,12 @@
             );
         }
 
-        // Chat Messages Component
-        function ChatMessages({ messages }) {
-            const messagesEndRef = useRef(null);
+        /* ── Chat Messages ─────────────────────────────────────── */
+        function ChatMessages({ messages, isStreaming }) {
+            const endRef = useRef(null);
 
             useEffect(() => {
-                messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+                endRef.current && endRef.current.scrollIntoView({ behavior: 'smooth' });
             }, [messages]);
 
             return (
@@ -258,54 +353,29 @@
                         </div>
                     ) : (
                         messages.map((msg, idx) => (
-                            <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                <div className={`max-w-[70%] px-4 py-3 rounded-2xl ${
-                                    msg.role === 'user' 
-                                        ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white' 
+                            <div key={idx} className={'flex ' + (msg.role === 'user' ? 'justify-end' : 'justify-start')}>
+                                <div className={'max-w-[70%] px-4 py-3 rounded-2xl ' + (
+                                    msg.role === 'user'
+                                        ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white'
                                         : 'bg-white/10 text-white border border-white/20'
-                                }`}>
+                                )}>
                                     <p className="whitespace-pre-wrap">{msg.content}</p>
-                                    <p className="text-xs mt-1 opacity-70">
-                                        {new Date(msg.timestamp).toLocaleTimeString()}
-                                    </p>
+                                    {msg._streaming && (
+                                        <span className="typing-dot inline-block ml-1 text-purple-300">{'\u25CF'}</span>
+                                    )}
+                                    {msg.timestamp && (
+                                        <p className="text-xs mt-1 opacity-70">{fmtTime(msg.timestamp)}</p>
+                                    )}
                                 </div>
                             </div>
                         ))
                     )}
-                    <div ref={messagesEndRef} />
+                    <div ref={endRef} />
                 </div>
             );
         }
 
-        // Skills List Component
-        function SkillsList({ skills }) {
-            return (
-                <div className="space-y-3 overflow-y-auto max-h-[500px] chat-scroll">
-                    {skills.length === 0 ? (
-                        <p className="text-purple-200">No skills installed yet.</p>
-                    ) : (
-                        skills.map((skill, idx) => (
-                            <div key={idx} className="bg-white/10 rounded-lg p-4 border border-white/20 hover:border-purple-400 transition">
-                                <div className="flex items-center justify-between mb-2">
-                                    <h3 className="font-semibold text-white">{skill.name}</h3>
-                                    <span className="px-2 py-1 bg-purple-500 rounded text-xs text-white">
-                                        v{skill.version}
-                                    </span>
-                                </div>
-                                <p className="text-sm text-purple-200">{skill.description}</p>
-                                <div className="mt-2 flex items-center space-x-2 text-xs text-purple-300">
-                                    <span>⭐ {skill.rating}/5</span>
-                                    <span>•</span>
-                                    <span>📥 {skill.downloads}</span>
-                                </div>
-                            </div>
-                        ))
-                    )}
-                </div>
-            );
-        }
-
-        // Render the app
+        /* ── Mount ─────────────────────────────────────────────── */
         ReactDOM.render(<Dashboard />, document.getElementById('root'));
     </script>
 </body>
