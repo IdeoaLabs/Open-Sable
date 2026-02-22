@@ -1,6 +1,7 @@
 """
 Computer Control Tools - Autonomous system control
-Enables the agent to execute commands, modify files, and control the computer
+Enables the agent to execute commands, modify files, and control the computer.
+Includes desktop control (mouse, keyboard, screenshots) when pyautogui is available.
 """
 import asyncio
 import logging
@@ -10,8 +11,24 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 import json
 import shutil
+import base64
 
 logger = logging.getLogger(__name__)
+
+# ── Optional desktop-control deps (graceful degradation) ────────────────
+try:
+    import pyautogui
+    pyautogui.FAILSAFE = True          # move mouse to corner = abort
+    pyautogui.PAUSE = 0.15             # small delay between actions
+    _HAS_PYAUTOGUI = True
+except ImportError:
+    _HAS_PYAUTOGUI = False
+
+try:
+    from PIL import Image, ImageGrab     # Pillow
+    _HAS_PILLOW = True
+except ImportError:
+    _HAS_PILLOW = False
 
 
 class ComputerTools:
@@ -725,3 +742,207 @@ class ComputerTools:
                 'success': False,
                 'error': str(e)
             }
+
+    # ═══════════════════════════════════════════════════════════════════
+    #  DESKTOP CONTROL — mouse, keyboard, screenshots
+    #  Requires: pip install pyautogui Pillow
+    #  Gracefully degrades if unavailable (headless servers, CI, etc.)
+    # ═══════════════════════════════════════════════════════════════════
+
+    @property
+    def desktop_available(self) -> bool:
+        """Check if desktop control is available."""
+        return _HAS_PYAUTOGUI
+
+    async def screenshot(
+        self,
+        region: Optional[Dict[str, int]] = None,
+        save_path: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Take a screenshot of the entire screen or a region.
+
+        Args:
+            region: Optional {x, y, width, height} to capture a sub-region.
+            save_path: If given, save the PNG here and return the path.
+                       Otherwise return a base64-encoded PNG string.
+
+        Returns:
+            {success, image_base64 | path, width, height, error}
+        """
+        if not _HAS_PYAUTOGUI or not _HAS_PILLOW:
+            return {'success': False, 'error': 'pyautogui/Pillow not installed — run: pip install pyautogui Pillow'}
+
+        try:
+            if region:
+                r = (region['x'], region['y'], region['width'], region['height'])
+                img = pyautogui.screenshot(region=r)
+            else:
+                img = pyautogui.screenshot()
+
+            w, h = img.size
+
+            if save_path:
+                out = Path(save_path).resolve()
+                out.parent.mkdir(parents=True, exist_ok=True)
+                img.save(str(out), 'PNG')
+                logger.info(f"📸 Screenshot saved: {out} ({w}x{h})")
+                return {'success': True, 'path': str(out), 'width': w, 'height': h, 'error': None}
+
+            import io
+            buf = io.BytesIO()
+            img.save(buf, format='PNG')
+            b64 = base64.b64encode(buf.getvalue()).decode('ascii')
+            logger.info(f"📸 Screenshot captured: {w}x{h}")
+            return {'success': True, 'image_base64': b64, 'width': w, 'height': h, 'error': None}
+        except Exception as e:
+            logger.error(f"Screenshot failed: {e}")
+            return {'success': False, 'error': str(e)}
+
+    async def mouse_click(
+        self,
+        x: int,
+        y: int,
+        button: str = 'left',
+        clicks: int = 1,
+    ) -> Dict[str, Any]:
+        """
+        Click the mouse at (x, y).
+
+        Args:
+            x, y: Screen coordinates.
+            button: 'left', 'right', or 'middle'.
+            clicks: Number of clicks (2 = double-click).
+        """
+        if not _HAS_PYAUTOGUI:
+            return {'success': False, 'error': 'pyautogui not installed'}
+        try:
+            pyautogui.click(x=x, y=y, button=button, clicks=clicks)
+            logger.info(f"🖱️ Click ({button} x{clicks}) at ({x}, {y})")
+            return {'success': True, 'x': x, 'y': y, 'button': button, 'clicks': clicks, 'error': None}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
+    async def mouse_move(self, x: int, y: int, duration: float = 0.3) -> Dict[str, Any]:
+        """Move the mouse to (x, y) over *duration* seconds."""
+        if not _HAS_PYAUTOGUI:
+            return {'success': False, 'error': 'pyautogui not installed'}
+        try:
+            pyautogui.moveTo(x, y, duration=duration)
+            logger.info(f"🖱️ Mouse moved to ({x}, {y})")
+            return {'success': True, 'x': x, 'y': y, 'error': None}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
+    async def mouse_scroll(self, amount: int, x: Optional[int] = None, y: Optional[int] = None) -> Dict[str, Any]:
+        """Scroll the mouse wheel. Positive = up, negative = down."""
+        if not _HAS_PYAUTOGUI:
+            return {'success': False, 'error': 'pyautogui not installed'}
+        try:
+            if x is not None and y is not None:
+                pyautogui.scroll(amount, x=x, y=y)
+            else:
+                pyautogui.scroll(amount)
+            logger.info(f"🖱️ Scrolled {amount}")
+            return {'success': True, 'amount': amount, 'error': None}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
+    async def mouse_drag(
+        self,
+        start_x: int, start_y: int,
+        end_x: int, end_y: int,
+        duration: float = 0.5,
+        button: str = 'left',
+    ) -> Dict[str, Any]:
+        """Drag the mouse from (start) to (end)."""
+        if not _HAS_PYAUTOGUI:
+            return {'success': False, 'error': 'pyautogui not installed'}
+        try:
+            pyautogui.moveTo(start_x, start_y, duration=0.1)
+            pyautogui.drag(end_x - start_x, end_y - start_y, duration=duration, button=button)
+            logger.info(f"🖱️ Dragged ({start_x},{start_y}) → ({end_x},{end_y})")
+            return {'success': True, 'error': None}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
+    async def keyboard_type(self, text: str, interval: float = 0.03) -> Dict[str, Any]:
+        """
+        Type text character-by-character (simulates real keyboard input).
+        """
+        if not _HAS_PYAUTOGUI:
+            return {'success': False, 'error': 'pyautogui not installed'}
+        try:
+            pyautogui.typewrite(text, interval=interval) if text.isascii() else pyautogui.write(text)
+            logger.info(f"⌨️ Typed {len(text)} chars")
+            return {'success': True, 'length': len(text), 'error': None}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
+    async def keyboard_press(self, key: str) -> Dict[str, Any]:
+        """
+        Press a single key or key combination.
+
+        Examples: 'enter', 'tab', 'escape', 'f5', 'ctrl+c', 'alt+f4', 'ctrl+shift+t'
+        """
+        if not _HAS_PYAUTOGUI:
+            return {'success': False, 'error': 'pyautogui not installed'}
+        try:
+            if '+' in key:
+                keys = [k.strip() for k in key.split('+')]
+                pyautogui.hotkey(*keys)
+                logger.info(f"⌨️ Hotkey: {key}")
+            else:
+                pyautogui.press(key)
+                logger.info(f"⌨️ Press: {key}")
+            return {'success': True, 'key': key, 'error': None}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
+    async def get_screen_size(self) -> Dict[str, Any]:
+        """Get the screen resolution."""
+        if not _HAS_PYAUTOGUI:
+            return {'success': False, 'error': 'pyautogui not installed'}
+        try:
+            w, h = pyautogui.size()
+            return {'success': True, 'width': w, 'height': h, 'error': None}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
+    async def get_mouse_position(self) -> Dict[str, Any]:
+        """Get the current mouse cursor position."""
+        if not _HAS_PYAUTOGUI:
+            return {'success': False, 'error': 'pyautogui not installed'}
+        try:
+            x, y = pyautogui.position()
+            return {'success': True, 'x': x, 'y': y, 'error': None}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
+    async def locate_on_screen(self, image_path: str, confidence: float = 0.8) -> Dict[str, Any]:
+        """
+        Find an image on screen (template matching).
+
+        Args:
+            image_path: Path to a PNG template image to find.
+            confidence: Match confidence 0.0-1.0 (requires opencv-python).
+
+        Returns:
+            {success, x, y, width, height} of the match center, or error.
+        """
+        if not _HAS_PYAUTOGUI:
+            return {'success': False, 'error': 'pyautogui not installed'}
+        try:
+            location = pyautogui.locateOnScreen(image_path, confidence=confidence)
+            if location:
+                center = pyautogui.center(location)
+                logger.info(f"👁️ Found {image_path} at ({center.x}, {center.y})")
+                return {
+                    'success': True,
+                    'x': center.x, 'y': center.y,
+                    'width': location.width, 'height': location.height,
+                    'error': None,
+                }
+            return {'success': False, 'error': f'Image not found on screen: {image_path}'}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}

@@ -277,12 +277,18 @@ class SableAgent:
             messages.append({"role": "user", "content": task})
 
             tool_schemas = self.tools.get_tool_schemas()
+            _MAX_ROUNDS = 5  # allow more rounds for code iteration
+            _last_tool_was_code_error = False
 
-            for _round in range(3):
+            for _round in range(_MAX_ROUNDS):
+                # Offer tools on round 0, or if the last execute_code had an error
+                offer_tools = (not tool_results) or _last_tool_was_code_error
+                _last_tool_was_code_error = False
+
                 try:
                     response = await asyncio.wait_for(
                         self.llm.invoke_with_tools(
-                            messages, tool_schemas if not tool_results else []
+                            messages, tool_schemas if offer_tools else []
                         ),
                         timeout=_LLM_TIMEOUT,
                     )
@@ -324,12 +330,30 @@ class SableAgent:
                     finally:
                         if tool_span:
                             self.tracer.end_span(tool_span.span_id)
-                    # Next round: LLM synthesizes results (no tools offered)
+
+                    last_result = tool_results[-1]
+
+                    # ── Code feedback loop: if execute_code failed, let the
+                    #    LLM see the error and try again with tools available ──
+                    if tc["name"] == "execute_code" and "❌" in last_result:
+                        _last_tool_was_code_error = True
+                        messages.append({"role": "assistant", "content": f"Used tool: {tc['name']}"})
+                        messages.append({
+                            "role": "user",
+                            "content": (
+                                f"The code execution failed with this error:\n{last_result}\n\n"
+                                "Please fix the code and try again using execute_code."
+                            ),
+                        })
+                        logger.info(f"🔄 Code feedback loop: round {_round + 1}, re-offering tools")
+                        continue
+
+                    # Normal path: LLM synthesizes results (no tools offered)
                     messages.append({"role": "assistant", "content": f"Used tool: {tc['name']}"})
                     messages.append({
                         "role": "user",
                         "content": (
-                            f"Tool result:\n{tool_results[-1]}\n\n"
+                            f"Tool result:\n{last_result}\n\n"
                             f"Now answer the original question: {task}"
                         ),
                     })

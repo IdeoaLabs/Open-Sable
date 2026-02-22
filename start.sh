@@ -1,8 +1,8 @@
 #!/bin/bash
-# Quick start script for SableCore
+# Quick start script for Open-Sable
 
-echo "🚀 SableCore Quick Start"
-echo "======================="
+echo "🚀 Open-Sable Quick Start"
+echo "========================="
 echo ""
 
 # Check if venv exists
@@ -14,32 +14,33 @@ fi
 # Activate venv
 source venv/bin/activate
 
-# Check what to start
-if [ "$1" == "whatsapp" ]; then
-    echo "📱 Starting WhatsApp Bridge..."
-    cd whatsapp-bridge && node bridge.js
-elif [ "$1" == "skills" ]; then
-    echo "🛒 Opening Skills Hub..."
-    python sable.py skills
-elif [ "$1" == "onboarding" ]; then
-    echo "🎯 Running Onboarding Wizard..."
-    python sable.py onboarding
-elif [ "$1" == "web" ]; then
-    echo "🌐 Starting Web Dashboard..."
-    python main.py --web
-    echo "Open: http://localhost:8080/dashboard_modern.html"
-elif [ "$1" == "test" ]; then
-    echo "🧪 Running Tests..."
-    python tests/test_features.py
-elif [ "$1" == "chat" ]; then
-    echo "💬 Starting CLI Chat..."
-    python cli.py chat
-else
-    echo "📋 Starting main bot..."
-    echo ""
-    echo "Available platforms:"
-    echo "  - Telegram (if TELEGRAM_BOT_TOKEN set)"
-    echo "  - WhatsApp (if whatsapp_enabled=true)"
-    echo ""
-    python main.py
-fi
+case "$1" in
+    whatsapp)
+        echo "📱 Starting WhatsApp Bridge..."
+        cd whatsapp-bridge && node bridge.js
+        ;;
+    skills)
+        echo "🛒 Opening Skills Hub..."
+        python sable.py skills
+        ;;
+    onboarding)
+        echo "🎯 Running Onboarding Wizard..."
+        python sable.py onboarding
+        ;;
+    test)
+        echo "🧪 Running Tests..."
+        python -m pytest tests/test_features.py tests/test_unit.py -v
+        ;;
+    chat)
+        echo "💬 Starting CLI Chat..."
+        CLI_ENABLED=true python -m opensable
+        ;;
+    *)
+        echo "📋 Starting Open-Sable agent..."
+        echo ""
+        echo "  🌐 WebChat will be at http://127.0.0.1:8789"
+        echo "  + Any configured platforms (Telegram, Discord, WhatsApp, Slack)"
+        echo ""
+        python -m opensable
+        ;;
+esac

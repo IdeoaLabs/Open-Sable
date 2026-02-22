@@ -89,6 +89,14 @@ class ToolRegistry:
         self.register("create_skill", self._create_skill_tool)
         self.register("list_skills", self._list_skills_tool)
         
+        # Register desktop control tools
+        self.register("desktop_screenshot", self._desktop_screenshot_tool)
+        self.register("desktop_click", self._desktop_click_tool)
+        self.register("desktop_type", self._desktop_type_tool)
+        self.register("desktop_hotkey", self._desktop_hotkey_tool)
+        self.register("desktop_scroll", self._desktop_scroll_tool)
+        self.register("desktop_mouse_move", self._desktop_mouse_move_tool)
+        
         # Initialize advanced skills
         try:
             await self.voice.initialize()
@@ -337,6 +345,97 @@ class ToolRegistry:
                     }
                 }
             },
+            # ── Desktop control tools ─────────────────────────────
+            {
+                "type": "function",
+                "function": {
+                    "name": "desktop_screenshot",
+                    "description": "Take a screenshot of the screen. Returns base64 PNG image and dimensions.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "save_path": {"type": "string", "description": "Optional file path to save the PNG to instead of returning base64"},
+                        },
+                        "required": []
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "desktop_click",
+                    "description": "Click the mouse at screen coordinates (x, y)",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "x": {"type": "integer", "description": "X pixel coordinate"},
+                            "y": {"type": "integer", "description": "Y pixel coordinate"},
+                            "button": {"type": "string", "description": "'left' (default), 'right', or 'middle'"},
+                            "clicks": {"type": "integer", "description": "Number of clicks (2 = double-click)"}
+                        },
+                        "required": ["x", "y"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "desktop_type",
+                    "description": "Type text via the keyboard at the current cursor position",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "text": {"type": "string", "description": "The text to type"}
+                        },
+                        "required": ["text"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "desktop_hotkey",
+                    "description": "Press a key or key combination (e.g. 'enter', 'ctrl+c', 'alt+f4', 'ctrl+shift+t')",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "key": {"type": "string", "description": "Key or combo like 'enter', 'ctrl+c', 'alt+tab'"}
+                        },
+                        "required": ["key"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "desktop_scroll",
+                    "description": "Scroll the mouse wheel. Positive = up, negative = down.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "amount": {"type": "integer", "description": "Scroll amount (positive=up, negative=down)"},
+                            "x": {"type": "integer", "description": "Optional X coordinate to scroll at"},
+                            "y": {"type": "integer", "description": "Optional Y coordinate to scroll at"}
+                        },
+                        "required": ["amount"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "desktop_mouse_move",
+                    "description": "Move the mouse to screen coordinates (x, y)",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "x": {"type": "integer", "description": "X pixel coordinate"},
+                            "y": {"type": "integer", "description": "Y pixel coordinate"}
+                        },
+                        "required": ["x", "y"]
+                    }
+                }
+            },
         ]
 
     # Tool schema → internal tool name mapping
@@ -355,6 +454,13 @@ class ToolRegistry:
         "vector_search":    ("vector_search",   lambda a: a),
         "create_skill":     ("create_skill",    lambda a: a),
         "list_skills":      ("list_skills",     lambda a: a),
+        # Desktop control
+        "desktop_screenshot":  ("desktop_screenshot",  lambda a: a),
+        "desktop_click":       ("desktop_click",       lambda a: a),
+        "desktop_type":        ("desktop_type",        lambda a: a),
+        "desktop_hotkey":      ("desktop_hotkey",      lambda a: a),
+        "desktop_scroll":      ("desktop_scroll",      lambda a: a),
+        "desktop_mouse_move":  ("desktop_mouse_move",  lambda a: a),
     }
 
     async def execute_schema_tool(self, schema_name: str, arguments: Dict[str, Any]) -> str:
@@ -1148,4 +1254,61 @@ class ToolRegistry:
         except Exception as e:
             return f"❌ Error listing skills: {str(e)}"
 
+    # ========== DESKTOP CONTROL TOOLS ==========
 
+    async def _desktop_screenshot_tool(self, params: Dict) -> str:
+        """Take a screenshot of the screen"""
+        save_path = params.get("save_path")
+        result = await self.computer.screenshot(save_path=save_path)
+        if result.get("success"):
+            w, h = result.get("width"), result.get("height")
+            if result.get("path"):
+                return f"📸 Screenshot saved: {result['path']} ({w}x{h})"
+            return f"📸 Screenshot captured ({w}x{h}). Image data returned as base64 PNG."
+        return f"❌ Screenshot failed: {result.get('error')}"
+
+    async def _desktop_click_tool(self, params: Dict) -> str:
+        """Click mouse at coordinates"""
+        x = params.get("x", 0)
+        y = params.get("y", 0)
+        button = params.get("button", "left")
+        clicks = params.get("clicks", 1)
+        result = await self.computer.mouse_click(x, y, button=button, clicks=clicks)
+        if result.get("success"):
+            return f"🖱️ Clicked ({button} x{clicks}) at ({x}, {y})"
+        return f"❌ Click failed: {result.get('error')}"
+
+    async def _desktop_type_tool(self, params: Dict) -> str:
+        """Type text via keyboard"""
+        text = params.get("text", "")
+        result = await self.computer.keyboard_type(text)
+        if result.get("success"):
+            return f"⌨️ Typed {result.get('length', len(text))} characters"
+        return f"❌ Type failed: {result.get('error')}"
+
+    async def _desktop_hotkey_tool(self, params: Dict) -> str:
+        """Press key or key combination"""
+        key = params.get("key", "")
+        result = await self.computer.keyboard_press(key)
+        if result.get("success"):
+            return f"⌨️ Pressed: {key}"
+        return f"❌ Hotkey failed: {result.get('error')}"
+
+    async def _desktop_scroll_tool(self, params: Dict) -> str:
+        """Scroll the mouse wheel"""
+        amount = params.get("amount", 0)
+        x = params.get("x")
+        y = params.get("y")
+        result = await self.computer.mouse_scroll(amount, x=x, y=y)
+        if result.get("success"):
+            return f"🖱️ Scrolled {amount}"
+        return f"❌ Scroll failed: {result.get('error')}"
+
+    async def _desktop_mouse_move_tool(self, params: Dict) -> str:
+        """Move mouse to coordinates"""
+        x = params.get("x", 0)
+        y = params.get("y", 0)
+        result = await self.computer.mouse_move(x, y)
+        if result.get("success"):
+            return f"🖱️ Mouse moved to ({x}, {y})"
+        return f"❌ Move failed: {result.get('error')}"

@@ -51,6 +51,19 @@ async def main():
     await agent.initialize()
     logger.info("Core agent initialized")
     
+    # ── Start Gateway + WebChat (always, so browser chat works) ─────────
+    gateway = None
+    try:
+        from opensable.core.gateway import Gateway
+        gateway = Gateway(agent, config)
+        await gateway.start()
+        webchat_port = int(getattr(config, 'webchat_port', 8789))
+        console.print("[bold green]🔌 Gateway running[/bold green]")
+        console.print(f"[bold cyan]🌐 WebChat → http://127.0.0.1:{webchat_port}[/bold cyan]")
+        console.print(f"[dim]Remote access: ssh -L {webchat_port}:127.0.0.1:{webchat_port} user@host[/dim]")
+    except Exception as e:
+        logger.warning(f"Gateway failed to start: {e}")
+
     # Check if autonomous mode is enabled
     autonomous_enabled = getattr(config, 'autonomous_mode', False)
     
@@ -125,23 +138,32 @@ async def main():
         except Exception as e:
             logger.error(f"Slack init failed: {e}")
     
-    if not interfaces:
+    platform_count = len(interfaces)
+    if platform_count > 0:
+        console.print(f"[bold green]✅ Open-Sable is running with {platform_count} interface(s) + WebChat[/bold green]")
+    elif gateway:
+        console.print("[bold green]✅ Open-Sable is running with WebChat only[/bold green]")
+        console.print("[dim]Add tokens to .env for Telegram, Discord, WhatsApp, Slack[/dim]")
+    else:
         console.print("[yellow]⚠️  No chat interfaces started.[/yellow]")
-        console.print("[dim]The wizard checked your config — run again to reconfigure,[/dim]")
-        console.print("[dim]or add tokens directly to .env (Telegram, Discord, WhatsApp, Slack)[/dim]")
         return
-    
-    console.print(f"[bold green]✅ Open-Sable is running with {len(interfaces)} interface(s)[/bold green]")
+
     console.print(f"[dim]Agent: {config.agent_name} | Personality: {config.agent_personality}[/dim]")
     console.print("[dim]Type Ctrl+C to stop[/dim]")
     
-    # Run all interfaces concurrently
+    # Run all interfaces (+ keep alive for WebChat if no platforms)
     try:
-        await asyncio.gather(*[interface.start() for interface in interfaces])
+        if interfaces:
+            await asyncio.gather(*[interface.start() for interface in interfaces])
+        else:
+            # No platform interfaces — just keep the WebChat running
+            await asyncio.Event().wait()
     except KeyboardInterrupt:
         console.print("\n[yellow]Shutting down gracefully...[/yellow]")
         for interface in interfaces:
             await interface.stop()
+        if gateway:
+            await gateway.stop()
         await agent.shutdown()
         console.print("[bold green]✅ Open-Sable stopped[/bold green]")
 
