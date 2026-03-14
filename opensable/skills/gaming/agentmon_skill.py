@@ -174,10 +174,18 @@ class WorldMap:
 
     def open_dir(self, mid: int, x: int, y: int, d: str,
                  dest: Optional[Tuple[int, int]]):
-        self.tile(mid, x, y)["opens"][d] = dest
+        t = self.tile(mid, x, y)
+        t["opens"][d] = dest
+        # CRITICAL: if we proved this direction is open, remove any
+        # contradictory wall entry (from stale dialogue-block etc).
+        t["walls"].discard(d)
+        # Auto-record reverse for SAME-MAP moves (dest is a real tile).
+        # Cross-map exits (dest=None) do NOT get a reverse.
         if dest is not None:
             rev = self._REV[d]
-            self.tile(mid, dest[0], dest[1])["opens"][rev] = (x, y)
+            rt = self.tile(mid, dest[0], dest[1])
+            rt["opens"][rev] = (x, y)
+            rt["walls"].discard(rev)  # clear contradictory wall on dest too
 
     def record_warp(self, mid: int, x: int, y: int, target_mid: int):
         self.tile(mid, x, y)["warp"] = target_mid
@@ -196,7 +204,7 @@ class WorldMap:
         return {p for p, t in self._tiles.get(mid, {}).items() if t["vis"]}
 
     def frontiers(self, mid: int,
-                  avoid_warp: Optional[int] = None) -> List[Tuple[int, int]]:
+                  avoid_all_warps: bool = False) -> List[Tuple[int, int]]:
         """Tiles adjacent to visited but not yet visited."""
         tiles = self._tiles.get(mid, {})
         front: set = set()
@@ -204,38 +212,38 @@ class WorldMap:
             if not t["vis"]:
                 continue
             for d in self._DIRS:
-                # Skip directions that are known exits to avoided map
+                # Skip directions that are known cross-map exits
                 exits = t.get("exits", {})
-                if avoid_warp is not None and exits.get(d) == avoid_warp:
+                if d in exits:
                     continue
+                # Check opens FIRST — if we have a proven open,
+                # use it even if there's a stale wall entry.
                 dest = t["opens"].get(d)
                 if dest is not None:
                     dt = tiles.get(dest)
                     if dt is None or not dt.get("vis"):
-                        if avoid_warp is None or (
-                            dt is None or dt.get("warp") != avoid_warp
-                        ):
-                            front.add(dest)
+                        if avoid_all_warps and dt and dt.get("warp") is not None:
+                            continue
+                        front.add(dest)
+                elif d in t["opens"]:
+                    continue  # opens[d]=None means cross-map, skip
                 elif d not in t["walls"]:
-                    # Skip if opens has the key with None (= cross-map exit)
-                    if d in t["opens"]:
-                        continue  # opens[d]=None means cross-map, not a frontier
+                    # Unknown direction — not walled, not opened
                     nx, ny = x + self._DX[d], y + self._DY[d]
                     dt = tiles.get((nx, ny))
                     if dt is None or not dt.get("vis"):
-                        if avoid_warp is None or (
-                            dt is None or dt.get("warp") != avoid_warp
-                        ):
-                            front.add((nx, ny))
+                        if avoid_all_warps and dt and dt.get("warp") is not None:
+                            continue
+                        front.add((nx, ny))
         return list(front)
 
     def nearest_frontier(
         self, mid: int, start: Tuple[int, int],
         bias: Optional[str] = None,
-        avoid_warp: Optional[int] = None,
+        avoid_all_warps: bool = False,
     ) -> Optional[Tuple[int, int]]:
         """Closest frontier tile, optionally biased toward a direction."""
-        ff = self.frontiers(mid, avoid_warp)
+        ff = self.frontiers(mid, avoid_all_warps=avoid_all_warps)
         if not ff:
             return None
 
@@ -257,9 +265,13 @@ class WorldMap:
 
     def pathfind(
         self, mid: int, start: Tuple[int, int], goal: Tuple[int, int],
-        avoid_warp: Optional[int] = None, max_nodes: int = 500,
+        avoid_all_warps: bool = False, max_nodes: int = 500,
     ) -> Optional[List[str]]:
-        """A* on collected map data.  Visit-count increases cost → avoids loops."""
+        """A* using ONLY opens data (no DX/DY guessing).
+
+        Only traverses edges that were actually observed from movement.
+        This prevents wrong-neighbor bugs from incorrect DX/DY mapping.
+        """
         if start == goal:
             return []
         tiles = self._tiles.get(mid, {})
@@ -285,26 +297,22 @@ class WorldMap:
                 continue
             closed.add(cur)
             ct = tiles.get(cur, {})
-            cw = ct.get("walls", set()) if ct else set()
-            co = ct.get("opens", {}) if ct else {}
-            ce = ct.get("exits", {}) if ct else {}
-            for d in self._DIRS:
-                if d in cw:
-                    continue
-                # Skip directions that are known exits to avoided map
-                if avoid_warp is not None and ce.get(d) == avoid_warp:
-                    continue
-                nb = co.get(d)
+            if not ct:
+                continue
+            co = ct.get("opens", {})
+            ce = ct.get("exits", {})
+            for d, nb in co.items():
                 if nb is None:
-                    # If opens[d] == None → cross-map exit, skip in pathfinding
-                    if d in co:
+                    continue  # cross-map exit
+                if d in ce:
+                    continue  # known map transition
+                if avoid_all_warps:
+                    nbt = tiles.get(nb, {})
+                    if nbt and nbt.get("warp") is not None:
                         continue
-                    nb = (cur[0] + self._DX[d], cur[1] + self._DY[d])
-                nbt = tiles.get(nb, {})
-                if avoid_warp is not None and nbt.get("warp") == avoid_warp:
-                    continue
                 if nb in closed:
                     continue
+                nbt = tiles.get(nb, {})
                 vc = nbt.get("vc", 0) if nbt else 0
                 cost = 1 + vc * 0.3
                 tg = g[cur] + cost
@@ -319,26 +327,34 @@ class WorldMap:
     def best_step(
         self, mid: int, x: int, y: int,
         bias: Optional[str] = None,
-        avoid_warp: Optional[int] = None,
+        avoid_all_warps: bool = False,
     ) -> Optional[str]:
-        """Single-step: least-visited non-walled neighbor, with bias."""
+        """Single-step: least-visited non-walled neighbor, with bias.
+
+        Only considers directions we have opens data for, OR
+        directions not yet explored (not walled, not in opens).
+        """
         t = self.tile(mid, x, y)
         tiles = self._tiles.get(mid, {})
         cands: List[Tuple[float, str]] = []
         for d in self._DIRS:
-            if d in t["walls"]:
-                continue
-            # Skip directions that are known cross-map exits to avoided map
-            if avoid_warp is not None and t.get("exits", {}).get(d) == avoid_warp:
+            # Skip known cross-map exits
+            if d in t.get("exits", {}):
                 continue
             dest = t["opens"].get(d)
-            if dest is None:
-                # If opens has the key with None → cross-map exit, skip
-                if d in t["opens"]:
-                    continue
-                dest = (x + self._DX[d], y + self._DY[d])
+            if dest is not None:
+                # Known open direction — use it (ignore stale walls)
+                pass
+            elif d in t["opens"]:
+                continue  # opens[d]=None → cross-map
+            elif d in t["walls"]:
+                continue  # walled AND not in opens → real wall
+            else:
+                # Direction not yet explored — it's a candidate
+                cands.append((-100 + (0 if d == bias else 10), d))
+                continue
             dt = tiles.get(dest, {})
-            if avoid_warp is not None and dt.get("warp") == avoid_warp:
+            if avoid_all_warps and dt and dt.get("warp") is not None:
                 continue
             vc = dt.get("vc", 0) if dt else 0
             prio = vc if dt.get("vis") else -100
@@ -352,7 +368,42 @@ class WorldMap:
         cands.sort()
         return cands[0][1]
 
+    # ── Known exits ───────────────────────────────────────────────────
+
+    def known_exit_tile(self, mid: int, target_mid: Optional[int] = None
+                        ) -> Optional[Tuple[Tuple[int, int], str]]:
+        """Find a tile+direction that exits this map.
+
+        If target_mid is given, only return exits leading to that map.
+        Otherwise return ANY exit from this map.
+        Returns ((x,y), direction) or None.
+        """
+        tiles = self._tiles.get(mid, {})
+        for (x, y), t in tiles.items():
+            exits = t.get("exits", {})
+            for d, dest_mid in exits.items():
+                if target_mid is None or dest_mid == target_mid:
+                    return ((x, y), d)
+        # Also check warps dict
+        for (wmid, wx, wy), dest in self._warps.items():
+            if wmid == mid:
+                if target_mid is None or dest == target_mid:
+                    # Find which direction the warp goes
+                    t = tiles.get((wx, wy), {})
+                    exits = t.get("exits", {}) if t else {}
+                    for d, dm in exits.items():
+                        if target_mid is None or dm == target_mid:
+                            return ((wx, wy), d)
+                    # If no direction recorded, return tile with 'down' default
+                    return ((wx, wy), "down")
+        return None
+
     # ── Stats ─────────────────────────────────────────────────────────
+
+    def warp_tiles(self, mid: int) -> set:
+        """Return set of (x,y) that are known warp tiles on this map."""
+        tiles = self._tiles.get(mid, {})
+        return {pos for pos, t in tiles.items() if t.get("warp") is not None}
 
     def stats(self, mid: int) -> str:
         tiles = self._tiles.get(mid, {})
@@ -505,10 +556,10 @@ class AgentMonSkill:
 
         # Background play loop
         self._play_task: Optional[asyncio.Task] = None
-        self._play_interval: float = max(3.0, float(
+        self._play_interval: float = max(1.5, float(
             getattr(config, "agentmon_play_interval", 0)
-            or os.getenv("AGENTMON_PLAY_INTERVAL", "8")
-        ))  # seconds between gameplay turns (min 3s to avoid API abuse)
+            or os.getenv("AGENTMON_PLAY_INTERVAL", "3")
+        ))  # seconds between gameplay turns (min 1.5s to avoid API abuse)
         self._llm_callback: Optional[Callable] = None  # set by tools init
 
         # ── Feedback-Aware Exploration Brain ─────────────────────────
@@ -560,10 +611,21 @@ class AgentMonSkill:
         self._vision_on_map_change: bool = True
         self._vlm_task: Optional[asyncio.Task] = None  # non-blocking VLM call
 
+        # ── Beeline exit tracking ────────────────────────────────────
+        # Counts consecutive beeline attempts at an exit tile that
+        # don't result in map_changed (= stale exit data).
+        self._beeline_attempts: int = 0
+        self._beeline_exit_key: Optional[tuple] = None  # (mid, x, y, dir)
+
         # ── Warp-tile avoidance ───────────────────────────────────────
         # Tracks tiles that warp (door/entrance) to another map.
         # {mapId: {(x,y): target_mapId}}
         self._warp_tiles: Dict[int, Dict[tuple, int]] = {}
+
+        # ── NPC positions (from localMap API data) ────────────────────
+        # Updated every step from state["localMap"]["npcs"].
+        # Used to avoid walking into NPCs and to skip false wall recording.
+        self._npc_positions: Dict[int, set] = {}  # {mapId: {(x,y), ...}}
 
         # ── Dialogue escape ───────────────────────────────────────────
         self._consecutive_dialogue_a: int = 0  # how many A presses in dialogue
@@ -1071,6 +1133,18 @@ class AgentMonSkill:
                     self._last_screen_text = screen_text
                     self._last_feedback_msg = fb_msg
 
+                    # -- 3b. Update NPC positions from localMap ---
+                    local_map = new_state.get("localMap") or {}
+                    if local_map:
+                        npcs = local_map.get("npcs") or []
+                        nmid = new_state.get("mapId", 0)
+                        self._npc_positions[nmid] = {
+                            (npc["gridX"], npc["gridY"])
+                            for npc in npcs
+                            if isinstance(npc, dict)
+                               and "gridX" in npc and "gridY" in npc
+                        }
+
                     # -- 4. Learn from feedback ---
                     self._process_feedback(action, state, new_state, effects)
 
@@ -1137,55 +1211,75 @@ class AgentMonSkill:
                             logger.debug(f"AgentMon: map save failed: {e}")
 
                     # -- 8b. Stuck detector ---
-                    # If position hasn't changed in the last 20 steps,
-                    # the game is probably soft-locked.  Delete saves and start fresh.
-                    if turns_played % 10 == 0 and len(self._step_memory) >= 20:
-                        recent_positions = {
-                            s["pos"] for s in self._step_memory[-20:]
+                    # If position hasn't changed in many non-dialogue steps,
+                    # try to recover WITHOUT destroying progress.
+                    # NEVER delete saves. NEVER reset the world map.
+                    if turns_played % 10 == 0 and len(self._step_memory) >= 40:
+                        # Only count steps where agent was NOT in dialogue/battle
+                        # (dialogue steps are normal, not evidence of being stuck)
+                        recent = self._step_memory[-40:]
+                        movement_positions = {
+                            s["pos"] for s in recent
+                            if not any(e in s.get("effects", []) for e in (
+                                "advanced_dialogue_or_selection", "confirmed",
+                                "cancelled", "closed_menu_or_back",
+                                "menu_opened", "start_menu",
+                            ))
                         }
-                        if len(recent_positions) <= 2:
+                        # Only trigger if we have very few unique positions
+                        # AND most steps were NOT dialogue
+                        dialogue_steps = sum(
+                            1 for s in recent
+                            if any(e in s.get("effects", []) for e in (
+                                "advanced_dialogue_or_selection", "confirmed",
+                            ))
+                        )
+                        if len(movement_positions) <= 2 and dialogue_steps < 20:
                             logger.warning(
-                                f"AgentMon: STUCK for 20+ turns at "
+                                f"AgentMon: STUCK for 40+ movement turns at "
                                 f"{state.get('mapName','?')} ({state.get('x')},{state.get('y')}). "
-                                f"Deleting saves and starting fresh..."
+                                f"Attempting recovery (KEEPING map knowledge)..."
                             )
-                            # Delete stuck saves so we don't reload the same bad state
+                            # Strategy: Load last save instead of nuking everything.
+                            # The WorldMap is PRESERVED — we never lose map knowledge.
+                            recovered = False
                             try:
                                 saves = await self.list_saves()
                                 save_list = (saves if isinstance(saves, list)
                                              else saves.get("saves", saves.get("data", [])))
-                                if isinstance(save_list, list):
-                                    for sv in save_list[:5]:
-                                        sid = (sv.get("sessionId") or sv.get("id")
-                                               or sv.get("_id", ""))
-                                        if sid:
-                                            await self.delete_save(sid)
-                                            logger.info(f"AgentMon: deleted stuck save {sid[:12]}")
+                                if isinstance(save_list, list) and save_list:
+                                    # Load the MOST RECENT save (don't delete!)
+                                    sv = save_list[0]
+                                    sid = (sv.get("sessionId") or sv.get("id")
+                                           or sv.get("_id", ""))
+                                    if sid:
+                                        await self.stop_game()
+                                        load_result = await self.start_game(load_session_id=sid)
+                                        if not load_result.get("error"):
+                                            self._step_memory.clear()
+                                            self._consecutive_blocked = 0
+                                            self._consecutive_dialogue_a = 0
+                                            state = await self._clear_startup_dialogue()
+                                            logger.info(
+                                                f"AgentMon: recovered by loading save → "
+                                                f"{state.get('mapName','?')} ({state.get('x')},{state.get('y')})"
+                                            )
+                                            recovered = True
                             except Exception as e:
-                                logger.debug(f"AgentMon: save cleanup failed: {e}")
+                                logger.debug(f"AgentMon: save load failed: {e}")
 
-                            await self.stop_game()
-                            result = await self.start_game()
-                            if not result.get("error"):
+                            if not recovered:
+                                # No saves to load — try clearing walls and
+                                # escaping via B + directions (soft recovery)
+                                logger.info("AgentMon: no saves to load, soft recovery — clearing walls + escaping")
+                                mid = state.get("mapId", 0)
+                                pos = (state.get("x", 0), state.get("y", 0))
+                                self._walls.get(mid, {}).pop(pos, None)
+                                tile = self._world_map.tile(mid, pos[0], pos[1])
+                                tile["walls"].clear()
                                 self._step_memory.clear()
-                                self._walls.clear()
-                                self._opens.clear()
-                                self._visited.clear()
                                 self._consecutive_blocked = 0
                                 self._consecutive_dialogue_a = 0
-                                self._building_turns = 0
-                                # Reset world map for fresh game
-                                self._world_map = WorldMap()
-                                state = await self._clear_startup_dialogue()
-                                logger.info(
-                                    f"AgentMon: fresh game — "
-                                    f"{state.get('mapName','?')} ({state.get('x')},{state.get('y')})"
-                                )
-                            else:
-                                logger.error(
-                                    f"AgentMon: fresh start failed: {result.get('error')}"
-                                )
-                                await asyncio.sleep(30)
 
                     # -- 9. Delay ---
                     await asyncio.sleep(self._play_interval)
@@ -1239,11 +1333,30 @@ class AgentMonSkill:
             self._recent_maps.append(new_mid)
             if len(self._recent_maps) > 30:
                 self._recent_maps = self._recent_maps[-15:]
+            # Map changed → beeline exit succeeded, reset tracker
+            self._beeline_attempts = 0
+            self._beeline_exit_key = None
 
         # -- Wall detection (from feedback) ---
         if is_direction and any(
             e in effects for e in ("blocked", "hit_wall_or_obstacle")
         ):
+            # Check if an NPC is blocking this direction.
+            # NPCs move, so NPC-blocked directions are TEMPORARY — do NOT
+            # record them as permanent walls (prevents map corruption).
+            dx = {"left": -1, "right": 1, "up": 0, "down": 0}.get(action, 0)
+            dy = {"left": 0, "right": 0, "up": -1, "down": 1}.get(action, 0)
+            dest_pos = (old_x + dx, old_y + dy)
+            npc_set = self._npc_positions.get(old_mid, set())
+            if dest_pos in npc_set:
+                logger.debug(
+                    f"AgentMon: blocked by NPC at {dest_pos}, "
+                    f"NOT recording as wall"
+                )
+                self._consecutive_blocked += 1
+                return
+
+            # Real wall — record it
             self._walls.setdefault(old_mid, {}).setdefault(
                 (old_x, old_y), set()
             ).add(action)
@@ -1259,11 +1372,11 @@ class AgentMonSkill:
                 self._opens.setdefault(old_mid, {}).setdefault(
                     (old_x, old_y), {}
                 )[action] = (new_x, new_y)
-                rev = self._REVERSE[action]
-                self._opens.setdefault(new_mid, {}).setdefault(
-                    (new_x, new_y), {}
-                )[rev] = (old_x, old_y)
+                # Record forward direction only (no reverse — it corrupts data)
                 wm.open_dir(old_mid, old_x, old_y, action, (new_x, new_y))
+                # Also remove any stale wall for this direction
+                # (we just moved there, so it's not a wall)
+                wm.tile(old_mid, old_x, old_y)["walls"].discard(action)
 
         # -- Map transition ---
         if "map_changed" in effects or any(
@@ -1354,20 +1467,15 @@ class AgentMonSkill:
             return self._battle_decide(state)
 
         # -- 2. DIALOGUE ESCAPE MODE --
-        # If we've pressed A 3+ times in dialogue without the position
+        # If we've pressed A 5+ times in dialogue without the position
         # changing, we're stuck in an NPC dialogue loop.
         #
-        # Strategy (from pokemon-agent SKILL.md):
-        #   "If stuck (same state after 3+ actions), try:
-        #    1. Press B to cancel menus
-        #    2. Try different direction
-        #    3. Load last save"
-        #
-        # We cycle: B, B, direction, B, B, direction...
-        # pressing B twice dismisses most dialogues, then we move.
-        if self._consecutive_dialogue_a >= 3:
-            esc_phase = (self._consecutive_dialogue_a - 3)
-            cycle_pos = esc_phase % 5  # 0=B, 1=B, 2=dir, 3=B, 4=dir
+        # Strategy: aggressive B-spam + direction attempts to escape.
+        # Pokémon dialogues can be long (10+ A presses for trainer encounters),
+        # so we allow more A presses before switching to escape mode.
+        if self._consecutive_dialogue_a >= 8:
+            esc_phase = (self._consecutive_dialogue_a - 8)
+            cycle_pos = esc_phase % 6  # 0=B, 1=B, 2=B, 3=dir, 4=B, 5=dir
             self._consecutive_dialogue_a += 1
 
             # Clear stale wall data every cycle (dialogue blocks aren't real walls)
@@ -1377,17 +1485,21 @@ class AgentMonSkill:
                 self._walls.get(map_id, {}).pop(pos, None)
                 self._consecutive_blocked = 0
 
-            if cycle_pos in (0, 1, 3):
+            if cycle_pos in (0, 1, 2, 4):
                 return "b"
             else:
-                # Try directions: left, down, right, up (left first for building exits)
-                dirs = ["left", "down", "right", "up"]
-                d = dirs[(esc_phase // 5) % 4]
+                # Try directions: down, left, right, up (down first to flee)
+                dirs = ["down", "left", "right", "up"]
+                d = dirs[(esc_phase // 6) % 4]
                 return d
 
         # -- 3. Active dialogue (short) → A to advance --
+        # Allow pressing A for dialogue, but cap it so we eventually escape.
         if self._in_dialogue:
             self._consecutive_dialogue_a += 1
+            # After 15+ dialogue A-presses, force B to try to exit
+            if self._consecutive_dialogue_a >= 15 and self._consecutive_dialogue_a % 3 == 0:
+                return "b"
             return "a"
 
         # -- 3b. Screen text with choice keywords → A --
@@ -1419,7 +1531,85 @@ class AgentMonSkill:
             return "b"
 
         # -- 6. Navigate --
-        return self._navigate(state)
+        action = self._navigate(state)
+
+        # Common vars for NPC avoidance + warp safety net
+        map_id = state.get("mapId", 0)
+        x, y = state.get("x", 0), state.get("y", 0)
+        wm = self._world_map
+        nav = self._get_nav_for_map(state)
+        is_building = nav and nav["dir"] == "down"
+
+        # -- 6b. NPC AVOIDANCE --
+        # Don't walk into NPCs — they block movement and cause false wall
+        # recordings. Pick the best alternative direction instead.
+        npc_set = self._npc_positions.get(map_id, set())
+        if action in self._DIR_SET and npc_set:
+            _dx = self._DX.get(action, 0)
+            _dy = self._DY.get(action, 0)
+            _dest = (x + _dx, y + _dy)
+            if _dest in npc_set:
+                cur_tile = wm.tile(map_id, x, y)
+                for _alt in self._DIR_SET:
+                    if _alt == action:
+                        continue
+                    _adx = self._DX.get(_alt, 0)
+                    _ady = self._DY.get(_alt, 0)
+                    _adest = (x + _adx, y + _ady)
+                    if _adest in npc_set:
+                        continue
+                    # Check it's not a known wall (unless opens override)
+                    if _alt in cur_tile["opens"] or _alt not in cur_tile["walls"]:
+                        logger.debug(
+                            f"AgentMon: NPC at {_dest}, redirecting "
+                            f"'{action}'→'{_alt}'"
+                        )
+                        action = _alt
+                        break
+
+        # -- 7. WARP SAFETY NET --
+        # ABSOLUTE LAST DEFENSE: never step onto a known warp tile
+        # on overworld maps. This catches any bugs in the navigation.
+
+        if not is_building and action in self._DIR_SET:
+            cur_tile = wm.tile(map_id, x, y)
+            # Check if that direction leads to a known warp tile
+            dest = cur_tile["opens"].get(action)
+            if dest is not None:
+                dt = wm._tiles.get(map_id, {}).get(dest, {})
+                if dt and dt.get("warp") is not None:
+                    logger.info(
+                        f"AgentMon: WARP SAFETY blocked '{action}' from ({x},{y})"
+                        f" → warp {dest}"
+                    )
+                    # Pick any other direction that doesn't lead to warp
+                    for d in self._DIR_SET:
+                        if d == action or d in cur_tile["walls"]:
+                            continue
+                        d_dest = cur_tile["opens"].get(d)
+                        if d_dest is not None:
+                            d_dt = wm._tiles.get(map_id, {}).get(d_dest, {})
+                            if d_dt and d_dt.get("warp") is not None:
+                                continue
+                        action = d
+                        break
+
+            # Extra: if we're ON a warp tile, flee immediately
+            if cur_tile.get("warp") is not None:
+                for d in ("down", "left", "right", "up"):
+                    if d not in cur_tile["walls"]:
+                        d_dest = cur_tile["opens"].get(d)
+                        if d_dest is not None:
+                            d_dt = wm._tiles.get(map_id, {}).get(d_dest, {})
+                            if d_dt and d_dt.get("warp") is not None:
+                                continue
+                        # Don't go in a direction that's a known exit
+                        if d in cur_tile.get("exits", {}):
+                            continue
+                        action = d
+                        break
+
+        return action
 
     def _battle_decide(self, state: Dict) -> str:
         """Battle action using screen text context.
@@ -1457,21 +1647,16 @@ class AgentMonSkill:
     _DY = {"left": 0, "right": 0, "up": -1, "down": 1}
 
     def _navigate(self, state: Dict) -> str:
-        """Navigate using the WorldMap's frontier-based system.
+        """Navigate using WorldMap — simple and robust.
 
-        Strategy:
-        1. Get goal direction from NAVIGATION_MAP (e.g. 'up' for Pallet Town).
-        2. Find the nearest FRONTIER tile (adjacent-to-visited, never-visited)
-           biased toward the goal direction.
-        3. A* pathfind to that frontier tile, avoiding warp tiles that
-           lead back to the previous map.
-        4. If no frontier: use best_step (least-visited neighbor) with bias.
-        5. If truly stuck: clear stale wall data and try anything.
+        On overworld (bias != 'down'):
+          - Use best_step with avoid_all_warps=True → NEVER walk onto a warp tile.
+          - This is just: pick the least-visited non-wall non-warp neighbor,
+            preferring the bias direction and unexplored directions.
 
-        This naturally prevents looping because:
-        - Visit-count penalizes revisiting tiles in A* cost function
-        - Frontiers are always NEW tiles → agent always progresses
-        - Warp tiles are marked and avoided via WorldMap
+        In buildings (bias == 'down'):
+          - If we know the exit tile, beeline to it.
+          - Otherwise use best_step toward 'down'.
         """
         map_id = state.get("mapId", 0)
         x, y = state.get("x", 0), state.get("y", 0)
@@ -1479,13 +1664,10 @@ class AgentMonSkill:
 
         nav = self._get_nav_for_map(state)
         bias = nav["dir"] if nav else None
-
-        # What map are we avoiding re-entering?
-        prev_map = (self._recent_maps[-2]
-                    if len(self._recent_maps) >= 2 else None)
+        is_building = bias == "down"
 
         # ── Building turn tracking ────────────────────────────────────
-        if nav and nav["dir"] == "down":
+        if is_building:
             if map_id != self._building_map_id:
                 self._building_turns = 0
                 self._building_map_id = map_id
@@ -1493,66 +1675,75 @@ class AgentMonSkill:
         else:
             self._building_turns = 0
 
-        # ── Step 1: Find nearest frontier biased toward goal ──────────
-        frontier = wm.nearest_frontier(
-            map_id, (x, y), bias=bias, avoid_warp=prev_map
-        )
+        # ── BUILDING: beeline to known exit ───────────────────────────
+        if is_building:
+            exit_info = wm.known_exit_tile(map_id)
+            if exit_info:
+                exit_pos, exit_dir = exit_info
+                exit_key = (map_id, exit_pos[0], exit_pos[1], exit_dir)
 
-        if frontier:
-            path = wm.pathfind(
-                map_id, (x, y), frontier, avoid_warp=prev_map
-            )
-            if path:
-                if len(path) <= 3 or self._world_map._turn % 20 == 0:
-                    logger.debug(
-                        f"AgentMon: navigate → frontier {frontier} "
-                        f"(path len={len(path)}, bias={bias})"
+                # Stale exit detection
+                if (self._beeline_exit_key == exit_key
+                        and self._beeline_attempts >= 5):
+                    logger.warning(
+                        f"AgentMon: INVALIDATING stale exit {exit_pos} "
+                        f"dir={exit_dir} after {self._beeline_attempts} attempts"
                     )
-                return path[0]
+                    t_exit = wm.tile(map_id, exit_pos[0], exit_pos[1])
+                    t_exit.get("exits", {}).pop(exit_dir, None)
+                    t_exit["warp"] = None
+                    wm._warps.pop((map_id, exit_pos[0], exit_pos[1]), None)
+                    self._beeline_attempts = 0
+                    self._beeline_exit_key = None
+                else:
+                    if (x, y) == exit_pos:
+                        if self._beeline_exit_key != exit_key:
+                            self._beeline_exit_key = exit_key
+                            self._beeline_attempts = 0
+                        self._beeline_attempts += 1
+                        return exit_dir
+                    # Pathfind using only observed opens (no DX/DY guessing)
+                    path = wm.pathfind(map_id, (x, y), exit_pos)
+                    if path:
+                        logger.info(
+                            f"AgentMon: BEELINE to exit {exit_pos} "
+                            f"(path={len(path)}, step={path[0]})"
+                        )
+                        return path[0]
+                    # Pathfind failed — just use best_step toward down
+                    logger.debug(
+                        f"AgentMon: BEELINE pathfind failed to {exit_pos}, "
+                        f"using best_step"
+                    )
 
-        # ── Step 2: No path to frontier — use best single step ────────
-        step = wm.best_step(map_id, x, y, bias=bias, avoid_warp=prev_map)
+            # Building: best_step with bias=down, no warp avoidance
+            step = wm.best_step(map_id, x, y, bias="down")
+            if step:
+                return step
+
+        # ── OVERWORLD: best_step avoiding ALL warps ───────────────────
+        step = wm.best_step(map_id, x, y, bias=bias, avoid_all_warps=True)
         if step:
             return step
 
-        # ── Step 3: Truly stuck — clear stale walls, try anything ─────
+        # ── Stuck: clear stale walls, try bias direction ──────────────
         tile = wm.tile(map_id, x, y)
-        # Clear walls from this tile (they may be stale dialogue-blocks)
         tile["walls"].clear()
         self._walls.get(map_id, {}).pop((x, y), None)
         self._consecutive_blocked = 0
 
-        # Try bias direction first, then any direction
         if bias:
             return bias
         return random.choice(list(self._DIR_SET))
 
     def _explore(self, state: Dict) -> str:
-        """Fallback exploration for maps not in NAVIGATION_MAP.
-
-        Uses the same frontier-based system as _navigate but without
-        directional bias.
-        """
+        """Fallback exploration for maps not in NAVIGATION_MAP."""
         map_id = state.get("mapId", 0)
         x, y = state.get("x", 0), state.get("y", 0)
         wm = self._world_map
 
-        prev_map = (self._recent_maps[-2]
-                    if len(self._recent_maps) >= 2 else None)
-
-        # Find nearest frontier (no directional bias)
-        frontier = wm.nearest_frontier(
-            map_id, (x, y), avoid_warp=prev_map
-        )
-        if frontier:
-            path = wm.pathfind(
-                map_id, (x, y), frontier, avoid_warp=prev_map
-            )
-            if path:
-                return path[0]
-
-        # No frontier — least visited neighbor
-        step = wm.best_step(map_id, x, y, avoid_warp=prev_map)
+        # Avoid all warp tiles
+        step = wm.best_step(map_id, x, y, avoid_all_warps=True)
         if step:
             return step
 
@@ -1839,6 +2030,11 @@ class AgentMonSkill:
                 result = await self.save_game(label=f"autosave-step{self._step_count}")
                 if not result.get("error"):
                     logger.info(f"AgentMon: auto-saved at step {self._step_count}")
+                    # Also save world map with each auto-save
+                    try:
+                        self._world_map.save(str(_WORLD_MAP_PATH))
+                    except Exception:
+                        pass
             except Exception as e:
                 logger.debug(f"AgentMon: auto-save failed: {e}")
 
