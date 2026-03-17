@@ -32,7 +32,7 @@ import random
 import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -192,6 +192,8 @@ class AutonomousCameraPilot:
         enable_highlights: bool = True,
         enable_toasts: bool = True,
         patrol_on_idle: bool = True,
+        video_searcher=None,            # async (query, count) → [{url, title, thumbnail}]
+        news_searcher=None,             # async (query, max_items) → [{title, link, source}]
     ):
         self.remote = remote
         self.move_delay = move_delay
@@ -201,6 +203,10 @@ class AutonomousCameraPilot:
         self.enable_highlights = enable_highlights
         self.enable_toasts = enable_toasts
         self.patrol_on_idle = patrol_on_idle
+
+        # ── Web research callbacks (injected by ZunvraIntelSkill) ────
+        self._video_searcher = video_searcher    # YouTube search
+        self._news_searcher = news_searcher      # GDELT / RSS news search
 
         self._current_style: str = "DEFAULT"
         self._current_lat: float = 0.0
@@ -221,6 +227,13 @@ class AutonomousCameraPilot:
         self._op_diary = get_diary()
         self._diary_entries: List[Dict[str, Any]] = []
         self._dossier_entries: List[Dict[str, Any]] = []
+
+        # ── Story tracking — follow-up system across cycles ──
+        # Maps story_id → {title, domain, severity, first_seen, last_seen,
+        #   cycle_count, lat, lng, keywords, last_detail}
+        self._tracked_stories: Dict[str, Dict[str, Any]] = {}
+        self._tracked_stories_path = Path(__file__).parent / "data" / "tracked_stories.json"
+        self._load_tracked_stories()
 
     # ── Main entry point — narrate a full analysis cycle ─────────────
 
@@ -297,12 +310,27 @@ class AutonomousCameraPilot:
         # ── 5b. Build & push intelligence brief to dashboard overlay ──
         try:
             brief = self._build_intel_brief(results, snapshot, moves, module_alerts)
+
+            # ── 5b-ii. Active web research — YouTube + news search ──
+            if brief.get("intelEvents"):
+                try:
+                    enriched = await self._enrich_with_web_research(brief["intelEvents"])
+                    brief["intelEvents"] = enriched
+                except Exception as web_exc:
+                    logger.warning("Web research enrichment failed: %s", web_exc)
+
             await self.remote.push_intel_brief(brief)
             logger.info("Pushed intel brief: threat=%s/5, domains=%d, wargames=%d, events=%d",
                         brief.get("overallThreat"), len(brief.get("domains", [])),
                         len(brief.get("wargameScenarios", [])), len(brief.get("intelEvents", [])))
         except Exception as exc:
             logger.warning("Failed to push intel brief: %s", exc)
+
+        # ── 5c. Send missile/kinetic trajectory arcs to dashboard ──
+        try:
+            await self._send_trajectory_arcs()
+        except Exception as exc:
+            logger.warning("Failed to send trajectory arcs: %s", exc)
 
         # ── 6. Execute the moves + push live intel events ──
         executed = await self._execute_moves(moves)
@@ -2078,7 +2106,18 @@ class AutonomousCameraPilot:
         # Sort by severity (critical first), limit to 50
         sev_order = {"critical": 0, "warning": 1, "info": 2}
         unique_events.sort(key=lambda e: sev_order.get(e.get("severity", "info"), 2))
-        return unique_events[:50]
+        unique_events = unique_events[:50]
+
+        # ── Enrich: video URLs from news feeds ──
+        unique_events = self._enrich_with_videos(unique_events, snapshot)
+
+        # ── Enrich: missile/kinetic trajectory detection ──
+        unique_events = self._extract_trajectories(unique_events, snapshot)
+
+        # ── Enrich: story tracking / follow-up system ──
+        unique_events = self._update_story_tracking(unique_events)
+
+        return unique_events
 
     @staticmethod
     def _level_label(n: float) -> str:
@@ -2120,6 +2159,447 @@ class AutonomousCameraPilot:
                 return coords
         return None
 
+    # ── Story tracking — persistent follow-up system ───────────────
+
+    def _load_tracked_stories(self):
+        """Load tracked stories from disk."""
+        try:
+            if self._tracked_stories_path.exists():
+                with open(self._tracked_stories_path, "r") as f:
+                    self._tracked_stories = _json.load(f)
+                    # Expire stories older than 72h
+                    now = datetime.now(timezone.utc).isoformat()
+                    expired = []
+                    for sid, s in self._tracked_stories.items():
+                        last = s.get("last_seen", "")
+                        if last and (datetime.fromisoformat(last.replace("Z", "+00:00")) <
+                                     datetime.now(timezone.utc) - timedelta(hours=72)):
+                            expired.append(sid)
+                    for sid in expired:
+                        del self._tracked_stories[sid]
+        except Exception:
+            self._tracked_stories = {}
+
+    def _save_tracked_stories(self):
+        """Persist tracked stories to disk."""
+        try:
+            self._tracked_stories_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(self._tracked_stories_path, "w") as f:
+                _json.dump(self._tracked_stories, f, indent=2, default=str)
+        except Exception as e:
+            logger.warning("Could not save tracked stories: %s", e)
+
+    def _update_story_tracking(self, events: list) -> list:
+        """Register high-severity events as tracked stories and mark follow-ups.
+
+        Returns:
+            Updated events list with followUp/storyId fields set.
+        """
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        for ev in events:
+            if ev.get("severity") not in ("critical", "warning"):
+                continue
+
+            title_key = ev["title"].lower().strip()
+            # Generate a stable story_id from title keywords
+            words = [w for w in title_key.split() if len(w) > 3][:5]
+            story_id = "story-" + "-".join(words) if words else f"story-{uuid.uuid4().hex[:8]}"
+
+            # Check if we're already tracking a similar story
+            matched_sid = None
+            for sid, story in self._tracked_stories.items():
+                # Match if >50% of keywords overlap
+                story_words = set(story.get("keywords", []))
+                overlap = len(set(words) & story_words)
+                if overlap >= max(1, len(story_words) * 0.5):
+                    matched_sid = sid
+                    break
+
+            if matched_sid:
+                # Follow-up: update the existing story
+                story = self._tracked_stories[matched_sid]
+                story["last_seen"] = now_iso
+                story["cycle_count"] = story.get("cycle_count", 1) + 1
+                story["last_detail"] = ev.get("detail", "")
+                ev["followUp"] = True
+                ev["storyId"] = matched_sid
+            else:
+                # New story — start tracking
+                self._tracked_stories[story_id] = {
+                    "title": ev["title"],
+                    "domain": ev.get("domain", ""),
+                    "severity": ev.get("severity", "info"),
+                    "first_seen": now_iso,
+                    "last_seen": now_iso,
+                    "cycle_count": 1,
+                    "lat": ev.get("lat", 0),
+                    "lng": ev.get("lng", 0),
+                    "keywords": words,
+                    "last_detail": ev.get("detail", ""),
+                }
+                ev["storyId"] = story_id
+
+        # Trim to most recent 100 stories
+        if len(self._tracked_stories) > 100:
+            sorted_stories = sorted(
+                self._tracked_stories.items(),
+                key=lambda x: x[1].get("last_seen", ""),
+                reverse=True,
+            )
+            self._tracked_stories = dict(sorted_stories[:100])
+
+        self._save_tracked_stories()
+        return events
+
+    # ── Video enrichment — find related video URLs from news feeds ───
+
+    def _enrich_with_videos(self, events: list, snapshot) -> list:
+        """Try to attach related video URLs to intel events from news feeds.
+
+        Phase 1 (passive): Scans snapshot.news_feed and snapshot.gdelt_events
+        for items with video URLs that match event keywords / coordinates.
+        Phase 2 (active web research) runs separately via _enrich_with_web_research().
+        """
+        if not events:
+            return events
+
+        # Build a pool of video-bearing items from news
+        video_pool: List[Dict[str, Any]] = []
+        for source in [
+            getattr(snapshot, "news_feed", []) or [],
+            getattr(snapshot, "gdelt_events", []) or [],
+            getattr(snapshot, "trending", []) or [],
+        ]:
+            for item in source:
+                url = (item.get("video_url") or item.get("media_url")
+                       or item.get("url") or item.get("link") or "")
+                if not url:
+                    continue
+                # Keep items that look like they have video content
+                is_video = any(k in url.lower() for k in
+                               ["youtube", "youtu.be", "video", "embed",
+                                "watch", "vimeo", "rumble", "bitchute",
+                                "tiktok", "twitter.com/i/status",
+                                "reuters.com/video", "bbc.com/news/av"])
+                has_source = bool(url)
+                title = (item.get("title") or item.get("headline")
+                         or item.get("name") or "")
+                if is_video or has_source:
+                    video_pool.append({
+                        "url": url,
+                        "is_video": is_video,
+                        "title": title.lower(),
+                        "lat": float(item.get("lat", 0) or 0),
+                        "lng": float(item.get("lng", item.get("lon", 0)) or 0),
+                    })
+
+        if not video_pool:
+            return events
+
+        # Match events to videos by keyword overlap or proximity
+        for ev in events:
+            if ev.get("videoUrl"):
+                continue  # Already has one
+            ev_words = set(ev.get("title", "").lower().split())
+            ev_lat = ev.get("lat", 0)
+            ev_lng = ev.get("lng", 0)
+            best_match = None
+            best_score = 0
+
+            for vp in video_pool:
+                score = 0
+                vp_words = set(vp["title"].split())
+                overlap = len(ev_words & vp_words)
+                score += overlap * 2
+
+                # Proximity bonus (within ~2 degrees)
+                if ev_lat and ev_lng and vp["lat"] and vp["lng"]:
+                    dist = abs(ev_lat - vp["lat"]) + abs(ev_lng - vp["lng"])
+                    if dist < 2:
+                        score += 3
+                    elif dist < 5:
+                        score += 1
+
+                if score > best_score:
+                    best_score = score
+                    best_match = vp
+
+            if best_match and best_score >= 2:
+                if best_match["is_video"]:
+                    ev["videoUrl"] = best_match["url"]
+                else:
+                    ev["sourceUrl"] = best_match["url"]
+
+        return events
+
+    # ── Active web research — YouTube + news search for intel events ─
+
+    # Rate limits: max searches per cycle to protect API quotas
+    _MAX_VIDEO_SEARCHES_PER_CYCLE = 5
+    _MAX_NEWS_SEARCHES_PER_CYCLE = 5
+
+    async def _enrich_with_web_research(self, events: list) -> list:
+        """Phase 2: Active web research for critical/warning intel events.
+
+        For high-severity events still missing video/source URLs, actively
+        search YouTube (via YouTubeSkill) and news (via NewsReaderSkill)
+        to find relevant content. This gives the intel brief richer,
+        real-world context that passive snapshot matching can't provide.
+
+        Rate-limited to avoid API quota exhaustion.
+        """
+        if not self._video_searcher and not self._news_searcher:
+            return events
+
+        # Only research events that need enrichment (critical first)
+        needs_video = [e for e in events if not e.get("videoUrl")
+                       and e.get("severity") in ("critical", "warning")]
+        needs_source = [e for e in events if not e.get("sourceUrl")
+                        and not e.get("videoUrl")
+                        and e.get("severity") in ("critical", "warning")]
+
+        video_searches = 0
+        news_searches = 0
+
+        # ── YouTube video search ──
+        if self._video_searcher and needs_video:
+            for ev in needs_video:
+                if video_searches >= self._MAX_VIDEO_SEARCHES_PER_CYCLE:
+                    break
+                query = self._build_search_query(ev)
+                if not query:
+                    continue
+                try:
+                    results = await self._video_searcher(query, 3)
+                    video_searches += 1
+                    if results:
+                        # Pick the best match (first result is usually most relevant)
+                        best = results[0]
+                        ev["videoUrl"] = best.get("url", "")
+                        if not ev.get("sourceUrl"):
+                            ev["sourceUrl"] = best.get("url", "")
+                        logger.info("Web research: YouTube match for '%s' → %s",
+                                    ev.get("title", "")[:50], best.get("url", "")[:80])
+                except Exception as e:
+                    logger.debug("YouTube search failed for '%s': %s",
+                                 ev.get("title", "")[:40], e)
+
+        # ── News article search ──
+        if self._news_searcher and needs_source:
+            for ev in needs_source:
+                if news_searches >= self._MAX_NEWS_SEARCHES_PER_CYCLE:
+                    break
+                if ev.get("sourceUrl"):
+                    continue  # Already enriched by video search
+                query = self._build_search_query(ev)
+                if not query:
+                    continue
+                try:
+                    articles = await self._news_searcher(query, 3)
+                    news_searches += 1
+                    if articles:
+                        best = articles[0]
+                        ev["sourceUrl"] = best.get("link", best.get("url", ""))
+                        logger.info("Web research: News match for '%s' → %s",
+                                    ev.get("title", "")[:50],
+                                    best.get("link", "")[:80])
+                except Exception as e:
+                    logger.debug("News search failed for '%s': %s",
+                                 ev.get("title", "")[:40], e)
+
+        if video_searches or news_searches:
+            logger.info("Web research enrichment: %d YouTube + %d news searches",
+                        video_searches, news_searches)
+
+        return events
+
+    @staticmethod
+    def _build_search_query(event: dict) -> str:
+        """Build an effective search query from an intel event.
+
+        Combines title keywords with domain context to produce
+        a focused query that finds relevant video/news content.
+        """
+        title = event.get("title", "")
+        domain = event.get("domain", "")
+
+        # Strip common generic prefixes
+        for prefix in ["alert:", "warning:", "critical:", "⚠", "🔴", "⭐"]:
+            title = title.replace(prefix, "").strip()
+
+        # If title is too short, combine with domain
+        if len(title.split()) < 3 and domain:
+            title = f"{domain} {title}"
+
+        # Cap query length — search engines work best with ~5-8 words
+        words = title.split()[:8]
+        query = " ".join(words)
+
+        return query if len(query) > 5 else ""
+
+    # ── Missile / kinetic trajectory extraction ──────────────────────
+
+    _MISSILE_KEYWORDS = frozenset([
+        "missile", "intercept", "ballistic", "cruise", "shaheed",
+        "shahed", "patriot", "iron dome", "s-300", "s-400",
+        "thaad", "arrow", "david's sling", "kinzhal", "iskander",
+        "kalibr", "harpoon", "scud", "drone strike", "drone attack",
+        "uav strike", "artillery", "rocket attack", "launch",
+    ])
+
+    _TRAJECTORY_REGIONS = {
+        # Known conflict corridors: name → (approx origin, approx target)
+        "ukraine_east": {"from": (48.0, 38.0), "to": (50.4, 30.5)},      # Donbas → Kyiv
+        "ukraine_south": {"from": (44.5, 33.5), "to": (46.5, 36.0)},     # Crimea → Zaporizhzhia
+        "iran_israel": {"from": (32.5, 51.5), "to": (32.0, 34.8)},       # Iran → Israel
+        "yemen_israel": {"from": (15.5, 44.2), "to": (31.8, 34.8)},      # Houthi → Israel
+        "yemen_redSea": {"from": (15.0, 43.0), "to": (13.5, 42.5)},      # Houthi → Red Sea shipping
+        "gaza_israel": {"from": (31.4, 34.4), "to": (31.8, 34.8)},       # Gaza → Israel
+        "lebanon_israel": {"from": (33.9, 35.5), "to": (33.0, 35.2)},    # Hezbollah → Israel
+        "north_korea": {"from": (39.0, 125.8), "to": (38.5, 131.0)},     # DPRK test launches
+        "armenia_azerbaijan": {"from": (40.0, 44.5), "to": (39.8, 47.0)}, # Caucasus
+    }
+
+    def _extract_trajectories(self, events: list, snapshot) -> list:
+        """Detect missile/strike events and attach trajectory data.
+
+        Scans events and snapshot conflicts/liveuamap for missile keywords,
+        then estimates launch → impact/intercept arcs using known corridors.
+        Also triggers drawTrajectory commands to animate arcs on the map.
+        """
+        # Collect all text sources for missile detection
+        text_items: List[Tuple[str, Dict[str, Any]]] = []
+        for ev in events:
+            text_items.append((
+                f"{ev.get('title', '')} {ev.get('detail', '')}".lower(),
+                ev,
+            ))
+        for item in (getattr(snapshot, "liveuamap", []) or []):
+            text_items.append((
+                str(item.get("title", "") or item.get("description", "")).lower(),
+                item,
+            ))
+        for item in (getattr(snapshot, "conflicts", []) or []):
+            text_items.append((
+                str(item.get("notes", "") or item.get("description", "")).lower(),
+                item,
+            ))
+        for item in (getattr(snapshot, "news_feed", []) or []):
+            text_items.append((
+                str(item.get("title", "") or item.get("headline", "")).lower(),
+                item,
+            ))
+
+        trajectories_to_draw: List[Dict[str, Any]] = []
+
+        for text, source in text_items:
+            matching_keywords = [k for k in self._MISSILE_KEYWORDS if k in text]
+            if not matching_keywords:
+                continue
+
+            # Determine trajectory type
+            if any(k in text for k in ("intercept", "iron dome", "patriot",
+                                        "s-300", "s-400", "thaad", "arrow",
+                                        "david's sling", "shot down")):
+                traj_type = "intercept"
+            elif any(k in text for k in ("drone", "uav", "shaheed", "shahed")):
+                traj_type = "drone"
+            elif any(k in text for k in ("artillery", "rocket attack")):
+                traj_type = "artillery"
+            elif any(k in text for k in ("strike", "kinetic")):
+                traj_type = "strike"
+            else:
+                traj_type = "missile"
+
+            is_intercepted = any(k in text for k in (
+                "intercept", "shot down", "neutralized", "destroyed",
+                "iron dome", "patriot", "thaad", "arrow",
+            ))
+
+            # Try to match to a known corridor
+            best_corridor = None
+            for corridor_name, coords in self._TRAJECTORY_REGIONS.items():
+                corridor_kw = corridor_name.replace("_", " ").split()
+                if any(kw in text for kw in corridor_kw):
+                    best_corridor = coords
+                    break
+
+            # Fallback: check if source has coordinates
+            src_lat = float(source.get("lat", source.get("latitude", 0)) or 0)
+            src_lng = float(source.get("lng", source.get("lon",
+                           source.get("longitude", 0))) or 0)
+
+            if best_corridor:
+                from_lat, from_lng = best_corridor["from"]
+                to_lat, to_lng = best_corridor["to"]
+                # If source has coords, use those as target
+                if src_lat and src_lng:
+                    to_lat, to_lng = src_lat, src_lng
+            elif src_lat and src_lng:
+                # We know where it landed but not where it came from — estimate
+                from_lat = src_lat + random.uniform(1.0, 3.0) * random.choice([-1, 1])
+                from_lng = src_lng + random.uniform(1.0, 3.0) * random.choice([-1, 1])
+                to_lat, to_lng = src_lat, src_lng
+            else:
+                continue  # Can't determine trajectory without coordinates
+
+            # Build intercept point — slightly before target if intercepted
+            intercept_lat = intercept_lng = None
+            if is_intercepted:
+                t = random.uniform(0.6, 0.85)
+                intercept_lat = from_lat + (to_lat - from_lat) * t
+                intercept_lng = from_lng + (to_lng - from_lng) * t
+
+            traj_data = {
+                "fromLat": round(from_lat, 4),
+                "fromLng": round(from_lng, 4),
+                "toLat": round(to_lat, 4),
+                "toLng": round(to_lng, 4),
+                "type": traj_type,
+                "label": (source.get("title", "") or source.get("headline", ""))[:60] if isinstance(source, dict) else "",
+                "intercepted": is_intercepted,
+            }
+            if intercept_lat is not None:
+                traj_data["interceptLat"] = round(intercept_lat, 4)
+                traj_data["interceptLng"] = round(intercept_lng, 4)
+
+            # Attach to matching event
+            if source in [ev for _, ev in text_items[:len(events)]]:
+                for ev in events:
+                    if ev.get("title", "").lower() in text or ev.get("detail", "").lower() in text:
+                        if not ev.get("trajectory"):
+                            ev["trajectory"] = traj_data
+                            break
+
+            # Queue for drawTrajectory command
+            trajectories_to_draw.append(traj_data)
+
+        # Store for later sending via remote control (narrate_cycle will call them)
+        self._pending_trajectories = trajectories_to_draw[:10]
+        return events
+
+    async def _send_trajectory_arcs(self):
+        """Send pending trajectory arcs to the dashboard for animation."""
+        for traj in getattr(self, "_pending_trajectories", []):
+            try:
+                await self.remote.draw_trajectory(
+                    from_lat=traj["fromLat"],
+                    from_lng=traj["fromLng"],
+                    to_lat=traj["toLat"],
+                    to_lng=traj["toLng"],
+                    trajectory_type=traj.get("type", "missile"),
+                    label=traj.get("label", ""),
+                    intercepted=traj.get("intercepted", False),
+                    intercept_lat=traj.get("interceptLat"),
+                    intercept_lng=traj.get("interceptLng"),
+                    duration=6000.0,
+                )
+                await asyncio.sleep(0.5)  # Stagger arcs
+            except Exception as e:
+                logger.warning("Failed to send trajectory arc: %s", e)
+        self._pending_trajectories = []
+
     # ── Stats ────────────────────────────────────────────────────────
 
     def get_stats(self) -> Dict[str, Any]:
@@ -2136,4 +2616,6 @@ class AutonomousCameraPilot:
             "diary_entries": len(self._diary_entries),
             "dossier_entries": len(self._dossier_entries),
             "live_cameras_shown": len(self._shown_live_cameras),
+            "tracked_stories": len(self._tracked_stories),
+            "pending_trajectories": len(getattr(self, "_pending_trajectories", [])),
         }

@@ -264,6 +264,33 @@ async def async_main():
             except Exception as e:
                 logger.warning(f"Intel Loop failed to start: {e}", exc_info=True)
 
+        # ── Zunvra Social Loop (autonomous posting, liking, replying) ──────────
+        social_loop = None
+        zunvra_social_enabled = (
+            os.environ.get("ZUNVRA_SOCIAL_ENABLED", "false").lower() in ("true", "1", "yes")
+        )
+        if zunvra_social_enabled:
+            try:
+                from opensable.core.social_loop import SocialLoop
+
+                social_loop = SocialLoop(agent, config)
+
+                async def _run_social_loop():
+                    try:
+                        await social_loop.start()
+                    except Exception as exc:
+                        logger.error(f"🌐 Social Loop crashed: {exc}", exc_info=True)
+
+                asyncio.create_task(_run_social_loop())
+                interval_s = social_loop.interval
+                logger.info(f"🌐 Social Loop task created (every {interval_s:.0f}s)")
+                console.print(
+                    f"[bold green]🌐 Zunvra Social Loop running in background "
+                    f"(autonomous posts/replies/likes, every {interval_s:.0f}s)[/bold green]"
+                )
+            except Exception as e:
+                logger.warning(f"Social Loop failed to start: {e}", exc_info=True)
+
         # Start interfaces
         interfaces = []
 
@@ -359,6 +386,8 @@ async def async_main():
                 await autonomous.stop()
             if intel_loop:
                 await intel_loop.stop()
+            if social_loop:
+                await social_loop.stop()
             if x_autoposter:
                 await x_autoposter.stop()
             if mobile_relay:

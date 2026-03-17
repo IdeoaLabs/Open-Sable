@@ -61,7 +61,8 @@ class RemoteControl:
                     "MIDNIGHT", "RADAR", "TOPO", "DARKOPS"}
     VALID_COMMANDS = {"flyTo", "selectEntity", "trackEntity", "setLayers",
                       "setStyle", "highlight", "toast", "setFilters",
-                      "openLiveStream", "addDiaryEntry", "addDossierEntry"}
+                      "openLiveStream", "addDiaryEntry", "addDossierEntry",
+                      "drawTrajectory"}
 
     def __init__(
         self,
@@ -363,6 +364,56 @@ class RemoteControl:
                    detail, lat, lng
         """
         return await self._send("pushIntelEvent", event)
+
+    async def draw_trajectory(
+        self,
+        from_lat: float,
+        from_lng: float,
+        to_lat: float,
+        to_lng: float,
+        trajectory_type: str = "missile",
+        label: str = "",
+        color: str = "",
+        intercepted: bool = False,
+        intercept_lat: Optional[float] = None,
+        intercept_lng: Optional[float] = None,
+        duration: float = 6000.0,
+    ) -> dict:
+        """Draw an animated trajectory arc on the dashboard map.
+
+        Visualises missile launches, intercepts, drone strikes, and
+        artillery paths as animated arcs from origin to destination.
+
+        Args:
+            from_lat: Launch / origin latitude
+            from_lng: Launch / origin longitude
+            to_lat: Target / impact latitude
+            to_lng: Target / impact longitude
+            trajectory_type: missile | intercept | strike | drone | artillery
+            label: Optional label (e.g. "Shaheed-136 → Kyiv")
+            color: Override color (default: type-based)
+            intercepted: Whether the projectile was intercepted
+            intercept_lat: Intercept point lat (if intercepted)
+            intercept_lng: Intercept point lng (if intercepted)
+            duration: Animation duration in ms (default 6s)
+        """
+        payload: Dict[str, Any] = {
+            "fromLat": from_lat,
+            "fromLng": from_lng,
+            "toLat": to_lat,
+            "toLng": to_lng,
+            "type": trajectory_type,
+            "label": label,
+            "duration": duration,
+        }
+        if color:
+            payload["color"] = color
+        if intercepted:
+            payload["intercepted"] = True
+            if intercept_lat is not None and intercept_lng is not None:
+                payload["interceptLat"] = intercept_lat
+                payload["interceptLng"] = intercept_lng
+        return await self._send("drawTrajectory", payload)
 
     async def add_dossier_entry(
         self,

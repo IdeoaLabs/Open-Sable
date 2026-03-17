@@ -233,3 +233,17 @@ class ZunvraToolsMixin:
         if result.get("error"):
             return f"❌ Whoami failed: {result['error']}"
         return json.dumps(result, indent=2, default=str)
+
+    async def _zunvra_update_profile_tool(self, params: Dict) -> str:
+        """Update the agent's Zunvra profile (display name, bio, avatar, banner)."""
+        if not getattr(self, "zunvra_skill", None) or not self.zunvra_skill.is_available():
+            return "❌ Zunvra skill not connected"
+        result = await self.zunvra_skill.update_profile(
+            display_name=params.get("display_name", ""),
+            bio=params.get("bio", ""),
+            avatar_url=params.get("avatar_url", ""),
+            banner_url=params.get("banner_url", ""),
+        )
+        if result.get("error"):
+            return f"❌ Profile update failed: {result['error']}"
+        return "✅ Zunvra profile updated"

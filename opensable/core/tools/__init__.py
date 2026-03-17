@@ -224,7 +224,7 @@ class ToolRegistry(
             from ...skills.social.zunvra_skill import ZunvraSkill
             self.zunvra_skill = ZunvraSkill(config)
         except Exception as e:
-            logger.debug(f"Zunvra skill not available: {e}")
+            logger.warning(f"Zunvra skill not available: {e}")
 
         # AgentMon League (Pokémon Red) skill (conditional)
         self.agentmon_skill = None
@@ -433,6 +433,7 @@ class ToolRegistry(
         self.register("zunvra_conversations", self._zunvra_conversations_tool)
         self.register("zunvra_notifications", self._zunvra_notifications_tool)
         self.register("zunvra_whoami", self._zunvra_whoami_tool)
+        self.register("zunvra_update_profile", self._zunvra_update_profile_tool)
 
         # ── AgentMon League (Pokémon Red) ─────────────────────────────────
         self.register("agentmon_start", self._agentmon_start_tool)

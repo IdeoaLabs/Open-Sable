@@ -21,8 +21,7 @@ Setup (profile.env):
     ZUNVRA_GATEWAY_URL=https://sable.zunvra.com # gateway base URL
     ZUNVRA_CONTACT_EMAIL=you@example.com        # required for registration
     ZUNVRA_AGENT_USERNAME=sable_bot             # desired @handle (optional)
-    ZUNVRA_GATEWAY_SECRET=<shared-secret>       # HMAC secret (first registration only)
-    ZUNVRA_USER_TOKEN=<zunvra-user-jwt>         # Zunvra JWT (first registration only)
+    ZUNVRA_ENROLLMENT_FILE=data/zunvra_enrollment.json  # JSON with gateway_secret + user_token
 """
 
 import asyncio
@@ -46,6 +45,32 @@ except ImportError:
 
 # ── Credential persistence ────────────────────────────────────────────────
 _DEFAULT_CREDS_FILE = Path("data/zunvra_credentials.json")
+_DEFAULT_ENROLLMENT_FILE = Path("data/zunvra_enrollment.json")
+
+
+def _load_enrollment(path: Optional[Path] = None) -> Dict[str, str]:
+    """Load gateway enrollment secrets from JSON file.
+
+    Returns dict with gateway_secret, user_token (both may be empty).
+    Falls back to env vars for backwards compatibility.
+    """
+    enrollment: Dict[str, str] = {}
+    p = path or _DEFAULT_ENROLLMENT_FILE
+    try:
+        resolved = Path(p).expanduser().resolve()
+        if resolved.exists():
+            data = json.loads(resolved.read_text())
+            enrollment["gateway_secret"] = data.get("gateway_secret", "")
+            enrollment["user_token"] = data.get("user_token", "")
+            logger.debug(f"Loaded enrollment from {resolved}")
+            return enrollment
+    except Exception as e:
+        logger.warning(f"Failed to load enrollment JSON ({p}): {e}")
+
+    # Fallback: legacy env vars
+    enrollment["gateway_secret"] = os.getenv("ZUNVRA_GATEWAY_SECRET", "")
+    enrollment["user_token"] = os.getenv("ZUNVRA_USER_TOKEN", "")
+    return enrollment
 
 
 def _load_credentials(path: Path) -> Optional[Dict[str, Any]]:
@@ -93,16 +118,19 @@ class ZunvraSkill:
         self._creds_path = _DEFAULT_CREDS_FILE
 
         # Action throttle — one action at a time with delay between writes
-        self._action_delay: float = float(
-            getattr(config, "zunvra_action_delay", 0)
-            or os.getenv("ZUNVRA_ACTION_DELAY", "2")
+        _raw_delay = (
+            getattr(config, "zunvra_action_delay", None)
+            or os.getenv("ZUNVRA_ACTION_DELAY", "")
+            or "2"
         )
+        self._action_delay: float = float(_raw_delay)
         self._last_action: float = 0.0
 
     # ── Lifecycle ─────────────────────────────────────────────────────────
 
     async def initialize(self) -> bool:
         """Connect to the gateway and authenticate (auto-register on first boot)."""
+        logger.warning("🔌 Zunvra social skill initialize() called")
         if not AIOHTTP_AVAILABLE:
             logger.info("Zunvra skill requires aiohttp — pip install aiohttp")
             return False
@@ -137,6 +165,8 @@ class ZunvraSkill:
                 ok = await self._login()
                 if ok:
                     self._available = True
+                    # Sync profile (avatar, bio, banner) on every login
+                    await self._sync_profile()
                     logger.info(
                         f"✅ Zunvra skill connected (cached) to {self._base_url} "
                         f"as @{cached.get('zunvra', {}).get('username', '?')}"
@@ -161,6 +191,7 @@ class ZunvraSkill:
             ok = await self._login()
             if ok:
                 self._available = True
+                await self._sync_profile()
                 logger.info(
                     f"✅ Zunvra skill connected (auto-registered) to {self._base_url} "
                     f"as @{creds.get('zunvra', {}).get('username', '?')}"
@@ -168,7 +199,7 @@ class ZunvraSkill:
             return ok
 
         except Exception as e:
-            logger.warning(f"Zunvra skill init failed: {e}")
+            logger.warning(f"Zunvra skill init failed: {e}", exc_info=True)
             return False
 
     def is_available(self) -> bool:
@@ -184,60 +215,37 @@ class ZunvraSkill:
     # ── Auto-registration ─────────────────────────────────────────────────
 
     async def _auto_register(self) -> Optional[Dict[str, Any]]:
-        """Solve challenge + PoW and register with the gateway.
+        """Register with the gateway using Bearer JWT.
 
-        Requires env vars:
-          ZUNVRA_GATEWAY_SECRET  — shared HMAC key for challenge signing
-          ZUNVRA_USER_TOKEN      — Zunvra user JWT (links agent to user account)
+        The gateway challenge-response is optional — only sent if
+        gateway_secret is available.  PoW is also optional.
+        The only hard requirement is the owner's Zunvra user JWT.
+
+        Reads secrets from JSON file (ZUNVRA_ENROLLMENT_FILE)
+        or falls back to env vars.
         """
-        gateway_secret = (
-            getattr(self.config, "zunvra_gateway_secret", None)
-            or os.getenv("ZUNVRA_GATEWAY_SECRET", "")
+        enrollment_path = (
+            getattr(self.config, "zunvra_enrollment_file", None)
+            or os.getenv("ZUNVRA_ENROLLMENT_FILE", "")
         )
-        user_token = (
-            getattr(self.config, "zunvra_user_token", None)
-            or os.getenv("ZUNVRA_USER_TOKEN", "")
+        enrollment = _load_enrollment(
+            Path(enrollment_path) if enrollment_path else None
         )
-        if not gateway_secret or not user_token:
+        gateway_secret = enrollment.get("gateway_secret", "")
+        user_token = enrollment.get("user_token", "")
+
+        if not user_token:
+            user_token = os.getenv("ZUNVRA_USER_TOKEN", "")
+        if not user_token:
             logger.info(
-                "Zunvra auto-registration requires ZUNVRA_GATEWAY_SECRET "
-                "and ZUNVRA_USER_TOKEN in profile.env"
+                "Zunvra auto-registration requires a user token. "
+                "Set ZUNVRA_ENROLLMENT_FILE with user_token or "
+                "ZUNVRA_USER_TOKEN env var."
             )
             return None
 
         try:
-            # 1. Get challenge
-            challenge = await self._raw_get("/agent/auth/challenge")
-            if not challenge.get("success"):
-                logger.error(f"Zunvra challenge failed: {challenge}")
-                return None
-
-            ch = challenge["challenge"]
-            challenge_id = ch["challengeId"]
-            message = ch["message"]
-
-            # Sign challenge with HMAC-SHA256(gatewaySecret, message)
-            signature = hmac.new(
-                gateway_secret.encode(), message.encode(), hashlib.sha256,
-            ).hexdigest()
-
-            # 2. Get PoW challenge
-            pow_resp = await self._raw_get("/agent/auth/pow")
-            if not pow_resp.get("success"):
-                logger.error(f"Zunvra PoW request failed: {pow_resp}")
-                return None
-
-            pow_data = pow_resp["pow"]
-            prefix = pow_data["prefix"]
-            difficulty = pow_data["difficulty"]
-
-            # Solve PoW: find nonce where SHA256(prefix + nonce) starts with N zeroes
-            pow_nonce, pow_hash = self._solve_pow(prefix, difficulty)
-            logger.info(
-                f"Zunvra PoW solved (difficulty={difficulty}, nonce={pow_nonce})"
-            )
-
-            # 3. Build registration payload
+            # Build registration payload
             agent_name = (
                 getattr(self.config, "agent_name", "")
                 or os.environ.get("AGENT_NAME", "")
@@ -264,21 +272,61 @@ class ZunvraSkill:
                 )
                 return None
 
+            avatar_url = (
+                getattr(self.config, "zunvra_agent_avatar", None)
+                or os.getenv("ZUNVRA_AGENT_AVATAR", "")
+            )
+            banner_url = (
+                getattr(self.config, "zunvra_agent_banner", None)
+                or os.getenv("ZUNVRA_AGENT_BANNER", "")
+            )
+            bio = (
+                getattr(self.config, "zunvra_agent_bio", None)
+                or os.getenv("ZUNVRA_AGENT_BIO", "")
+            )
+
             payload = {
                 "agentName": agent_name,
+                "displayName": agent_name,
                 "agentType": "assistant",
                 "model": model_name,
                 "contactEmail": contact_email,
                 "username": username,
                 "capabilities": "all",
                 "soulDescription": getattr(self.config, "agent_personality", "helpful"),
-                # security
-                "challengeId": challenge_id,
-                "challengeSignature": signature,
-                "powPrefix": prefix,
-                "powNonce": str(pow_nonce),
-                "powHash": pow_hash,
             }
+            if avatar_url:
+                payload["avatarUrl"] = avatar_url
+            if bio:
+                payload["bio"] = bio
+
+            # Optional: challenge-response (only if we have gateway_secret)
+            if gateway_secret:
+                challenge = await self._raw_get("/agent/auth/challenge")
+                if challenge.get("success"):
+                    ch = challenge["challenge"]
+                    sig = hmac.new(
+                        gateway_secret.encode(),
+                        ch["message"].encode(),
+                        hashlib.sha256,
+                    ).hexdigest()
+                    payload["challengeId"] = ch["challengeId"]
+                    payload["challengeSignature"] = sig
+
+            # Optional: proof-of-work (anti-spam, always do it)
+            pow_resp = await self._raw_get("/agent/auth/pow")
+            if pow_resp.get("success"):
+                pw = pow_resp["pow"]
+                pow_nonce, pow_hash = self._solve_pow(
+                    pw["prefix"], pw["difficulty"]
+                )
+                payload["powPrefix"] = pw["prefix"]
+                payload["powNonce"] = str(pow_nonce)
+                payload["powHash"] = pow_hash
+                logger.info(
+                    f"Zunvra PoW solved (difficulty={pw['difficulty']}, "
+                    f"nonce={pow_nonce})"
+                )
 
             # 4. Register (Bearer = user's Zunvra JWT)
             headers = {
@@ -347,6 +395,73 @@ class ZunvraSkill:
             return True
         logger.warning(f"Zunvra login failed: {resp.get('error', 'unknown')}")
         return False
+
+    # ── Profile sync ─────────────────────────────────────────────────────
+
+    async def _sync_profile(self):
+        """Push avatar, bio and banner to Zunvra profile after login."""
+        try:
+            avatar_url = (
+                getattr(self.config, "zunvra_agent_avatar", None)
+                or os.getenv("ZUNVRA_AGENT_AVATAR", "")
+            )
+            banner_url = (
+                getattr(self.config, "zunvra_agent_banner", None)
+                or os.getenv("ZUNVRA_AGENT_BANNER", "")
+            )
+            bio = (
+                getattr(self.config, "zunvra_agent_bio", None)
+                or os.getenv("ZUNVRA_AGENT_BIO", "")
+            )
+            agent_name = (
+                getattr(self.config, "agent_name", "")
+                or os.environ.get("AGENT_NAME", "")
+                or "Sable"
+            )
+
+            profile_data: Dict[str, str] = {}
+            if avatar_url:
+                profile_data["avatar_url"] = avatar_url
+            if banner_url:
+                profile_data["banner_url"] = banner_url
+            if bio:
+                profile_data["bio"] = bio
+            if agent_name:
+                profile_data["display_name"] = agent_name
+
+            if not profile_data:
+                return
+
+            resp = await self._raw_post("/agent/actions/execute", {
+                "action": "update_profile",
+                "params": profile_data,
+            })
+            if resp.get("success") or resp.get("id"):
+                logger.info("Zunvra profile synced (avatar/bio/banner)")
+            else:
+                logger.warning("Zunvra profile sync failed: %s", resp)
+        except Exception as e:
+            logger.warning(f"Zunvra profile sync failed (non-fatal): {e}")
+
+    async def update_profile(
+        self, *, display_name: str = "", bio: str = "",
+        avatar_url: str = "", banner_url: str = "",
+    ) -> Dict:
+        """Update the agent's Zunvra profile."""
+        await self._throttle()
+        params: Dict[str, str] = {}
+        if display_name:
+            params["display_name"] = display_name
+        if bio:
+            params["bio"] = bio
+        if avatar_url:
+            params["avatar_url"] = avatar_url
+        if banner_url:
+            params["banner_url"] = banner_url
+        return await self._raw_post("/agent/actions/execute", {
+            "action": "update_profile",
+            "params": params,
+        })
 
     # ── HTTP helpers ──────────────────────────────────────────────────────
 
@@ -418,9 +533,11 @@ class ZunvraSkill:
     ) -> Dict:
         """Create a post on Zunvra."""
         await self._throttle()
+        images = media_urls or []
         return await self._raw_post("/agent/social/post", {
             "content": content,
-            "media_urls": media_urls or [],
+            "media_urls": images,
+            "imageUrls": images,
             "tags": tags or [],
         })
 

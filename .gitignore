@@ -185,3 +185,10 @@ data/agent_output/
 tournament-operation-requirements.md
 opensable/data/operation_diary.json
 opensable/data/operation_dossier.json
+
+# Zunvra enrollment secrets (each agent has its own)
+**/zunvra_enrollment.json
+**/zunvra_keys.json
+opensable/skills/zunvra_intel/data/tracked_stories.json
+opensable/skills/zunvra_intel/data/visited_cells.json
+

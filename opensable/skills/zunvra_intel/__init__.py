@@ -101,6 +101,19 @@ from .intel_broadcaster import IntelBroadcaster, IntelFinding
 # Autonomous camera pilot — Sable drives the dashboard map
 from .camera_pilot import AutonomousCameraPilot, CameraMove
 
+# Web research skills — active YouTube & news search for intel enrichment
+try:
+    from opensable.skills.social.youtube_skill import YouTubeSkill
+    _YOUTUBE_AVAILABLE = True
+except ImportError:
+    _YOUTUBE_AVAILABLE = False
+
+try:
+    from opensable.skills.automation.news_reader_skill import NewsReaderSkill
+    _NEWS_READER_AVAILABLE = True
+except ImportError:
+    _NEWS_READER_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 __version__ = "3.3.0"
@@ -278,6 +291,10 @@ class ZunvraIntelSkill:
         # Autonomous camera pilot (agent drives the map)
         self.camera_pilot: Optional[AutonomousCameraPilot] = None
 
+        # Web research skills (YouTube + news — injected into camera pilot)
+        self._youtube_skill = None
+        self._news_reader_skill = None
+
         # State
         self._initialized = False
         self._cycle_count = 0
@@ -357,12 +374,55 @@ class ZunvraIntelSkill:
             remote_control=self.remote,
         )
 
+        # ── Web research skills — active search for intel enrichment ──
+        # These are injected into the camera pilot so it can actively
+        # search YouTube for related videos and news for source articles.
+        video_searcher_fn = None
+        news_searcher_fn = None
+
+        # YouTube search callback
+        if _YOUTUBE_AVAILABLE:
+            try:
+                self._youtube_skill = YouTubeSkill(type("_Cfg", (), {
+                    "youtube_api_key": None,       # Falls back to YOUTUBE_API_KEY env
+                    "youtube_access_token": None,
+                    "youtube_action_delay": 1.0,
+                })())
+                yt_ok = await self._youtube_skill.initialize()
+                if yt_ok:
+                    async def _yt_search(query: str, count: int = 3):
+                        r = await self._youtube_skill.search_videos(query, count)
+                        return r.get("videos", []) if r.get("success") else []
+                    video_searcher_fn = _yt_search
+                    logger.info("YouTube search wired to camera pilot")
+                else:
+                    logger.info("YouTube skill not available (no API key?), passive enrichment only")
+            except Exception as e:
+                logger.debug("YouTube skill init failed: %s", e)
+
+        # News search callback
+        if _NEWS_READER_AVAILABLE:
+            try:
+                self._news_reader_skill = NewsReaderSkill(type("_Cfg", (), {
+                    "news_enabled": True,
+                    "news_cache_ttl": 1800,
+                })())
+                await self._news_reader_skill.initialize()
+                async def _news_search(query: str, max_items: int = 3):
+                    return await self._news_reader_skill.search_news(query, max_items)
+                news_searcher_fn = _news_search
+                logger.info("News search wired to camera pilot")
+            except Exception as e:
+                logger.debug("News reader skill init failed: %s", e)
+
         # Autonomous camera pilot — Sable drives the dashboard map
         self.camera_pilot = AutonomousCameraPilot(
             remote=self.remote,
             move_delay=2.5,
             dwell_default=4.0,
             max_moves_per_cycle=15,
+            video_searcher=video_searcher_fn,
+            news_searcher=news_searcher_fn,
         )
 
         self._initialized = True
