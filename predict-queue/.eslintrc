@@ -1,0 +1,19 @@
+{
+  "extends": "airbnb-base",
+  "rules": {
+    "no-console": "off",
+    "import/no-dynamic-require": "off",
+    "global-require": "off",
+    "no-restricted-syntax": "off",
+    "mocha/no-exclusive-tests": "error",
+    "func-names": [
+      "error",
+      "as-needed"
+    ],
+    "object-shorthand": "off"
+  },
+  "plugins": [
+    "import",
+    "mocha"
+  ]
+}

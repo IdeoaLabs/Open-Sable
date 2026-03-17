@@ -118,6 +118,12 @@ POST_MODES = {
         "description": "Write a thread (4-6 posts, numbered 1/, 2/) with a deep dive on something important. "
                        "Hook first, emotional takeaway last.",
     },
+    "intel_observation": {
+        "weight": 25,
+        "description": "Share a real-time intelligence observation from your ZUNVRA dashboard. "
+                       "You are watching live OSINT data — military flights, ships, GPS jamming, "
+                       "cyber threats, conflicts. Post what you see with a screenshot of your dashboard.",
+    },
 }
 
 # Style modifiers,  applied randomly to break formulaic output
@@ -213,6 +219,26 @@ class XAutonomousAgent:
         # ── Consciousness (memory + reflection + evolution) ───────
         from opensable.core.x_consciousness import XConsciousness
         self.mind = XConsciousness(agent, config)
+
+        # ── Intelligence Broadcaster (Zunvra OSINT → social media) ───
+        self._intel_broadcaster = None
+        try:
+            from opensable.skills.zunvra_intel.intel_broadcaster import IntelBroadcaster
+            from opensable.skills.zunvra_intel.connector import ZunvraConnector
+            from opensable.skills.zunvra_intel.remote_control import RemoteControl
+            zunvra_base = os.environ.get("ZUNVRA_BACKEND_URL", "http://localhost:5580")
+            zunvra_key = os.environ.get("ZUNVRA_API_KEY", "")
+            connector = ZunvraConnector(base_url=zunvra_base)
+            remote = RemoteControl(base_url=zunvra_base, api_key=zunvra_key)
+            self._intel_broadcaster = IntelBroadcaster(
+                connector=connector,
+                remote_control=remote,
+                config=config,
+                dashboard_url=os.environ.get("ZUNVRA_DASHBOARD_URL", "http://localhost:5585"),
+            )
+            logger.info("X Agent: IntelBroadcaster loaded — OSINT posts enabled")
+        except Exception as e:
+            logger.info(f"X Agent: IntelBroadcaster not available ({e}) — OSINT posts disabled")
 
     # ══════════════════════════════════════════════════════════════════
     #  LIFECYCLE
@@ -610,7 +636,12 @@ class XAutonomousAgent:
         mode = self._pick_post_mode()
         logger.info(f"\u270d\ufe0f Post mode: {mode} (inspiration={self._inspiration_level:.1f})")
 
-        if mode == "news_take":
+        if mode == "intel_observation":
+            success = await self._do_post_intel()
+            if not success:
+                # Fallback to regular post if no intel available
+                await self._do_post_original("observation")
+        elif mode == "news_take":
             await self._do_post_news()
         elif mode == "thread":
             await self._do_post_news(force_thread=True)
@@ -661,6 +692,110 @@ class XAutonomousAgent:
                 "mode": "news_take",
             })
             logger.info(f"\U0001f4dd Posted #{self._posts_today}: {result.get('url', 'ok')}")
+
+    async def _do_post_intel(self) -> bool:
+        """Post an intelligence observation from the Zunvra OSINT dashboard.
+
+        Uses IntelBroadcaster to: fetch live data → find noteworthy events →
+        take a dashboard screenshot → compose an analyst-style post.
+
+        Returns True if a post was made, False if nothing noteworthy.
+        """
+        if not self._intel_broadcaster:
+            logger.debug("Intel post skipped — broadcaster not available")
+            return False
+
+        # Ensure broadcaster is initialized (lazy — first call boots Playwright)
+        if not self._intel_broadcaster._initialized:
+            try:
+                await self._intel_broadcaster.initialize()
+            except Exception as e:
+                logger.warning(f"IntelBroadcaster init failed: {e}")
+                return False
+
+        # Generate the intel post (data fetch + analysis + screenshot + compose)
+        try:
+            intel_result = await self._intel_broadcaster.generate_intel_post(
+                llm_fn=self._ask_ai,
+                mind=self.mind,
+            )
+        except Exception as e:
+            logger.warning(f"Intel post generation failed: {e}")
+            return False
+
+        if not intel_result:
+            return False
+
+        # Build content dict for self._post()
+        content: Dict = {
+            "type": intel_result.get("type", "tweet"),
+            "text": intel_result.get("text", ""),
+            "style": "intel_observation",
+        }
+        if intel_result.get("tweets"):
+            content["tweets"] = intel_result["tweets"]
+        if intel_result.get("media_paths"):
+            content["media_paths"] = intel_result["media_paths"]
+        elif intel_result.get("media_path"):
+            content["media_paths"] = [intel_result["media_path"]]
+
+        # Simulate human delay (agent "reviewing" what it wrote)
+        await asyncio.sleep(self._human_delay(5, 15))
+
+        result = await self._post(content)
+        if result.get("success"):
+            self._posts_today += 1
+            self._last_post_at = datetime.now()
+            self._inspiration_level = min(1.0, self._inspiration_level + 0.2)  # intel boosts inspiration
+
+            self._history.append({
+                "ts": datetime.now().isoformat(),
+                "type": "post",
+                "mode": "intel_observation",
+                "region": intel_result.get("region", ""),
+                "domains": intel_result.get("domains", []),
+                "severity": intel_result.get("severity", ""),
+                "tweet": content.get("text", "")[:100],
+                "style": "intel_observation",
+                "tweet_id": result.get("tweet_id"),
+                "has_screenshot": bool(intel_result.get("media_path")),
+            })
+            self._save_state()
+
+            # Remember in consciousness
+            self.mind.remember("posted", {
+                "tweet": content.get("text", "")[:200],
+                "style": "intel_observation",
+                "tweet_id": result.get("tweet_id"),
+                "region": intel_result.get("region", ""),
+                "domains": intel_result.get("domains", []),
+                "severity": intel_result.get("severity", ""),
+                "post_number": self._posts_today,
+                "mode": "intel_observation",
+                "has_screenshot": bool(intel_result.get("media_path")),
+            })
+
+            # Also feed the world state into memory for knowledge building
+            try:
+                world_state = self._intel_broadcaster.get_world_state_summary()
+                if world_state:
+                    self.mind.remember("intel_observation", {
+                        "world_state": world_state[:1000],
+                        "finding": intel_result.get("finding_headline", ""),
+                        "region": intel_result.get("region", ""),
+                    })
+            except Exception:
+                pass
+
+            logger.info(
+                f"\U0001f4e1 Intel posted #{self._posts_today}: "
+                f"{intel_result.get('region', '?')} [{intel_result.get('severity', '?')}] "
+                f"{'📸' if intel_result.get('media_path') else ''} "
+                f"{result.get('url', 'ok')}"
+            )
+            return True
+
+        return False
 
     async def _do_post_original(self, mode: str):
         """Post original content,  thoughts, hot takes, questions, predictions, observations."""

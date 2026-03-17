@@ -34,7 +34,30 @@ def get_local_timezone() -> ZoneInfo:
     except Exception as e:
         raise TimezoneAwareError(f"Could not detect local timezone: {e}") from e
 
-def convert_to_timezone(dt: datetime.datetime, target_tz: str) -> datetime.datetime:
+
+from dataclasses import dataclass
+import logging
+
+def logger():
+    return logging.getLogger(__name__)
+
+@dataclass
+class ConversionContext:
+    """
+    Contextual information for timezone conversion.
+    
+    Attributes:
+        original_dt: The input datetime before conversion
+        local_tz: Detected local timezone
+        target_zi: Target ZoneInfo object
+        operation_id: Unique identifier for tracking conversions
+    """
+    original_dt: Optional[datetime.datetime] = None
+    local_tz: Optional[str] = None
+    target_zi: Optional[ZoneInfo] = None
+
+
+def convert_timezone(dt: datetime.datetime, target_tz: str) -> datetime.datetime:
     """
     Convert a datetime to a target timezone.
     
@@ -48,7 +71,12 @@ def convert_to_timezone(dt: datetime.datetime, target_tz: str) -> datetime.datet
     Raises:
         TimezoneAwareError: If conversion fails
     """
+    if not isinstance(dt, datetime.datetime):
+        raise TimezoneAwareError(f"Expected datetime, got {type(dt).__name__}")
+    
     try:
+        original_copy = dt.replace(tzinfo=None)  # Create copy without timezone info
+        
         if dt.tzinfo is None:
             # Naive datetime - assume it's local time
             local_tz = get_local_timezone()

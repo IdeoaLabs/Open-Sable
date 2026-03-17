@@ -183,3 +183,5 @@ data/agent_output/
 /agents/nano/
 /agents/nano-sweaters/
 tournament-operation-requirements.md
+opensable/data/operation_diary.json
+opensable/data/operation_dossier.json

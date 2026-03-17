@@ -236,6 +236,34 @@ async def async_main():
             except Exception as e:
                 logger.warning(f"X Autoposter failed to start: {e}", exc_info=True)
 
+        # ── Zunvra Intelligence Loop (26-module analysis + camera pilot) ───────
+        intel_loop = None
+        zunvra_intel_enabled = (
+            os.environ.get("ZUNVRA_INTEL_ENABLED", "false").lower() in ("true", "1", "yes")
+            and os.environ.get("ZUNVRA_BACKEND_URL", "")
+        )
+        if zunvra_intel_enabled:
+            try:
+                from opensable.core.intel_loop import IntelLoop
+
+                intel_loop = IntelLoop(agent, config)
+
+                async def _run_intel_loop():
+                    try:
+                        await intel_loop.start()
+                    except Exception as exc:
+                        logger.error(f"🛰️  Intel Loop crashed: {exc}", exc_info=True)
+
+                asyncio.create_task(_run_intel_loop())
+                interval = intel_loop.interval
+                logger.info(f"🛰️  Intel Loop task created (every {interval:.0f}s)")
+                console.print(
+                    f"[bold cyan]🛰️  Intelligence Loop running in background "
+                    f"(26 modules + camera pilot, every {interval:.0f}s)[/bold cyan]"
+                )
+            except Exception as e:
+                logger.warning(f"Intel Loop failed to start: {e}", exc_info=True)
+
         # Start interfaces
         interfaces = []
 
@@ -329,6 +357,8 @@ async def async_main():
                 _bridge_proc.terminate()
             if autonomous:
                 await autonomous.stop()
+            if intel_loop:
+                await intel_loop.stop()
             if x_autoposter:
                 await x_autoposter.stop()
             if mobile_relay:
