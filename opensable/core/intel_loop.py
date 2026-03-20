@@ -26,6 +26,7 @@ import asyncio
 import logging
 import os
 import time
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
@@ -62,9 +63,13 @@ class IntelLoop:
         try:
             from opensable.skills.zunvra_intel import ZunvraIntelSkill
 
+            default_data_dir = str(
+                Path(os.environ.get("_SABLE_DATA_DIR", "data")) / "zunvra_intel"
+            )
+
             self.skill = ZunvraIntelSkill(
                 base_url=self.backend_url,
-                data_dir=os.environ.get("ZUNVRA_INTEL_DATA_DIR", "data/zunvra_intel"),
+                data_dir=os.environ.get("ZUNVRA_INTEL_DATA_DIR", default_data_dir),
                 enable_llm=False,  # Pure algorithmic — no LLM needed for analysis
             )
             await self.skill.initialize()

@@ -305,7 +305,7 @@ class AutonomousCameraPilot:
         ))
 
         # ── 5. Smart trim: prioritize by severity, keep within adaptive budget ──
-        moves = self._prioritize_and_trim(moves, adaptive_budget)
+        moves = self._prioritize_and_trim(moves, adaptive_budget, snapshot)
 
         # ── 5b. Build & push intelligence brief to dashboard overlay ──
         try:
@@ -728,24 +728,36 @@ class AutonomousCameraPilot:
                         toast_message=f"Global event — {title}",
                     ))
 
-        # --- News feed geolocations ---
+        # --- News feed geolocations (freshness-biased, less repetitive) ---
         if snapshot.news_feed:
             news_with_coords = [n for n in snapshot.news_feed if self._extract_coords(n)]
             if news_with_coords:
-                sampled = random.sample(news_with_coords, min(2, len(news_with_coords)))
+                # Prioritize fresh items first, then sample top window for variety
+                ranked_news = sorted(
+                    news_with_coords,
+                    key=lambda n: self._extract_news_timestamp(n),
+                    reverse=True,
+                )
+                top_window = ranked_news[: min(8, len(ranked_news))]
+                sampled = random.sample(top_window, min(2, len(top_window)))
                 for article in sampled:
                     lat, lng = self._extract_coords(article)
                     headline = article.get("title", article.get("headline", "breaking news"))
                     if len(str(headline)) > 60:
                         headline = str(headline)[:57] + "..."
+
+                    age_hours = self._news_age_hours(article)
+                    sev = "warning" if age_hours is not None and age_hours <= 3 else "info"
+                    dwell = 4.0 if sev == "warning" else 3.0
+
                     moves.append(CameraMove(
                         lat=lat, lng=lng, zoom=7.0,
                         style="SATELLITE",
                         label=f"News: {headline}",
                         domain="narrative_warfare",
-                        severity="info",
-                        dwell_seconds=3.0,
-                        toast_message=f"News — {headline}",
+                        severity=sev,
+                        dwell_seconds=dwell,
+                        toast_message=f"News ({'fresh' if sev == 'warning' else 'context'}) — {headline}",
                     ))
 
         # --- Prediction markets (if geographic data) ---
@@ -1099,7 +1111,7 @@ class AutonomousCameraPilot:
         budget = max(budget, 3)
         return budget
 
-    def _prioritize_and_trim(self, moves: List["CameraMove"], budget: int) -> List["CameraMove"]:
+    def _prioritize_and_trim(self, moves: List["CameraMove"], budget: int, snapshot=None) -> List["CameraMove"]:
         """Sort by severity and trim to *budget* moves.
 
         Keeps opening (first) and closing (last) moves fixed.
@@ -1114,14 +1126,161 @@ class AutonomousCameraPilot:
         closing = moves[-1]
         middle = moves[1:-1]
 
-        # Sort middle by severity (ascending = most critical first)
-        middle.sort(key=lambda m: self._SEVERITY_ORDER.get(m.severity, 99))
+        fresh_news_terms = self._collect_fresh_news_terms(snapshot)
+
+        # Sort by severity + novelty score (higher novelty first)
+        # Severity still dominates, novelty breaks ties and reduces repeats.
+        middle.sort(
+            key=lambda m: (
+                self._SEVERITY_ORDER.get(m.severity, 99),
+                -self._novelty_score(m, fresh_news_terms),
+            )
+        )
 
         # Take the top (budget - 2) middle moves (2 reserved for open/close)
         allowed_middle = max(0, budget - 2)
         trimmed = [opening] + middle[:allowed_middle] + [closing]
         logger.info("Trimmed %d → %d moves (budget=%d)", len(moves), len(trimmed), budget)
         return trimmed
+
+    def _novelty_score(self, move: "CameraMove", fresh_news_terms: Set[str]) -> float:
+        """Score novelty so camera avoids repeating same places/topics each cycle."""
+        score = 0.0
+
+        # Boost if move label intersects fresh-news keywords
+        label_words = set((move.label or "").lower().replace(":", " ").replace("-", " ").split())
+        overlap = len(label_words & fresh_news_terms)
+        score += min(6.0, overlap * 1.2)
+
+        now_ts = time.time()
+        recent = self._move_history[-40:]  # short-term memory window
+
+        # Penalize same domain saturation in recent moves
+        same_domain = sum(1 for h in recent if h.get("domain") == move.domain)
+        score -= min(4.0, same_domain * 0.5)
+
+        # Penalize same/very-similar labels recently
+        same_label = sum(
+            1 for h in recent
+            if h.get("label", "")[:32].lower() == (move.label or "")[:32].lower()
+        )
+        score -= min(5.0, same_label * 1.5)
+
+        # Penalize geographic repeats near recently visited points
+        for h in recent:
+            try:
+                dist = self._distance_km(move.lat, move.lng, float(h.get("lat", 0)), float(h.get("lng", 0)))
+            except Exception:
+                continue
+            if dist < 80:
+                score -= 2.0
+            elif dist < 200:
+                score -= 1.0
+
+            # Stronger penalty if move is both nearby and very recent
+            h_time = h.get("time", "")
+            try:
+                dt = datetime.fromisoformat(str(h_time).replace("Z", "+00:00"))
+                age_min = max(0.0, (datetime.now(timezone.utc) - dt).total_seconds() / 60.0)
+                if dist < 120 and age_min < 20:
+                    score -= 2.5
+            except Exception:
+                pass
+
+        # Mild boost for warning/error to keep urgency represented
+        if move.severity in ("critical", "error"):
+            score += 2.0
+        elif move.severity == "warning":
+            score += 1.0
+
+        # Tiny random jitter so ordering isn't deterministic every cycle
+        score += random.uniform(0.0, 0.4)
+        return score
+
+    @staticmethod
+    def _distance_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+        """Haversine distance in km."""
+        r = 6371.0
+        p1 = math.radians(lat1)
+        p2 = math.radians(lat2)
+        dp = math.radians(lat2 - lat1)
+        dl = math.radians(lng2 - lng1)
+        a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+        return r * c
+
+    @staticmethod
+    def _extract_news_timestamp(item: Dict[str, Any]) -> float:
+        """Best-effort epoch extraction from heterogeneous news item schemas."""
+        if not isinstance(item, dict):
+            return 0.0
+        keys = (
+            "published_at", "publishedAt", "pubDate", "published", "datetime",
+            "timestamp", "time", "created_at", "date",
+        )
+        for k in keys:
+            v = item.get(k)
+            if v in (None, ""):
+                continue
+
+            # Numeric epoch
+            if isinstance(v, (int, float)):
+                ts = float(v)
+                if ts > 1e12:
+                    ts /= 1000.0
+                return ts
+
+            # ISO / RFC-like string
+            if isinstance(v, str):
+                s = v.strip()
+                if not s:
+                    continue
+                try:
+                    if s.endswith("Z"):
+                        s = s[:-1] + "+00:00"
+                    dt = datetime.fromisoformat(s)
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    return dt.timestamp()
+                except Exception:
+                    # Last resort: common RFC1123-ish via email.utils
+                    try:
+                        from email.utils import parsedate_to_datetime
+                        dt = parsedate_to_datetime(v)
+                        if dt and dt.tzinfo is None:
+                            dt = dt.replace(tzinfo=timezone.utc)
+                        if dt:
+                            return dt.timestamp()
+                    except Exception:
+                        pass
+        return 0.0
+
+    def _news_age_hours(self, item: Dict[str, Any]) -> Optional[float]:
+        ts = self._extract_news_timestamp(item)
+        if ts <= 0:
+            return None
+        return max(0.0, (time.time() - ts) / 3600.0)
+
+    def _collect_fresh_news_terms(self, snapshot) -> Set[str]:
+        """Collect keywords from the freshest news to bias camera toward new events."""
+        terms: Set[str] = set()
+        if not snapshot or not getattr(snapshot, "news_feed", None):
+            return terms
+
+        ranked = sorted(
+            (snapshot.news_feed or []),
+            key=lambda n: self._extract_news_timestamp(n if isinstance(n, dict) else {}),
+            reverse=True,
+        )
+        for item in ranked[:10]:
+            if not isinstance(item, dict):
+                continue
+            title = (item.get("title") or item.get("headline") or "").lower()
+            for w in title.replace(":", " ").replace("-", " ").split():
+                w = w.strip(".,;()[]{}!?\"'")
+                if len(w) >= 5:
+                    terms.add(w)
+        return terms
 
     def _pick_random_opening(self, snapshot) -> Tuple[float, float]:
         """Pick a random opening location — never the same as last time."""

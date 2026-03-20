@@ -222,23 +222,32 @@ class XAutonomousAgent:
 
         # ── Intelligence Broadcaster (Zunvra OSINT → social media) ───
         self._intel_broadcaster = None
-        try:
-            from opensable.skills.zunvra_intel.intel_broadcaster import IntelBroadcaster
-            from opensable.skills.zunvra_intel.connector import ZunvraConnector
-            from opensable.skills.zunvra_intel.remote_control import RemoteControl
-            zunvra_base = os.environ.get("ZUNVRA_BACKEND_URL", "http://localhost:5580")
-            zunvra_key = os.environ.get("ZUNVRA_API_KEY", "")
-            connector = ZunvraConnector(base_url=zunvra_base)
-            remote = RemoteControl(base_url=zunvra_base, api_key=zunvra_key)
-            self._intel_broadcaster = IntelBroadcaster(
-                connector=connector,
-                remote_control=remote,
-                config=config,
-                dashboard_url=os.environ.get("ZUNVRA_DASHBOARD_URL", "http://localhost:5585"),
+        intel_enabled = os.environ.get("ZUNVRA_INTEL_ENABLED", "false").lower() in (
+            "true", "1", "yes"
+        )
+        zunvra_key = os.environ.get("ZUNVRA_API_KEY", "")
+        if intel_enabled and zunvra_key:
+            try:
+                from opensable.skills.zunvra_intel.intel_broadcaster import IntelBroadcaster
+                from opensable.skills.zunvra_intel.connector import ZunvraConnector
+                from opensable.skills.zunvra_intel.remote_control import RemoteControl
+                zunvra_base = os.environ.get("ZUNVRA_BACKEND_URL", "http://localhost:5580")
+                connector = ZunvraConnector(base_url=zunvra_base)
+                remote = RemoteControl(base_url=zunvra_base, api_key=zunvra_key)
+                self._intel_broadcaster = IntelBroadcaster(
+                    connector=connector,
+                    remote_control=remote,
+                    config=config,
+                    dashboard_url=os.environ.get("ZUNVRA_DASHBOARD_URL", "http://localhost:5585"),
+                )
+                logger.info("X Agent: IntelBroadcaster loaded — OSINT posts enabled")
+            except Exception as e:
+                logger.info(f"X Agent: IntelBroadcaster not available ({e}) — OSINT posts disabled")
+        else:
+            logger.info(
+                "X Agent: IntelBroadcaster disabled for this profile "
+                "(ZUNVRA_INTEL_ENABLED and ZUNVRA_API_KEY required)"
             )
-            logger.info("X Agent: IntelBroadcaster loaded — OSINT posts enabled")
-        except Exception as e:
-            logger.info(f"X Agent: IntelBroadcaster not available ({e}) — OSINT posts disabled")
 
     # ══════════════════════════════════════════════════════════════════
     #  LIFECYCLE

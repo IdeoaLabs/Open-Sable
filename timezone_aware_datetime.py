@@ -59,6 +59,52 @@ class ConversionContext:
 
 def convert_timezone(dt: datetime.datetime, target_tz: str) -> datetime.datetime:
     """
+    Convert a datetime to a target timezone, ensuring timezone awareness.
+    
+    Args:
+        dt: Input datetime (can be naive or aware)
+        target_tz: Target timezone string (e.g., 'America/New_York')
+    
+    Returns:
+        datetime.datetime: Datetime in target timezone
+    
+    Raises:
+        TimezoneAwareError: If conversion fails
+    """
+    from zoneinfo import ZoneInfo
+
+    # Determine if dt is naive (no timezone info)
+    is_naive = dt.tzinfo is None or dt.tzinfo.utcoffset(dt) is None
+
+    if is_naive:
+        # If no timezone specified, use local timezone
+        if target_tz is None:
+            target_tz = get_local_timezone().key
+
+        # Parse target timezone
+        try:
+            target_zi = ZoneInfo(target_tz)
+        except Exception as e:
+            raise TimezoneAwareError(f"Invalid timezone: {target_tz}") from e
+
+        # If dt is naive but we have a target timezone, localize
+        try:
+            # If dt already has timezone (could be fold situation)
+            if dt.tzinfo:
+                dt = dt.replace(tzinfo=target_zi)
+            else:
+                dt = dt.replace(tzinfo=target_zi)
+        except Exception as e:
+            raise TimezoneAwareError(f"Failed to localize datetime: {dt}") from e
+
+    # Convert to target timezone
+    try:
+        dt = dt.astimezone(ZoneInfo(target_tz))
+    except Exception as e:
+        raise TimezoneAwareError(f"Failed to convert timezone: {dt}") from e
+
+    return dt
+    """
     Convert a datetime to a target timezone.
     
     Args:

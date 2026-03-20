@@ -282,6 +282,115 @@ MODEL_CAPABILITIES = {
 }
 
 
+def _normalize_model_list(models_obj) -> List[str]:
+    """Normalize Ollama list() response into model name strings."""
+    result: List[str] = []
+    try:
+        for m in models_obj.get("models", []):
+            name = getattr(m, "model", None) or m.get("name") or m.get("model", "")
+            if name:
+                result.append(name)
+    except Exception:
+        pass
+    return result
+
+
+def _extract_model_size_b(model_name: str) -> float:
+    """Extract model size in billions from names like 14b, 0.8b, 72b."""
+    if not model_name:
+        return 999.0
+    m = re.search(r"(\d+(?:\.\d+)?)\s*b", model_name.lower())
+    if not m:
+        return 999.0
+    try:
+        return float(m.group(1))
+    except Exception:
+        return 999.0
+
+
+def _select_low_vram_model(available: List[str], preferred: str = "") -> Optional[str]:
+    """Pick best low-VRAM model from locally available Ollama models."""
+    if not available:
+        return None
+
+    # Explicit preference first (if installed)
+    if preferred:
+        for m in available:
+            if preferred in m or m in preferred:
+                return m
+
+    # Curated low-vram priorities
+    low_vram_priority = [
+        "qwen3.5:0.8b",
+        "qwen3:0.6b",
+        "qwen2.5:0.5b",
+        "llama3.2:1b",
+        "llama3.2:3b",
+        "qwen2.5:3b",
+        "gemma2:2b",
+    ]
+    for pref in low_vram_priority:
+        for m in available:
+            if pref in m or m in pref:
+                return m
+
+    # Fallback: smallest non-embedding model installed
+    candidates = [m for m in available if "embed" not in m.lower()]
+    if not candidates:
+        return None
+    candidates.sort(key=_extract_model_size_b)
+    return candidates[0]
+
+
+def _resolve_start_model(
+    *,
+    config,
+    available: List[str],
+    auto_recommended: str,
+) -> str:
+    """Resolve initial model with full low-VRAM aware fallback logic."""
+    default_model = getattr(config, "default_model", "qwen3.5:0.8b")
+    low_vram_mode = bool(getattr(config, "low_vram_mode", False))
+    preferred_low = getattr(config, "low_vram_preferred_model", "qwen3.5:0.8b")
+
+    # 1) Low-VRAM mode has priority and always stays local/installed
+    if low_vram_mode:
+        low = _select_low_vram_model(available, preferred_low)
+        if low:
+            logger.info(f"Low-VRAM mode active. Selected: {low}")
+            return low
+        logger.warning(
+            "Low-VRAM mode active but no suitable local low-vram model found. "
+            f"Falling back to default: {default_model}"
+        )
+
+    # 2) If auto-selected recommendation exists and is installed, use it
+    if auto_recommended:
+        for a in available:
+            if auto_recommended in a or a in auto_recommended:
+                return a
+
+    # 3) If configured default exists locally, use it
+    for a in available:
+        if default_model in a or a in default_model:
+            return a
+
+    # 4) Smart fallback: prefer qwen3.5:0.8b if present, then smallest model
+    low = _select_low_vram_model(available, "qwen3.5:0.8b")
+    if low:
+        logger.warning(
+            f"Configured default '{default_model}' not installed. "
+            f"Using local fallback: {low}"
+        )
+        return low
+
+    # 5) Last resort (should rarely happen)
+    logger.warning(
+        f"No known fallback found in installed models. Using configured default: {default_model}"
+    )
+    return default_model
+
+
 class AdaptiveLLM:
     """LLM that can switch models based on task requirements"""
 
@@ -335,8 +444,15 @@ class AdaptiveLLM:
         best_model = None
         best_score = -1
 
+        low_vram_mode = bool(getattr(self.config, "low_vram_mode", False))
+        low_vram_max_b = float(getattr(self.config, "low_vram_max_model_b", 3.0))
+
         for model in MODEL_CAPABILITIES:
             caps = MODEL_CAPABILITIES[model]
+
+            # In low-vram mode, never switch above configured size cap
+            if low_vram_mode and _extract_model_size_b(model) > low_vram_max_b:
+                continue
 
             # Check if requirements are met
             meets_req = all(caps.get(k, 0) >= v for k, v in req.items())
@@ -841,6 +957,8 @@ def get_llm(config):
         try:
             # Auto-select model if enabled
             model_to_use = config.default_model
+            available = _normalize_model_list(models)
+            recommended = ""
 
             if config.auto_select_model:
                 from opensable.core.system_detector import auto_configure_system
@@ -850,21 +968,46 @@ def get_llm(config):
 
                 # Verify the recommended model is actually available before using it
                 try:
-                    available = [
-                        getattr(m, "model", None) or m.get("name") or m.get("model", "")
-                        for m in models.get("models", [])
-                    ]
                     if any(recommended in a or a in recommended for a in available):
-                        model_to_use = recommended
+                        model_to_use = _resolve_start_model(
+                            config=config,
+                            available=available,
+                            auto_recommended=recommended,
+                        )
                         logger.info(
                             f"Auto-selected model: {model_to_use} (tier: {auto_config['device_tier']})"
                         )
                     else:
                         logger.warning(
-                            f"Auto-selected model '{recommended}' not available locally. Using default: {model_to_use}"
+                            f"Auto-selected model '{recommended}' not available locally. Resolving best local fallback..."
+                        )
+                        model_to_use = _resolve_start_model(
+                            config=config,
+                            available=available,
+                            auto_recommended="",
                         )
                 except Exception:
-                    logger.warning(f"Cannot verify model availability. Using default: {model_to_use}")
+                    logger.warning("Cannot verify model availability. Falling back to resolver.")
+                    model_to_use = _resolve_start_model(
+                        config=config,
+                        available=available,
+                        auto_recommended="",
+                    )
+            else:
+                model_to_use = _resolve_start_model(
+                    config=config,
+                    available=available,
+                    auto_recommended="",
+                )
+
+            # Ensure selected local model exists; pull automatically if missing
+            if not any(model_to_use in a or a in model_to_use for a in available):
+                logger.info(f"Selected model '{model_to_use}' not installed. Pulling from Ollama...")
+                try:
+                    client.pull(model_to_use)
+                    logger.info(f"Model '{model_to_use}' downloaded successfully")
+                except Exception as pull_err:
+                    logger.warning(f"Failed to pull '{model_to_use}': {pull_err}")
 
             # Return adaptive LLM that can switch models
             adaptive_llm = AdaptiveLLM(config, model_to_use)

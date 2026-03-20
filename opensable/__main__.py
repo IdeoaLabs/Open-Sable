@@ -57,6 +57,29 @@ async def async_main():
     profile_name = args.profile or os.environ.get("SABLE_PROFILE") or DEFAULT_PROFILE
     profile = load_profile(profile_name)
     profile.apply_env()  # merge profile.env into os.environ before load_config()
+
+    # ── Profile isolation for Zunvra Intel/Social (prevent env bleed from root .env) ──
+    # Only profile.env should opt-in these capabilities per agent.
+    bool_isolated_keys = (
+        "ZUNVRA_INTEL_ENABLED",
+        "ZUNVRA_SOCIAL_ENABLED",
+        "ZUNVRA_ENABLED",
+    )
+    sensitive_isolated_keys = (
+        "ZUNVRA_API_KEY",
+        "ZUNVRA_BACKEND_URL",
+        "ZUNVRA_INTEL_DATA_DIR",
+        "ZUNVRA_INTEL_INTERVAL",
+    )
+
+    for key in bool_isolated_keys:
+        if key not in profile.env_overrides:
+            os.environ[key] = "false"
+
+    for key in sensitive_isolated_keys:
+        if key not in profile.env_overrides:
+            os.environ.pop(key, None)
+
     console.print(f"[bold magenta]👤 Profile: {profile_name}[/bold magenta]")
 
     # Kill any existing bot instances of the SAME profile (not other profiles)

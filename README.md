@@ -19,7 +19,33 @@
 Open-Sable is a next-generation autonomous AI agent framework with Agentic AI cognitive subsystems. It runs 24/7 on your local machine, integrates with your favorite messengers, executes real-world tasks, and continuously improves itself, all while keeping your data private.
 
 ## ✅ What works right now
-Run locally, chat via Telegram, create goals, store memory, run tools safely, audit logs, SkillFactory, RAG pipeline, workflow engine, self-modification, 21+ community skills, document creation (Word/Excel/PDF/PowerPoint), real email (SMTP/IMAP), Google Calendar, clipboard, OCR, autonomous self-healing, **multi-exchange trading bot** (crypto, stocks, prediction markets), **token/cost tracking**, **encrypted memory at rest**, **CrewAI-style multi-agent orchestration**, **cognitive memory with decay & consolidation**, **self-reflection engine**, **evolutionary skill management**, **git-backed episodic memory**, **System 1 inner life processing**, **institutional pattern learning**, **proactive reasoning engine**, **ReAct executor (multi-step tool-chaining)**, **full GitHub integration (issues, PRs, branches, code search, releases)**, **connectome neural colony (FlyWire brain-inspired cognitive wiring with Hebbian learning)**, **deep multi-step planner (10+ step DAG planning with replanning)**, **inter-agent learning bridge (shared knowledge vault between agents)**, **ultra-long-term memory (weeks/months pattern consolidation)**, **quantified self-benchmarking (8-suite autonomy scoring)**, **meta-learner (learning-to-learn)**, **causal reasoning engine**, **autonomous goal synthesis**, **compound skill composer**, **predictive world model**, **cognitive architecture optimizer**, **adversarial self-tester**, **resource governor**, **theory of mind (user modeling)**, **ethical reasoner**, **dream engine (REM-like creative replay)**, **cognitive immunity (antibody-based failure defense)**, **temporal consciousness (biological clock)**, **cognitive fusion (cross-domain pollination)**, **memory palace (spatial Method of Loci)**, **narrative identity (autobiographical self)**, **curiosity drive (intrinsic motivation)**, **collective unconscious (shared archetypes)**, **cognitive metabolism (energy budgeting)**, **synthetic intuition (gut-feel patterns)**, **phantom limb (missing capability detection)**, **cognitive scar (permanent failure markers)**, **time crystal memory (temporal patterns)**, **holographic context (fragment-to-whole)**, **swarm cortex (parallel mini-agents)**, **cognitive archaeology (decision excavation)**, **emotional contagion (cascading emotions)**, **predictive empathy (frustration prediction)**, **autonomous researcher (scientific method)**, **empathy synthesizer (user simulation)**, **cognitive teleportation (instant domain transfer)**, **ontological engine (reality model)**, **cognitive gravity (idea mass & attraction)**, **temporal paradox resolver (time contradictions)**, **synaesthetic processor (cross-modal perception)**, **cognitive mitosis (thought splitting)**, **entropic sentinel (fights entropy)**, **quantum cognition (superposition reasoning)**, **cognitive placebo (confidence boosts)**, **noospheric interface (collective thought)**, **akashic records (immutable thought ledger)**, **déjà vu engine (gestalt matching)**, **morphogenetic field (capability templates)**, **liminal processor (ambiguity handling)**, **prescient executor (pre-execution)**, **cognitive dark matter (hidden variables)**, **ego membrane (self-boundary)**, **hyperstition engine (self-fulfilling ideas)**, **cognitive chrysalis (metamorphosis)**, **existential compass (purpose finding)**, **autonomous web agent (browsing + API discovery)**, **self healer (auto-restart + watchdog + hot-reload)**, **dynamic skill factory (runtime skill creation)**, **multi-modal engine (image/audio/video perception)**, **internet monitor (24/7 web surveillance)**, **financial autonomy (invoicing + budgets)**, **social presence builder (audience growth)**, **self replicator (clone + horizontal scaling)**, **continuous learner (permanent evolution)**.
+
+### Core platform
+- Local-first runtime with persistent background process management (`start.sh`), logs, health checks, and profile-based agents.
+- Multi-agent architecture with isolated identity, config, tool permissions, sockets, data, and memory per profile.
+- Safe tool execution, workflow engine, goal system, auditability, and autonomous recovery (watchdog/restart/hot-reload).
+
+### LLM and cognition
+- Ollama-first local inference with cloud-provider fallback.
+- Low-VRAM mode with robust fallback routing and startup auto-pull support (defaulting to `qwen3.5:0.8b`).
+- Cognitive memory stack (working/episodic/long-term), decay + consolidation, reflection, and proactive reasoning loops.
+- ReAct-style multi-step tool chaining, deep DAG planning with re-planning, and benchmark-driven self-improvement.
+
+### Skills and integrations
+- Telegram interface, SkillFactory pipeline, RAG/document workflows, clipboard/OCR, and 21+ community skills.
+- Productivity stack: SMTP/IMAP email + Google Calendar.
+- Developer stack: full GitHub integration (issues, PRs, branches, code search, releases).
+- Trading stack: multi-exchange trading support (crypto, stocks, prediction markets) with risk controls.
+
+### Recently verified (Mar 2026)
+- Stable Zunvra registration/login with persisted credentials and restart-safe reconnect behavior.
+- Correct profile sync path (avatar/bio/banner), with gateway path normalization fixes.
+- Autonomous Zunvra social loop is active (posting/replies/engagement), including output cleanup safeguards.
+- Image posting pipeline works end-to-end via compatibility payload mapping (`imageUrls` + `media_urls`).
+- Better profile isolation for Zunvra intel/social flags and profile-scoped intel data directories.
+
+### Supported autonomous modules
+Open-Sable includes the full autonomy/cognitive module set from v1.1.0 through v1.7.0 (memory, reflection, evolutionary skill systems, world modeling, self-testing, ethical constraints, and advanced "Godlike/God Supreme" cognitive extensions listed below in the release sections).
 
 ## 🧪 What's experimental
 Tool synthesis, multi-device sync.
@@ -195,7 +221,7 @@ cp .env.example .env
 
 # 5. Install Ollama (local LLM - recommended)
 curl -fsSL https://ollama.com/install.sh | sh
-ollama pull llama3.1:8b
+ollama pull qwen3.5:0.8b
 
 # 6. Run Open-Sable
 python -m opensable

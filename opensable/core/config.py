@@ -36,8 +36,11 @@ class OpenSableConfig(BaseModel):
 
     # LLM Settings
     ollama_base_url: str = "http://localhost:11434"
-    default_model: str = "llama3.1:8b"
+    default_model: str = "qwen3.5:0.8b"
     auto_select_model: bool = True
+    low_vram_mode: bool = False
+    low_vram_preferred_model: str = "qwen3.5:0.8b"
+    low_vram_max_model_b: float = 3.0
     openai_api_key: Optional[str] = None
     anthropic_api_key: Optional[str] = None
     deepseek_api_key: Optional[str] = None
@@ -383,8 +386,11 @@ def load_config() -> OpenSableConfig:
 
     config_data = {
         "ollama_base_url": os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
-        "default_model": os.getenv("DEFAULT_MODEL", "llama3.1:8b"),
+        "default_model": os.getenv("DEFAULT_MODEL", "qwen3.5:0.8b"),
         "auto_select_model": os.getenv("AUTO_SELECT_MODEL", "true").lower() == "true",
+        "low_vram_mode": os.getenv("LOW_VRAM_MODE", "false").lower() == "true",
+        "low_vram_preferred_model": os.getenv("LOW_VRAM_PREFERRED_MODEL", "qwen3.5:0.8b"),
+        "low_vram_max_model_b": float(os.getenv("LOW_VRAM_MAX_MODEL_B", "3.0")),
         "openai_api_key": os.getenv("OPENAI_API_KEY"),
         "anthropic_api_key": os.getenv("ANTHROPIC_API_KEY"),
         "deepseek_api_key": os.getenv("DEEPSEEK_API_KEY"),
