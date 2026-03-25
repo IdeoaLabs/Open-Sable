@@ -195,6 +195,9 @@ class SableAgent:
         self._monitor_subscribers: list = []
         self._monitor_stats = {"messages": 0, "tool_calls": 0, "errors": 0}
 
+        # Pending images captured from tool results (screenshot, etc.) to inject as multimodal messages
+        self._pending_images: list = []
+
         # Mobile phone context (updated by MobileRelay)
         self._mobile_context: dict = {"location": None, "battery": None, "clipboard": None}
 
@@ -1636,6 +1639,14 @@ class SableAgent:
                     tool_name=name, result=str(result)[:500], success=True,
                     duration_ms=_dur, user_id=user_id,
                 )
+            # Extract image_base64 for multimodal injection (screenshot, vision tools)
+            if isinstance(result, dict) and result.get("image_base64"):
+                self._pending_images.append({
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{result['image_base64']}"}
+                })
+                dims = f" ({result.get('width', '?')}x{result.get('height', '?')}px)" if result.get('width') else ""
+                return f"**{name}:** Screenshot captured{dims}. Image attached for analysis."
             return f"**{name}:** {result}"
         except asyncio.TimeoutError:
             logger.error(f"Tool {name} timed out")
@@ -2622,7 +2633,7 @@ class SableAgent:
                         messages.append(
                             {
                                 "role": "user",
-                                "content": (
+                                "content": self._build_user_message_content(
                                     f"The code execution failed:\n{error_result}\n\n"
                                     "Please fix the code and try again using execute_code."
                                 ),
@@ -2654,7 +2665,7 @@ class SableAgent:
                                 messages.append(
                                     {
                                         "role": "user",
-                                        "content": (
+                                        "content": self._build_user_message_content(
                                             f"Previous step failed. New plan:\n{plan.summary()}\n\n"
                                             f"Execute: {plan.next_step()}"
                                         ),
@@ -2682,7 +2693,7 @@ class SableAgent:
                             messages.append(
                                 {
                                     "role": "user",
-                                    "content": f"Good. Now execute the next step:\n{plan.next_step()}",
+                                    "content": self._build_user_message_content(f"Good. Now execute the next step:\n{plan.next_step()}"),
                                 }
                             )
                             continue
@@ -2704,7 +2715,7 @@ class SableAgent:
                         messages.append(
                             {
                                 "role": "user",
-                                "content": f"Using the tool results above, answer: {task}",
+                                "content": self._build_user_message_content(f"Using the tool results above, answer: {task}"),
                             }
                         )
                 else:
@@ -2849,6 +2860,24 @@ class SableAgent:
             self.tracer.end_span(span.span_id)
 
         return state
+
+    # ------------------------------------------------------------------
+    # Multimodal message builder
+    # ------------------------------------------------------------------
+
+    def _build_user_message_content(self, text: str):
+        """Return plain text or a multimodal content list if images are pending.
+
+        When a screenshot/vision tool has been executed, its base64 payload is
+        held in ``self._pending_images``.  This helper folds those images into
+        the next user-role message so that the LLM (OpenWebUI / OpenAI vision)
+        can see them natively.  The list is cleared after consumption.
+        """
+        if not self._pending_images:
+            return text
+        content = [{"type": "text", "text": text}] + self._pending_images
+        self._pending_images = []
+        return content
 
     # ------------------------------------------------------------------
     # Media URL re-injection (post-synthesis)
@@ -3168,6 +3197,8 @@ class SableAgent:
     async def _process_message_inner(
         self, user_id: str, message: str, history: Optional[List[dict]] = None
     ) -> str:
+        # Clear any images captured during previous request
+        self._pending_images = []
         self._monitor_stats["messages"] += 1
         await self._emit_monitor("message.received", {"user_id": user_id, "text": message[:100], "channel": "agent"})
         if self.advanced_memory:

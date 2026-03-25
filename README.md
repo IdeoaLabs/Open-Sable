@@ -43,6 +43,9 @@ Open-Sable is a next-generation autonomous AI agent framework with Agentic AI co
 - Autonomous Zunvra social loop is active (posting/replies/engagement), including output cleanup safeguards.
 - Image posting pipeline works end-to-end via compatibility payload mapping (`imageUrls` + `media_urls`).
 - Better profile isolation for Zunvra intel/social flags and profile-scoped intel data directories.
+- **Vision / image flow fixed end-to-end.** Tool results carrying an `image_base64` payload are now automatically forwarded to multimodal LLMs as `image_url` content blocks (OpenAI vision format). Screenshot and capture tools are seen by vision models with zero extra configuration.
+- **OpenWebUI backend verified.** Point `OPENWEBUI_API_URL` in `profile.env` to any self-hosted OpenWebUI instance to use it as the LLM backend. Tested against a live deployment at `sofia.zunvra.com`.
+- **Raspberry Pi installer (`install-pi.sh`) added** with self-repair modes (`--repair` / `--verify`), torch-free core package set, interactive config wizard, and optional 3.5" SPI display setup using the correct `tft35a` driver.
 
 ### Supported autonomous modules
 Open-Sable includes the full autonomy/cognitive module set from v1.1.0 through v1.7.0 (memory, reflection, evolutionary skill systems, world modeling, self-testing, ethical constraints, and advanced "Godlike/God Supreme" cognitive extensions listed below in the release sections).
@@ -294,6 +297,104 @@ The recommended way to run Open-Sable in production. Manages the process in the 
 | `./start.sh status [--profile <name>]` | Show PID, uptime, memory usage |
 | `./start.sh logs [--profile <name>]` | Tail live log output |
 | `./start.sh profiles` | List all agents, their config, and running status |
+
+---
+
+## 🍓 Raspberry Pi Deployment
+
+Open-Sable runs natively on Raspberry Pi (ARM64, Pi 3B+ and newer). The `install-pi.sh` script handles the full deployment lifecycle: Python venv setup, core package installation with 3-attempt retry/fallback, interactive config wizard, systemd service registration, and optional 3.5" SPI display configuration.
+
+> **Minimum hardware:** Raspberry Pi 3B+ (ARM64) · 1 GB RAM · 8 GB SD card · Internet connection
+
+### Install on Pi
+
+```bash
+git clone https://github.com/IdeoaLabs/Open-Sable.git
+cd Open-Sable
+chmod +x install-pi.sh
+./install-pi.sh
+```
+
+The installer will:
+1. Verify the architecture (ARM64 required — ARMv6/ARMv7 are rejected with a clear error)
+2. Install system packages (`python3-venv`, `build-essential`, `git`, `libopenblas-dev`, etc.)
+3. Create a Python venv and install all core packages
+4. Run a post-install import verification for every package, auto-repairing any that fail
+5. Launch an interactive wizard to generate `agents/sable/profile.env`
+6. Register the `opensable-pi.service` systemd unit (auto-start on boot)
+7. Write a `start-pi.sh` convenience shortcut
+
+### Self-Repair Mode
+
+The installer doubles as a diagnostic and repair tool:
+
+```bash
+./install-pi.sh --verify    # Check all packages and directories; exit with pass/fail status
+./install-pi.sh --repair    # Re-run all checks and auto-fix anything broken
+./install-pi.sh --display   # Configure the 3.5" SPI display only (skip Python setup)
+```
+
+`--repair` re-runs the full verification loop and reinstalls any package whose `import` fails — useful after SD card corruption, partial writes, or package version conflicts.
+
+### Torch-Free Core
+
+The Pi installer only installs the **torch-free** core stack. The agent loop, LLM routing, all 69+ autonomous modules, and every tool executor are pure Python (`aiohttp`, `asyncio`, `requests`, standard library). No PyTorch or CUDA runtime is required.
+
+| Dependency | ARM64 status |
+|---|---|
+| `aiohttp` / `asyncio` | Native wheel ✅ |
+| `chromadb` (uses `onnxruntime`) | ARM64 wheel ✅ |
+| `sentence-transformers` | Lazy import — only loaded if the RAG skill is invoked |
+| `torch` | **Not required** for core — optional voice/vision extras only |
+
+### 3.5" SPI Display (MPI3501 / XPT2046 / ILI9486)
+
+For generic 3.5" 480×320 SPI TFT displays sold under the MPI3501 / XPT2046 form factor (ILI9486 driver chip, resistive touch):
+
+```bash
+./install-pi.sh --display
+```
+
+This will:
+1. Auto-detect the boot config path (`/boot/firmware/config.txt` on Bookworm, `/boot/config.txt` on older systems)
+2. Download `tft35a.dtbo` from the [goodtft/LCD-show](https://github.com/goodtft/LCD-show) driver repository — the canonical driver for this display family — with a `git clone` fallback if the direct download fails
+3. Append the correct overlay entries to `config.txt`:
+   ```ini
+   dtparam=spi=on
+   dtoverlay=tft35a:rotate=90          # 90=landscape, 270=flipped, 0/180=portrait
+   dtoverlay=ads7846,cs=1,penirq=17,speed=50000,keep_vref_on=0,swapxy=0,pmax=255,xohms=150
+   ```
+4. Install `sable-display.service` — a systemd unit that renders live agent logs on `/dev/fb1` using a PIL-based RGB565 framebuffer viewer (`scripts/display_logs.py`), color-coded by message type
+5. Prompt to reboot
+
+**Pin mapping (confirmed against MPI3501 datasheet via lcdwiki.com):**
+
+| Signal | GPIO | Pi Pin |
+|--------|------|--------|
+| LCD_CS | GPIO8 (SPI CE0) | 24 |
+| TP_CS | GPIO7 (SPI CE1) | 26 |
+| TP_IRQ | GPIO17 | 11 |
+| LCD_RS | GPIO24 | 18 |
+| RST | GPIO25 | 22 |
+
+After reboot:
+
+```bash
+sudo systemctl start sable-display   # start the framebuffer log viewer
+./test-display.sh                     # or run it in the foreground for testing
+sudo systemctl status sable-display   # check service health
+ls -la /dev/fb*                       # confirm /dev/fb1 was created by the driver
+```
+
+The framebuffer viewer (`scripts/display_logs.py`) requires no X11 or Pygame — it writes directly to `/dev/fb1` using PIL and `struct.pack` for RGB565 conversion. Configurable via environment variables:
+
+| Variable | Default | Description |
+|---|---|---|
+| `FB_DEV` | `/dev/fb1` | Framebuffer device |
+| `FB_WIDTH` / `FB_HEIGHT` | `480` / `320` | Display resolution |
+| `SABLE_LOG` | `logs/sable.log` | Log file to tail |
+| `DISPLAY_INTERVAL` | `1.0` | Refresh rate in seconds |
+| `DISPLAY_ROTATE` | `0` | Software rotation (0/90/180/270) |
 
 ---
 
@@ -3146,6 +3247,25 @@ DEFAULT_MODEL=anthropic/claude-sonnet-4-20250514
 # Example: use Groq for fast inference
 GROQ_API_KEY=gsk_...
 ```
+
+### Self-Hosted: OpenWebUI
+
+[OpenWebUI](https://github.com/open-webui/open-webui) is a self-hosted web interface for Ollama and other local models. Open-Sable can use any OpenWebUI instance as its LLM backend via its built-in OpenAI-compatible `/chat/completions` endpoint.
+
+**Configuration** — add these three variables to `agents/<name>/profile.env`:
+
+```bash
+# URL of your OpenWebUI instance (no trailing slash)
+OPENWEBUI_API_URL=https://your-openwebui-instance.com
+
+# API key (leave blank if your instance has no authentication)
+OPENWEBUI_API_KEY=
+
+# Model name as it appears in your OpenWebUI instance
+OPENWEBUI_MODEL=llama3.2:latest
+```
+
+When `OPENWEBUI_API_URL` is set, the agent routes all LLM requests to `{OPENWEBUI_API_URL}/api/chat/completions` using the standard OpenAI message format. Vision/multimodal requests (when tool results include `image_base64` payloads) are automatically forwarded as `image_url` content blocks, so any multimodal model hosted on OpenWebUI receives images natively.
 
 ---
 
