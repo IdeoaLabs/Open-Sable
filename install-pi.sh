@@ -59,6 +59,8 @@ declare -A PKG_IMPORTS=(
     [websockets]="websockets"
     [httpx]="httpx"
     [python-telegram-bot]="telegram"
+    [telethon]="telethon"
+    [aiogram]="aiogram"
     [pydantic]="pydantic"
     [python-dotenv]="dotenv"
     [rich]="rich"
@@ -73,6 +75,11 @@ declare -A PKG_IMPORTS=(
     [psutil]="psutil"
     [schedule]="schedule"
     [chromadb]="chromadb"
+    [ollama]="ollama"
+    [py-cpuinfo]="cpuinfo"
+    [PyJWT]="jwt"
+    [RestrictedPython]="RestrictedPython"
+    [tiktoken]="tiktoken"
 )
 
 # Required runtime directories
@@ -335,16 +342,10 @@ setup_display() {
     sudo tee -a "$boot_cfg" > /dev/null << BOOTCFG
 
 # BEGIN opensable-display
-# 3.5" XPT2046 / ILI9486 SPI display (MPI3501 / goodtft tft35a driver)
-# Source: https://github.com/goodtft/LCD-show
+# 3.5" XPT2046/ILI9486 SPI TFT — tft35a overlay (goodtft/LCD-show)
+# tft35a already registers the ADS7846 touch controller internally
 dtparam=spi=on
-# LCD panel via tft35a overlay (custom dtbo — ILI9486 + XPT2046)
-# rotate: 90=landscape-normal, 270=landscape-flipped, 0/180=portrait
-dtoverlay=tft35a:rotate=${DISP_ROTATE}
-# Touch controller: XPT2046 is ADS7846-compatible
-# cs=1  → TP_CS = SPI CE1 (GPIO7,  pin 26)
-# penirq=17 → TP_IRQ = GPIO17 (pin 11) — confirmed MPI3501 datasheet
-dtoverlay=ads7846,cs=1,penirq=17,speed=50000,keep_vref_on=0,swapxy=0,pmax=255,xohms=150
+dtoverlay=tft35a:rotate=${DISP_ROTATE},penirq=17
 # END opensable-display
 BOOTCFG
     ok "Boot config patched."
@@ -389,11 +390,11 @@ BOOTCFG
     # ─ Quick-test script ──────────────────────────────────────────────
     cat > "$SCRIPT_DIR/test-display.sh" << TESTSH
 #!/usr/bin/env bash
-# Quick test for the 3.5" display — runs display_logs.py in foreground
+# Quick test for the 3.5" display — runs display_hud.py in foreground
 cd "$(dirname "\$0")"
 source venv/bin/activate
 FB_DEV=\${1:-/dev/fb1} DISPLAY_INTERVAL=0.5 DISPLAY_ROTATE=${DISP_ROTATE} \
-    python3 scripts/display_logs.py
+    python3 scripts/display_hud.py
 TESTSH
     chmod +x "$SCRIPT_DIR/test-display.sh"
     ok "Test script created: ${BOLD}./test-display.sh${RESET}"
@@ -576,6 +577,8 @@ CORE_PACKAGES=(
     httpx
     # Telegram
     python-telegram-bot
+    telethon
+    aiogram
     # Data / utils
     pydantic
     python-dotenv
@@ -590,11 +593,17 @@ CORE_PACKAGES=(
     sentence-transformers
     # OpenAI-compatible client (for OpenWebUI API calls)
     openai
+    # Ollama Python client (used by llm.py even when no local Ollama server runs)
+    ollama
     # Misc
     tenacity
     structlog
     psutil
     schedule
+    py-cpuinfo
+    PyJWT
+    RestrictedPython
+    tiktoken
 )
 
 # Packages to explicitly SKIP on Pi (too heavy or require GPU/X11)
@@ -712,7 +721,7 @@ PIXEL_BRIDGE_ENABLED=false     # no Electron on Pi
 
 # ── LLM: use OpenWebUI API (no local Ollama) ─────────────────────────────────
 # Ollama is disabled — all inference goes through OpenWebUI
-OLLAMA_BASE_URL=                # intentionally blank
+OLLAMA_BASE_URL=
 DEFAULT_MODEL=${OWUI_MODEL}
 AUTO_SELECT_MODEL=false
 LOW_VRAM_MODE=false             # not relevant — no local model

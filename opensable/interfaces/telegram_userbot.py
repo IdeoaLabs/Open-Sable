@@ -5,7 +5,12 @@ Allows agent to run as your own Telegram account
 
 import logging
 import asyncio
-from telethon import TelegramClient, events
+try:
+    from telethon import TelegramClient, events
+except ImportError as _telethon_err:
+    raise ImportError(
+        "telethon is required for Telegram userbot. Install it: pip install telethon"
+    ) from _telethon_err
 
 logger = logging.getLogger(__name__)
 

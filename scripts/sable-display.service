@@ -10,10 +10,9 @@ Type=simple
 User=PLACEHOLDER_USER
 WorkingDirectory=PLACEHOLDER_DIR
 Environment="FB_DEV=/dev/fb1"
-Environment="SABLE_LOG=PLACEHOLDER_DIR/logs/opensable.log"
-Environment="DISPLAY_INTERVAL=1.0"
-Environment="DISPLAY_ROTATE=0"
-ExecStart=PLACEHOLDER_VENV/bin/python3 PLACEHOLDER_DIR/scripts/display_logs.py
+Environment="SABLE_LOG=/home/PLACEHOLDER_USER/sable-agent.log"
+Environment="DISPLAY_INTERVAL=2.0"
+ExecStart=PLACEHOLDER_VENV/bin/python3 PLACEHOLDER_DIR/scripts/display_hud.py
 Restart=on-failure
 RestartSec=5s
 StandardOutput=journal

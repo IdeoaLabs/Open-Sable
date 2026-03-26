@@ -356,15 +356,16 @@ For generic 3.5" 480×320 SPI TFT displays sold under the MPI3501 / XPT2046 form
 ```
 
 This will:
-1. Auto-detect the boot config path (`/boot/firmware/config.txt` on Bookworm, `/boot/config.txt` on older systems)
+1. Auto-detect the boot config path (`/boot/firmware/config.txt` on newer Pi OS, `/boot/config.txt` on older releases)
 2. Download `tft35a.dtbo` from the [goodtft/LCD-show](https://github.com/goodtft/LCD-show) driver repository — the canonical driver for this display family — with a `git clone` fallback if the direct download fails
-3. Append the correct overlay entries to `config.txt`:
+3. Append the correct overlay block to `config.txt`:
    ```ini
    dtparam=spi=on
-   dtoverlay=tft35a:rotate=90          # 90=landscape, 270=flipped, 0/180=portrait
-   dtoverlay=ads7846,cs=1,penirq=17,speed=50000,keep_vref_on=0,swapxy=0,pmax=255,xohms=150
+   dtoverlay=tft35a:rotate=90,penirq=17
+   # note: tft35a already includes the ADS7846 touch controller internally;
+   # do NOT add a separate ads7846 overlay — it will conflict on GPIO17/SPI0.1
    ```
-4. Install `sable-display.service` — a systemd unit that renders live agent logs on `/dev/fb1` using a PIL-based RGB565 framebuffer viewer (`scripts/display_logs.py`), color-coded by message type
+4. Install `sable-display.service` — a systemd unit that runs the live HUD on `/dev/fb1`
 5. Prompt to reboot
 
 **Pin mapping (confirmed against MPI3501 datasheet via lcdwiki.com):**
@@ -380,21 +381,50 @@ This will:
 After reboot:
 
 ```bash
-sudo systemctl start sable-display   # start the framebuffer log viewer
-./test-display.sh                     # or run it in the foreground for testing
+sudo systemctl start sable-display   # start the HUD display
+./test-display.sh                     # run in foreground for testing
 sudo systemctl status sable-display   # check service health
 ls -la /dev/fb*                       # confirm /dev/fb1 was created by the driver
 ```
 
-The framebuffer viewer (`scripts/display_logs.py`) requires no X11 or Pygame — it writes directly to `/dev/fb1` using PIL and `struct.pack` for RGB565 conversion. Configurable via environment variables:
+#### HUD Dashboard (`scripts/display_hud.py`)
+
+The live dashboard renders directly to `/dev/fb1` using PIL TrueType fonts and NumPy-accelerated RGB565 conversion — no X11 or display server required. It shows:
+
+- **Header bar** — agent name, blinking LIVE indicator, real-time clock
+- **Status cards** — agent online/offline, uptime counter, active model + API host, Telegram bot status
+- **System stats** — CPU and RAM progress bars (via `psutil`)
+- **Recent activity** — last N log lines, color-coded: green=OK, red=error, yellow=warning, cyan=tool calls, gray=debug
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│ ◈ SABLE AI  ● LIVE                      Thu 26 Mar   02:26:18    │
+├──────────────┬─────────────────────────────┬────────────────────┤
+│ AGENT        │ MODEL                       │ TELEGRAM           │
+│ ● ONLINE     │ qwen2.5-coder               │ ✈ BOT              │
+│ UPTIME       │ 18:7b                       │ @Sablethebot       │
+│ 00:04:12     │ sofia.zunvra.com            │ ● polling          │
+├──────────────┴─────────────────────────────┴────────────────────┤
+│ CPU [████░░░░░░░░░░]  12%     RAM [████████░░░░]  58%           │
+├──────────────────────────────────────────────────────────────────┤
+│ RECENT ACTIVITY                                                  │
+│ [02:25] ✅ Run polling for bot @Sablethebot id=...              │
+│ [02:25] 💓 Starting heartbeat (interval: 300s)                  │
+│ [02:24]    AgentMon skill disabled (AGENTMON_ENABLED=false)      │
+│  ...                                                             │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+No fonts need to be installed separately — the script finds DejaVu, Liberation, or Noto Mono automatically. If none are found it falls back to PIL's built-in bitmap font.
+
+Configurable via environment variables:
 
 | Variable | Default | Description |
 |---|---|---|
 | `FB_DEV` | `/dev/fb1` | Framebuffer device |
 | `FB_WIDTH` / `FB_HEIGHT` | `480` / `320` | Display resolution |
-| `SABLE_LOG` | `logs/sable.log` | Log file to tail |
-| `DISPLAY_INTERVAL` | `1.0` | Refresh rate in seconds |
-| `DISPLAY_ROTATE` | `0` | Software rotation (0/90/180/270) |
+| `SABLE_LOG` | `~/sable-agent.log` | Log file to tail (also checks `logs/opensable.log`) |
+| `DISPLAY_INTERVAL` | `2.0` | Refresh rate in seconds (2s recommended for Pi 3 to keep CPU ~10%) |
 
 ---
 
