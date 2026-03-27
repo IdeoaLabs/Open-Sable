@@ -790,6 +790,27 @@ STARTSH
 chmod +x "$START_SCRIPT"
 ok "Created ${BOLD}./start-pi.sh${RESET}  (use ${BOLD}./start-pi.sh --repair${RESET} to self-fix on start)"
 
+# ── Web assets (dashboard + aggr.trade) ──────────────────────────────────────
+step "Deploying web assets (dashboard & aggr.trade)"
+
+DASHBOARD_DIST="$SCRIPT_DIR/dashboard/dist"
+if [[ ! -f "$DASHBOARD_DIST/index.html" ]]; then
+    warn "dashboard/dist/index.html not found — dashboard will not be served."
+    warn "Build it on a dev machine: cd dashboard && npm install && npm run build"
+    warn "Then copy dashboard/dist/ to the Pi before running this installer."
+else
+    ok "dashboard/dist/ present"
+fi
+
+AGGR_DIST="$SCRIPT_DIR/aggr/dist"
+if [[ ! -f "$AGGR_DIST/index.html" ]]; then
+    warn "aggr/dist/index.html not found — aggr.trade view will not be served."
+    warn "Build it on a dev machine: cd aggr && npm install && npm run build"
+    warn "Then copy aggr/dist/ to the Pi before running this installer."
+else
+    ok "aggr/dist/ present"
+fi
+
 # ── Final verification pass ───────────────────────────────────────────────────
 step "Final verification pass"
 verify_profile_config
@@ -819,6 +840,10 @@ echo -e "    ${CYAN}./install-pi.sh --repair${RESET}   — auto-fix any missing 
 echo -e "    ${CYAN}./install-pi.sh --verify${RESET}   — check only, no changes"
 echo -e "    ${CYAN}./install-pi.sh --display${RESET}  — configure 3.5\" XPT2046 display"
 echo -e "    ${CYAN}./start-pi.sh   --repair${RESET}   — repair then start immediately"
+echo ""
+echo -e "  ${BOLD}Web assets (pre-built on dev machine, copy dist/ to Pi):${RESET}"
+echo -e "    ${DIM}dashboard/dist/${RESET}   — dashboard UI  (cd dashboard && npm run build)"
+echo -e "    ${DIM}aggr/dist/${RESET}        — aggr.trade UI (cd aggr && npm run build)"
 echo ""
 echo -e "  ${BOLD}Display:${RESET}"
 echo -e "    ${CYAN}./test-display.sh${RESET}                     — test log viewer in foreground"

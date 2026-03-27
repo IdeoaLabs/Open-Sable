@@ -1585,6 +1585,14 @@ class CloudLLM:
             logger.error(f"Cloud LLM ({self.provider}) failed: {e}")
             return {"tool_call": None, "tool_calls": [], "text": f"Error: {e}"}
 
+    async def plain_chat(self, messages: List[Dict]) -> Dict[str, Any]:
+        """Simple chat without tools — used for the no-tools fast-path.
+
+        Cloud providers handle an empty tools list fine, so we just
+        call invoke_with_tools with no tools.
+        """
+        return await self.invoke_with_tools(messages, [])
+
     async def ainvoke(self, messages):
         """Plain text invoke (LangChain compat)."""
         result = await self.invoke_with_tools(
