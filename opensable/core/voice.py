@@ -25,12 +25,37 @@ class TTSEngine:
 
     async def initialize(self):
         """Initialize TTS engine"""
-        if self.engine_type == "elevenlabs":
+        if self.engine_type == "piper":
+            await self._init_piper()
+        elif self.engine_type == "elevenlabs":
             await self._init_elevenlabs()
         elif self.engine_type == "openai":
             await self._init_openai()
         else:
             await self._init_local()
+
+    async def _init_piper(self):
+        """Verify Piper binary and model file are available."""
+        import shutil
+
+        binary    = getattr(self.config, "piper_binary", "piper")
+        voice     = getattr(self.config, "piper_voice", "en_US-kusal-medium")
+        model_dir = Path(getattr(self.config, "piper_model_dir", ""))
+        model_path = model_dir / f"{voice}.onnx"
+
+        resolved = shutil.which(binary) or (binary if Path(binary).is_file() else None)
+        if not resolved:
+            raise RuntimeError(
+                f"Piper binary '{binary}' not found. "
+                "Run install-pi.sh or set PIPER_BINARY to the full path."
+            )
+        if not model_path.exists():
+            raise RuntimeError(
+                f"Piper model not found: {model_path}. "
+                "Run install-pi.sh to download it."
+            )
+        self.engine = {"binary": resolved, "model": str(model_path)}
+        logger.info(f"Piper TTS ready — voice: {voice}")
 
     async def _init_local(self):
         """Initialize local TTS (pyttsx3)"""
@@ -107,7 +132,9 @@ class TTSEngine:
             return None
 
         try:
-            if self.engine_type == "local":
+            if self.engine_type == "piper":
+                return await self._speak_piper(text, output_file)
+            elif self.engine_type == "local":
                 return await self._speak_local(text, output_file)
             elif self.engine_type == "elevenlabs":
                 return await self._speak_elevenlabs(text, output_file)
@@ -116,6 +143,41 @@ class TTSEngine:
         except Exception as e:
             logger.error(f"TTS error: {e}", exc_info=True)
             return None
+
+    async def _speak_piper(self, text: str, output_file: Optional[Path]) -> Optional[Path]:
+        """Piper TTS: synthesize WAV + optionally play via aplay (Pi speaker)"""
+        if not output_file:
+            output_file = Path(tempfile.mktemp(suffix=".wav"))
+
+        binary = self.engine["binary"]
+        model  = self.engine["model"]
+
+        proc = await asyncio.create_subprocess_exec(
+            binary,
+            "--model", model,
+            "--output-file", str(output_file),
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await proc.communicate(input=text.encode())
+        if proc.returncode != 0:
+            logger.error(f"Piper failed: {stderr.decode().strip()}")
+            return None
+
+        logger.info(f"Piper TTS saved to {output_file}")
+
+        # Play on the local speaker if auto_play is enabled (Pi mode)
+        if getattr(self.config, "piper_auto_play", True):
+            device = getattr(self.config, "piper_aplay_device", "plug:dmix")
+            play = await asyncio.create_subprocess_exec(
+                "aplay", f"-D{device}", str(output_file),
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            await play.wait()
+
+        return output_file
 
     async def _speak_local(self, text: str, output_file: Optional[Path]) -> Optional[Path]:
         """Local TTS using pyttsx3"""

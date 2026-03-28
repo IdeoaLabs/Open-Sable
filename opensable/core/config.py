@@ -160,6 +160,12 @@ class OpenSableConfig(BaseModel):
     elevenlabs_voice_id: Optional[str] = None
     elevenlabs_model: str = "eleven_multilingual_v2"
     whisper_model_size: str = "base"
+    # Piper TTS (local, fast, works on Raspberry Pi)
+    piper_binary: str = "piper"
+    piper_voice: str = "en_US-lessac-medium"
+    piper_model_dir: str = str(Path.home() / ".local" / "share" / "piper" / "voices")
+    piper_aplay_device: str = "plug:dmix"
+    piper_auto_play: bool = True
 
     @property
     def tts_engine(self) -> str:
@@ -516,6 +522,12 @@ def load_config() -> OpenSableConfig:
         "elevenlabs_voice_id": os.getenv("ELEVENLABS_VOICE_ID"),
         "elevenlabs_model": os.getenv("ELEVENLABS_MODEL", "eleven_multilingual_v2"),
         "whisper_model_size": os.getenv("WHISPER_MODEL_SIZE", "base"),
+        # Piper TTS
+        "piper_binary": os.getenv("PIPER_BINARY", "piper"),
+        "piper_voice": os.getenv("PIPER_VOICE", "en_US-lessac-medium"),
+        "piper_model_dir": os.getenv("PIPER_MODEL_DIR", str(Path.home() / ".local" / "share" / "piper" / "voices")),
+        "piper_aplay_device": os.getenv("PIPER_APLAY_DEVICE", "plug:dmix"),
+        "piper_auto_play": os.getenv("PIPER_AUTO_PLAY", "true").lower() == "true",
         # ── Trading Bot ──────────────────────────────────────────
         "trading_enabled": os.getenv("TRADING_ENABLED", "false").lower() == "true",
         "trading_paper_mode": os.getenv("TRADING_PAPER_MODE", "true").lower() == "true",

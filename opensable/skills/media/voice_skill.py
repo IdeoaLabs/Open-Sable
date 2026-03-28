@@ -25,7 +25,9 @@ class TTSEngine:
 
     async def initialize(self):
         """Initialize TTS engine"""
-        if self.provider == "local":
+        if self.provider == "piper":
+            await self._init_piper()
+        elif self.provider == "local":
             await self._init_local()
         elif self.provider == "elevenlabs":
             await self._init_elevenlabs()
@@ -37,6 +39,31 @@ class TTSEngine:
 
         logger.info(f"TTS initialized with provider: {self.provider}")
         return True
+
+    async def _init_piper(self):
+        """Verify Piper binary and model are available"""
+        import shutil
+        from pathlib import Path
+
+        binary = getattr(self.config, "piper_binary", "piper")
+        voice = getattr(self.config, "piper_voice", "en_US-kusal-medium")
+        model_dir = Path(getattr(self.config, "piper_model_dir", ""))
+        model_path = model_dir / f"{voice}.onnx"
+
+        # Accept full path binary or one on PATH
+        resolved = shutil.which(binary) or (binary if Path(binary).is_file() else None)
+        if not resolved:
+            raise RuntimeError(
+                f"Piper binary '{binary}' not found. "
+                "Run install-pi.sh or set PIPER_BINARY to its full path."
+            )
+        if not model_path.exists():
+            raise RuntimeError(
+                f"Piper model not found: {model_path}. "
+                "Run install-pi.sh to download it or set PIPER_MODEL_DIR."
+            )
+        self.engine = {"binary": resolved, "model": str(model_path)}
+        logger.info(f"Piper TTS ready — voice: {voice}, model: {model_path}")
 
     async def _init_local(self):
         """Initialize local pyttsx3"""
@@ -103,12 +130,52 @@ class TTSEngine:
         if not output_file:
             output_file = tempfile.mktemp(suffix=".mp3")
 
-        if self.provider == "local":
+        if self.provider == "piper":
+            return await self._synthesize_piper(text, output_file)
+        elif self.provider == "local":
             return await self._synthesize_local(text, output_file)
         elif self.provider == "elevenlabs":
             return await self._synthesize_elevenlabs(text, output_file)
         elif self.provider == "openai":
             return await self._synthesize_openai(text, output_file)
+
+    async def _synthesize_piper(self, text: str, output_file: str) -> str:
+        """Synthesize with Piper TTS and optionally play via aplay"""
+        import shlex
+
+        binary = self.engine["binary"]
+        model  = self.engine["model"]
+
+        if not output_file:
+            output_file = tempfile.mktemp(suffix=".wav")
+
+        # piper reads from stdin, writes WAV to --output-file
+        proc = await asyncio.create_subprocess_exec(
+            binary,
+            "--model", model,
+            "--output-file", output_file,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await proc.communicate(input=text.encode())
+        if proc.returncode != 0:
+            logger.error(f"Piper failed: {stderr.decode().strip()}")
+            raise RuntimeError("Piper synthesis failed")
+
+        logger.info(f"Piper TTS saved to {output_file}")
+
+        # Play locally if enabled (Pi speaker)
+        if getattr(self.config, "piper_auto_play", True):
+            device = getattr(self.config, "piper_aplay_device", "plug:dmix")
+            play = await asyncio.create_subprocess_exec(
+                "aplay", f"-D{device}", output_file,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            await play.wait()
+
+        return output_file
 
     async def _synthesize_local(self, text: str, output_file: str) -> str:
         """Synthesize with pyttsx3"""
@@ -166,15 +233,21 @@ class STTEngine:
     async def initialize(self):
         """Initialize STT engine"""
         if self.provider == "local":
-            await self._init_local()
+            try:
+                await self._init_local()
+            except Exception as e:
+                logger.warning(f"STT (local/whisper) unavailable: {e} — listen() disabled")
+                self.engine = None
         elif self.provider == "openai":
-            await self._init_openai()
+            try:
+                await self._init_openai()
+            except Exception as e:
+                logger.warning(f"STT (openai) unavailable: {e} — listen() disabled")
+                self.engine = None
         else:
-            logger.error(f"Unknown STT provider: {self.provider}")
-            return False
-
-        logger.info(f"STT initialized with provider: {self.provider}")
-        return True
+            logger.warning(f"Unknown STT provider: {self.provider}")
+            self.engine = None
+        return True  # STT failure is non-fatal
 
     async def _init_local(self):
         """Initialize local Whisper"""
@@ -248,15 +321,23 @@ class VoiceSkill:
         self.stt = STTEngine(config)
 
     async def initialize(self):
-        """Initialize voice engines"""
-        tts_ok = await self.tts.initialize()
-        stt_ok = await self.stt.initialize()
+        """Initialize voice engines. TTS failure is fatal; STT failure is non-fatal."""
+        tts_ok = False
+        try:
+            tts_ok = await self.tts.initialize()
+        except Exception as e:
+            logger.warning(f"TTS init failed: {e}")
 
-        if not (tts_ok and stt_ok):
-            logger.error("Failed to initialize voice engines")
+        stt_ok = await self.stt.initialize()  # always returns True (non-fatal)
+
+        if not tts_ok:
+            logger.error("Voice skill: TTS unavailable — skill disabled")
             return False
 
-        logger.info("Voice skill initialized successfully")
+        if not stt_ok or not self.stt.engine:
+            logger.info("Voice skill: TTS-only mode (STT unavailable)")
+        else:
+            logger.info(f"Voice skill initialized — TTS: {self.tts.provider}, STT: {self.stt.provider}")
         return True
 
     async def speak(self, text: str) -> str:

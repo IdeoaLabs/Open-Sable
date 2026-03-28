@@ -217,7 +217,9 @@ LOG_LEVEL=INFO
 VISION_ENABLED=false
 DESKTOP_ENABLED=false
 WHATSAPP_ENABLED=false
-VOICE_ENABLED=false
+VOICE_ENABLED=true
+TTS_PROVIDER=piper
+PIPER_VOICE=en_US-kusal-medium
 AUTONOMOUS_ENABLED=false
 DATA_DIR=./data
 LOG_FILE=./logs/opensable.log
@@ -663,6 +665,65 @@ fi
 verify_opensable_package
 verify_directories
 
+# ── Piper TTS Installation ─────────────────────────────────────────────────────
+step "Installing Piper TTS (en_US-kusal-medium)"
+
+PIPER_DIR="$SCRIPT_DIR/piper"
+PIPER_BIN="$PIPER_DIR/piper"
+PIPER_VOICES_DIR="$HOME/.local/share/piper/voices"
+PIPER_VOICE="en_US-kusal-medium"
+PIPER_VOICE_URL_BASE="https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/kusal/medium"
+
+# Piper release tarball (aarch64 only — install-pi.sh already enforces 64-bit)
+PIPER_RELEASE_URL="https://github.com/rhasspy/piper/releases/latest/download/piper_linux_aarch64.tar.gz"
+
+if [[ ! -x "$PIPER_BIN" ]]; then
+    info "Downloading Piper binary..."
+    mkdir -p "$PIPER_DIR"
+    TMP_TAR=$(mktemp /tmp/piper_XXXXXX.tar.gz)
+    if curl -fsSL -o "$TMP_TAR" "$PIPER_RELEASE_URL" 2>/dev/null; then
+        tar -xzf "$TMP_TAR" -C "$PIPER_DIR" --strip-components=1 2>/dev/null || \
+        tar -xzf "$TMP_TAR" -C "$PIPER_DIR" 2>/dev/null
+        rm -f "$TMP_TAR"
+        chmod +x "$PIPER_BIN" 2>/dev/null || true
+        ok "Piper binary installed at ${BOLD}${PIPER_BIN}${RESET}"
+    else
+        rm -f "$TMP_TAR"
+        warn "Could not download Piper binary — TTS will use fallback."
+        PIPER_BIN=""
+    fi
+else
+    ok "Piper binary already present — skipping download."
+fi
+
+# Download voice model
+mkdir -p "$PIPER_VOICES_DIR"
+ONNX_FILE="$PIPER_VOICES_DIR/${PIPER_VOICE}.onnx"
+JSON_FILE="$PIPER_VOICES_DIR/${PIPER_VOICE}.onnx.json"
+
+if [[ ! -f "$ONNX_FILE" ]]; then
+    info "Downloading voice model ${BOLD}${PIPER_VOICE}${RESET}..."
+    if curl -fsSL -o "$ONNX_FILE" "${PIPER_VOICE_URL_BASE}/${PIPER_VOICE}.onnx" 2>/dev/null && \
+       curl -fsSL -o "$JSON_FILE" "${PIPER_VOICE_URL_BASE}/${PIPER_VOICE}.onnx.json" 2>/dev/null; then
+        ok "Voice model downloaded: ${BOLD}${ONNX_FILE}${RESET}"
+    else
+        rm -f "$ONNX_FILE" "$JSON_FILE"
+        warn "Could not download voice model — TTS will be disabled."
+    fi
+else
+    ok "Voice model already present — skipping download."
+fi
+
+# Quick smoke-test
+if [[ -x "$PIPER_BIN" && -f "$ONNX_FILE" ]]; then
+    if echo "Sable is ready." | "$PIPER_BIN" --model "$ONNX_FILE" --output_raw 2>/dev/null | \
+       aplay -q -f S16_LE -r 22050 -c1 -Dplug:dmix 2>/dev/null; then
+        ok "Piper TTS smoke-test ${BOLD}passed${RESET} — audio output works."
+    else
+        warn "Piper smoke-test skipped (no audio device or pcm not available yet — normal before reboot)."
+    fi
+fi
+
 # ── Configuration ─────────────────────────────────────────────────────────────
 step "Configuring Pi agent profile"
 
@@ -743,7 +804,13 @@ AGENT_PERSONALITY=helpful
 VISION_ENABLED=false            # local YOLOv8 requires torch
 DESKTOP_ENABLED=false           # requires Electron GUI
 WHATSAPP_ENABLED=false          # requires Node.js bridge
-VOICE_ENABLED=false             # Whisper CPU is too slow on Pi
+VOICE_ENABLED=true              # Piper TTS (local, fast, no GPU needed)
+TTS_PROVIDER=piper
+PIPER_BINARY=${PIPER_BIN:-piper}
+PIPER_VOICE=en_US-kusal-medium
+PIPER_MODEL_DIR=${PIPER_VOICES_DIR}
+PIPER_APLAY_DEVICE=plug:dmix
+PIPER_AUTO_PLAY=true
 AUTONOMOUS_ENABLED=false        # optional — enable once stable
 
 # ── Paths ─────────────────────────────────────────────────────────────────────

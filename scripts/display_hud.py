@@ -403,18 +403,26 @@ _SKILLS = [
     ("Goals",      r"goal|📋"),
     ("Memory",     r"memory|chroma|recall"),
     ("RAG",        r"rag|retriev|embed"),
-    ("LLM",        r"invoke_with_tools|llm call|LLM"),
-    ("Tools",      r"tool_call|execute_schema"),
+    ("LLM",        r"invoke_with_tools|llm call|Using.*LLM|LLM.*provider|LLM.*model"),
+    ("Tools",      r"Initialized \d+ tools|Tool synthesis initialized|tool_call|execute_schema"),
     ("AgentMon",   r"monitor|emit_monitor"),
     ("Node Gate",  r"node_gateway|gateway"),
     ("Cog Loop",   r"cognitive_loop|cognitive memory"),
-    ("Scheduler",  r"scheduler|schedule"),
-    ("Voice",      r"voice|stt|tts|whisper"),
+    ("Scheduler",  r"TaskQueue|task queue|scheduler|schedule"),
+    ("Voice",      r"TTS initialized|Piper TTS ready|Voice skill initialized|voice.*mode"),
 ]
+
+# HTTP access log lines pollute skill detection — exclude them
+_HTTP_ACCESS_RE = re.compile(
+    r'\d+\.\d+\.\d+\.\d+.*"(?:GET|POST|PUT|DELETE|HEAD|OPTIONS)\s',
+    re.IGNORECASE,
+)
 
 def _skill_status(pattern: str, log_lines: list) -> str:
     pat = re.compile(pattern, re.IGNORECASE)
-    matches = [l for l in log_lines[-300:] if pat.search(l)]
+    # Exclude HTTP access log noise before scanning
+    agent_lines = [l for l in log_lines if not _HTTP_ACCESS_RE.search(l)]
+    matches = [l for l in agent_lines[-600:] if pat.search(l)]
     if not matches:
         return "unknown"
     for ln in matches[-5:]:
@@ -6105,7 +6113,7 @@ def read_log(path: Path) -> list:
     try:
         raw = path.read_text(errors='replace').splitlines()
         out = [_ANSI_RE.sub('', l).strip() for l in raw if l.strip()]
-        return out[-300:]
+        return out[-2000:]
     except Exception:
         return []
 
@@ -6150,6 +6158,24 @@ def main():
                     last_size = sz
                     lines = read_log(log_path)
 
+            # ── Remote page-change IPC (written by gateway) ───────────────
+            _req_file = "/tmp/sable_hud_page_req"
+            if os.path.exists(_req_file):
+                try:
+                    with open(_req_file) as _f:
+                        _req = int(_f.read().strip())
+                    os.unlink(_req_file)
+                    if 0 <= _req < len(PAGE_NAMES):
+                        with _page_lock:
+                            _current_page[0] = _req
+                        _redraw_now.set()
+                        print(f"[display] remote page → {_req} ({PAGE_NAMES[_req]})")
+                except Exception:
+                    try:
+                        os.unlink(_req_file)
+                    except Exception:
+                        pass
+
             with _page_lock:
                 page = _current_page[0]
 
@@ -6164,7 +6190,27 @@ def main():
             else:
                 frame = render_brain()
 
-            write_fb(to_rgb565(frame.rotate(180)))
+            rotated = frame.rotate(180)
+            write_fb(to_rgb565(rotated))
+            # ── Export JPEG snapshot for web streaming ─────────────────────
+            # Save the original (unrotated) frame — the 180° rotation is only
+            # needed for the physical framebuffer orientation.
+            try:
+                _jpg_tmp = "/tmp/.sable_hud_frame_tmp.jpg"
+                frame.save(_jpg_tmp, "JPEG", quality=70)
+                os.replace(_jpg_tmp, "/tmp/sable_hud_frame.jpg")
+            except Exception:
+                pass
+            # ── Write status for gateway ────────────────────────────────────
+            try:
+                _status = json.dumps({"page": page, "page_name": PAGE_NAMES[page],
+                                      "pages": PAGE_NAMES})
+                _st_tmp = "/tmp/.sable_hud_status_tmp.json"
+                with open(_st_tmp, "w") as _sf:
+                    _sf.write(_status)
+                os.replace(_st_tmp, "/tmp/sable_hud_status.json")
+            except Exception:
+                pass
             errs = 0
 
         except KeyboardInterrupt:
