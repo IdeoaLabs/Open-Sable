@@ -86,6 +86,7 @@ declare -A PKG_IMPORTS=(
 REQUIRED_DIRS=(
     "$SCRIPT_DIR/data"
     "$SCRIPT_DIR/data/vectordb"
+    "$SCRIPT_DIR/data/wifi"
     "$SCRIPT_DIR/logs"
     "$SCRIPT_DIR/config"
     "$PROFILE_DIR"
@@ -444,6 +445,22 @@ if [[ "$MODE" == "repair" || "$MODE" == "verify" ]]; then
     verify_opensable_package  || EXIT_CODE=1
     verify_profile_config     || EXIT_CODE=1
     verify_connectivity
+
+    # WiFi skill tools check
+    step "Checking WiFi survival skill tools"
+    for _tool in aircrack-ng airodump-ng aireplay-ng airmon-ng nmcli iw; do
+        if command -v "$_tool" &>/dev/null; then
+            ok "  $_tool"
+        else
+            warn "  $_tool — missing"
+            if [[ "$MODE" == "repair" ]]; then
+                sudo apt-get install -y -qq aircrack-ng iw wireless-tools 2>/dev/null && \
+                    fixed "  aircrack-ng suite installed" || \
+                    error "  Could not install aircrack-ng — install manually: sudo apt install aircrack-ng"
+                break
+            fi
+        fi
+    done
     sep
     if (( EXIT_CODE == 0 )); then
         echo -e "\n${GREEN}${BOLD}  ✓  All checks passed.${RESET}\n"
@@ -531,6 +548,14 @@ PACKAGES=(
     libjpeg-dev
     zlib1g-dev
     libopenblas-dev     # speeds up numpy on ARM
+    # WiFi survival skill
+    aircrack-ng
+    iw
+    wireless-tools
+    # WiFi survival skill
+    aircrack-ng
+    iw
+    wireless-tools
 )
 
 MISSING=()
@@ -833,6 +858,21 @@ WEBCHAT_PORT=8789
 RATE_LIMIT_ENABLED=true
 RATE_LIMIT_REQUESTS=30
 RATE_LIMIT_WINDOW=60
+
+# ── WiFi Survival Skill ───────────────────────────────────────────────────────
+# Pwnagotchi-style autonomous WiFi hunting when internet is lost.
+# ONLY targets networks in WIFI_WHITELIST (networks you own/authorize).
+# Requires external USB WiFi adapter for monitor mode (wlan1).
+# Install tools: sudo apt install aircrack-ng
+WIFI_HUNT_ENABLED=false          # set to true to activate
+WIFI_MANAGED_INTERFACE=${WIFI_MGD_IFACE}
+WIFI_MONITOR_INTERFACE=${WIFI_MON_IFACE}
+WIFI_WHITELIST=${WIFI_WHITELIST}
+WIFI_WORDLIST=${WIFI_WORDLIST_PATH}
+WIFI_CREDENTIALS_FILE=./data/wifi/creds.json
+WIFI_HUNT_EPOCH_SECONDS=60
+WIFI_DEAUTH_ENABLED=false        # only enable on your own APs
+WIFI_CAPTURE_DIR=/tmp/sable_wifi
 EOF
 
 ok "Profile written to ${BOLD}${PROFILE_ENV}${RESET}"
@@ -878,6 +918,88 @@ else
     ok "aggr/dist/ present"
 fi
 
+# ── WiFi Survival Skill setup ────────────────────────────────────────────────
+step "Setting up WiFi Survival Skill"
+
+WIFI_WORDLIST_PATH="$SCRIPT_DIR/data/wifi/wordlist.txt"
+mkdir -p "$SCRIPT_DIR/data/wifi"
+
+# Try to get rockyou.txt from the system (installed with aircrack-ng)
+ROCKYOU_CANDIDATES=(
+    "/usr/share/wordlists/rockyou.txt"
+    "/usr/share/wordlists/rockyou.txt.gz"
+)
+GOT_WORDLIST=false
+for f in "${ROCKYOU_CANDIDATES[@]}"; do
+    if [[ -f "$f" && "$f" != *.gz ]]; then
+        cp "$f" "$WIFI_WORDLIST_PATH"
+        GOT_WORDLIST=true
+        ok "Wordlist: copied rockyou.txt → ${BOLD}${WIFI_WORDLIST_PATH}${RESET}"
+        break
+    elif [[ -f "$f" && "$f" == *.gz ]]; then
+        gunzip -c "$f" > "$WIFI_WORDLIST_PATH" 2>/dev/null && GOT_WORDLIST=true
+        ok "Wordlist: decompressed rockyou.txt.gz → ${BOLD}${WIFI_WORDLIST_PATH}${RESET}"
+        break
+    fi
+done
+
+if [[ "$GOT_WORDLIST" == false ]]; then
+    info "rockyou.txt not found — creating a minimal starter wordlist."
+    info "Replace ${BOLD}${WIFI_WORDLIST_PATH}${RESET} with a full wordlist for better results."
+    cat > "$WIFI_WORDLIST_PATH" << 'WLIST'
+# OpenSable starter WiFi wordlist
+# Replace with a full dictionary (e.g. rockyou.txt) for real use
+password
+12345678
+password1
+welcome1
+letmein
+admin123
+home12345
+wifi1234
+wireless
+router123
+WLIST
+    ok "Minimal wordlist created at ${BOLD}${WIFI_WORDLIST_PATH}${RESET}"
+fi
+
+# Verify aircrack-ng tools installed
+WIFI_TOOLS_OK=true
+for tool in aircrack-ng airodump-ng aireplay-ng airmon-ng; do
+    if command -v "$tool" &>/dev/null; then
+        ok "  $tool"
+    else
+        warn "  $tool — not found (install: sudo apt install aircrack-ng)"
+        WIFI_TOOLS_OK=false
+    fi
+done
+
+# Determine available WiFi interfaces
+WIFI_IFACES=($(iw dev 2>/dev/null | awk '/Interface/{print $2}' || true))
+WIFI_MGD_IFACE="wlan0"
+WIFI_MON_IFACE="wlan1"
+if (( ${#WIFI_IFACES[@]} >= 1 )); then
+    WIFI_MGD_IFACE="${WIFI_IFACES[0]}"
+fi
+if (( ${#WIFI_IFACES[@]} >= 2 )); then
+    WIFI_MON_IFACE="${WIFI_IFACES[1]}"
+fi
+info "Detected WiFi interfaces: ${WIFI_IFACES[*]:-none}"
+info "Managed (internet):  ${BOLD}${WIFI_MGD_IFACE}${RESET}"
+info "Monitor (hunt mode): ${BOLD}${WIFI_MON_IFACE}${RESET}  (needs external USB adapter w/ monitor mode)"
+
+# Ask for whitelist
+ask "Enter SSIDs you own to whitelist (comma-separated). Leave blank to skip:"
+echo -e "    ${DIM}Example: HomeWifi,OfficeNet${RESET}"
+read -r -p "    > " WIFI_WHITELIST_INPUT
+WIFI_WHITELIST="${WIFI_WHITELIST_INPUT:-}"
+
+if [[ "$WIFI_TOOLS_OK" == true ]]; then
+    ok "WiFi survival skill: all tools present."
+else
+    warn "Some WiFi tools missing — passive scan only until aircrack-ng is installed."
+fi
+
 # ── Final verification pass ───────────────────────────────────────────────────
 step "Final verification pass"
 verify_profile_config
@@ -920,5 +1042,12 @@ echo ""
 echo -e "  ${BOLD}Edit config:${RESET}  ${BOLD}${PROFILE_ENV}${RESET}"
 echo -e "  ${BOLD}Start:${RESET}        ${GREEN}${BOLD}./start-pi.sh${RESET}"
 echo -e "  ${BOLD}Repair log:${RESET}   ${DIM}${REPAIR_LOG}${RESET}"
+echo ""
+echo -e "  ${BOLD}WiFi Survival Skill:${RESET}"
+echo -e "    Wordlist:  ${DIM}${WIFI_WORDLIST_PATH}${RESET}"
+echo -e "    Managed:   ${DIM}${WIFI_MGD_IFACE}${RESET}  (internet interface)"
+echo -e "    Monitor:   ${DIM}${WIFI_MON_IFACE}${RESET}  (needs external USB adapter for hunt mode)"
+echo -e "    ${DIM}Edit WIFI_HUNT_ENABLED=true and set WIFI_WHITELIST in profile.env to activate.${RESET}"
+echo -e "    ${DIM}IMPORTANT: Only list networks you own or have authorization to test.${RESET}"
 echo ""
 sep

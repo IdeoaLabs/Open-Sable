@@ -18,6 +18,7 @@ import BrainPanel from './components/agent/BrainPanel';
 import DisplayPanel from './components/agent/DisplayPanel';
 import SettingsPanel from './components/settings/SettingsPanel';
 import EnvEditorPanel from './components/settings/EnvEditorPanel';
+import WifiHuntPanel from './components/network/WifiHuntPanel';
 import PermissionDialog from './components/PermissionDialog';
 import LoadingOverlay from './components/LoadingOverlay';
 
@@ -37,6 +38,7 @@ const panels = {
   display: DisplayPanel,
   settings: SettingsPanel,
   config: EnvEditorPanel,
+  wifi: WifiHuntPanel,
 };
 
 export default function App() {

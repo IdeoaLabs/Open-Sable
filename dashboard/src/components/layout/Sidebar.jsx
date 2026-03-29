@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   MessageSquare, Activity, Terminal, BarChart3,
   QrCode, Settings, Cpu, Smartphone,
-  TrendingUp, Sparkles, Clock, Brain, Orbit, Monitor, SlidersHorizontal,
+  TrendingUp, Sparkles, Clock, Brain, Orbit, Monitor, SlidersHorizontal, Wifi,
 } from 'lucide-react';
 
 const tabs = [
@@ -20,6 +20,7 @@ const tabs = [
   { id: 'devices',  icon: Smartphone,    label: 'Devices' },
   { id: 'display',  icon: Monitor,             label: 'Display' },
   { id: 'config',   icon: SlidersHorizontal,   label: 'Config' },
+  { id: 'wifi',     icon: Wifi,                label: 'WiFi' },
   { id: 'settings', icon: Settings,             label: 'Settings' },
 ];
 

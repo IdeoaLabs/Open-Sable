@@ -10,7 +10,7 @@ Environment:
   DISPLAY_INTERVAL   1.0
 """
 
-import os, sys, time, struct, re, urllib.request, io, json, subprocess
+import os, sys, time, struct, re, urllib.request, io, json, subprocess, math
 from pathlib import Path
 from datetime import datetime, timedelta
 
@@ -195,7 +195,7 @@ LOGS_Y  = STATS_Y + STATS_H + 1
 LOG_H   = 14
 LOG_PAD = 4
 
-PAGE_NAMES = ["HUD", "SKILLS", "LOGS", "AVATAR", "BRAIN"]
+PAGE_NAMES = ["HUD", "SKILLS", "LOGS", "AVATAR", "BRAIN", "WIFI"]
 
 # ── WiFi status (cached, refreshed every 5 s) ────────────────────────────────
 _wifi_cache: dict = {"ssid": "", "signal": 0, "connected": False}
@@ -1111,6 +1111,308 @@ def render_brain() -> Image.Image:
         rect(draw, W - 5, bar_y, W - 1, bar_y + bar_h, fill=C["dim"])
 
     draw_nav(draw, 4)
+    return img
+
+
+# ── PAGE 5: WIFI HUNTER ──────────────────────────────────────────────────────
+
+_WIFI_HUD_FILE   = Path("/tmp/sable_wifi_hud.json")
+_wifi_hud_cache: dict = {}
+_wifi_hud_mtime: float = 0.0
+
+_STATE_GLYPH = {
+    "idle":       "◉",
+    "hunting":    "◎",
+    "excited":    "★",
+    "capturing":  "⊙",
+    "deauthing":  "⊗",
+    "cracking":   "⊛",
+    "connecting": "⊕",
+    "happy":      "✓",
+    "bored":      "◌",
+    "lonely":     "◍",
+    "smart":      "⊞",
+}
+
+_STATE_WIFI_COLORS = {
+    "idle":       ( 70,  80, 110),
+    "hunting":    (  0, 212, 255),
+    "excited":    (255, 210,  40),
+    "capturing":  ( 80, 220, 140),
+    "deauthing":  (255, 140,  40),
+    "cracking":   (200,  80, 255),
+    "connecting": (  0, 180, 255),
+    "happy":      ( 20, 230, 120),
+    "bored":      (120, 120, 130),
+    "lonely":     ( 80,  80,  95),
+    "smart":      (120, 220, 200),
+}
+
+
+def _read_wifi_hud() -> dict:
+    global _wifi_hud_cache, _wifi_hud_mtime
+    try:
+        mt = _WIFI_HUD_FILE.stat().st_mtime
+        if mt != _wifi_hud_mtime:
+            _wifi_hud_mtime = mt
+            _wifi_hud_cache = json.loads(_WIFI_HUD_FILE.read_text())
+    except Exception:
+        pass
+    return _wifi_hud_cache
+
+
+def _hex_rgb(h: str):
+    h = h.lstrip('#')
+    return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
+
+
+def render_wifi() -> Image.Image:
+    img  = Image.new('RGB', (W, H), C["bg"])
+    draw = ImageDraw.Draw(img)
+    tick = int(time.time() * 2) % 2 == 0
+
+    # ── Header ──────────────────────────────────────────────────────────────
+    rect(draw, 0, 0, W, HDR_H, fill=C["header_bg"])
+    draw.line([(0, 0), (W, 0)], fill=C["accent"], width=1)
+    hline(draw, HDR_H - 1, color=C["accent"])
+    draw.text((10, 8), "◈ WIFI HUNTER", font=F["title"], fill=C["accent"])
+    draw.text((W - 80, 6), datetime.now().strftime("%H:%M:%S"), font=F["time"], fill=C["white"])
+
+    data = _read_wifi_hud()
+
+    if not data:
+        lf  = _font(_SANS_BOLD, 14)
+        sf  = _font(_MONO, 11)
+        mid = (HDR_H + H - NAV_H) // 2
+        msg = "wifi skill not running"
+        mw  = int(draw.textlength(msg, font=lf))
+        draw.text(((W - mw) // 2, mid - 20), msg, font=lf, fill=C["dim"])
+        hint = "set WIFI_HUNT_ENABLED=true"
+        hw   = int(draw.textlength(hint, font=sf))
+        draw.text(((W - hw) // 2, mid + 4), hint, font=sf, fill=C["dim"])
+        draw_nav(draw, 5)
+        return img
+
+    state_str   = data.get("state", "idle")
+    message     = data.get("message", "")
+    online      = data.get("online", True)
+    current     = data.get("current_ssid") or ""
+    ai          = data.get("ai", {})
+    tools       = data.get("tools", {})
+    running     = data.get("running", False)
+    networks    = data.get("networks", [])
+    activity    = data.get("activity_log", [])
+    epoch_start = data.get("epoch_start", 0.0)
+    epoch_dur   = data.get("epoch_duration", 300)
+    monitor_act = data.get("monitor_active", False)
+
+    sc = _STATE_WIFI_COLORS.get(state_str, C["dim"])
+    gl = _STATE_GLYPH.get(state_str, "·")
+
+    HUNTING = {"hunting", "excited", "capturing", "deauthing",
+               "cracking", "connecting"}
+
+    # ── Radar (left panel 120 px wide) ──────────────────────────────────────
+    RADAR_R  = 48
+    RADAR_CX = 62
+    RADAR_CY = HDR_H + 12 + RADAR_R
+
+    # rings
+    for ring in [RADAR_R, RADAR_R * 3 // 4, RADAR_R // 2, RADAR_R // 4]:
+        draw.ellipse([RADAR_CX - ring, RADAR_CY - ring,
+                      RADAR_CX + ring, RADAR_CY + ring],
+                     outline=(0, 35, 18))
+    # cross hairs
+    cr_c = (0, 45, 22)
+    draw.line([(RADAR_CX - RADAR_R, RADAR_CY),
+               (RADAR_CX + RADAR_R, RADAR_CY)], fill=cr_c)
+    draw.line([(RADAR_CX, RADAR_CY - RADAR_R),
+               (RADAR_CX, RADAR_CY + RADAR_R)], fill=cr_c)
+    # outer glow ring
+    draw.ellipse([RADAR_CX - RADAR_R, RADAR_CY - RADAR_R,
+                  RADAR_CX + RADAR_R, RADAR_CY + RADAR_R],
+                 outline=sc)
+
+    # sweep line (rotates based on real time)
+    if state_str in HUNTING or monitor_act:
+        angle_deg = (time.time() * 72) % 360   # ~12 s / revolution
+        angle_rad = math.radians(angle_deg)
+        sx = int(RADAR_CX + RADAR_R * math.cos(angle_rad))
+        sy = int(RADAR_CY + RADAR_R * math.sin(angle_rad))
+        draw.line([(RADAR_CX, RADAR_CY), (sx, sy)], fill=sc, width=1)
+        # trailing fade
+        for trail in range(1, 6):
+            ta   = math.radians(angle_deg - trail * 15)
+            tsx  = int(RADAR_CX + RADAR_R * math.cos(ta))
+            tsy  = int(RADAR_CY + RADAR_R * math.sin(ta))
+            fade = max(0, int(sc[1] * (6 - trail) / 8))
+            trail_c = (0, fade, fade // 3)
+            draw.line([(RADAR_CX, RADAR_CY), (tsx, tsy)], fill=trail_c)
+
+    # network dots
+    for net in networks[:10]:
+        bssid = net.get("bssid") or net.get("ssid") or ""
+        h = 5381
+        for ch in bssid:
+            h = ((h << 5) + h + ord(ch)) & 0xFFFFFFFF
+        dot_angle = ((h & 0xFFFF) / 0xFFFF) * 2 * math.pi
+        dot_r     = 10 + ((h >> 16 & 0xFF) / 255) * (RADAR_R - 14)
+        dx = int(RADAR_CX + dot_r * math.cos(dot_angle))
+        dy = int(RADAR_CY + dot_r * math.sin(dot_angle))
+        sig = net.get("signal", 50)
+        dot_c = (0, 200, 80) if sig > 60 else (220, 180, 0) if sig > 30 else (220, 50, 50)
+        draw.ellipse([dx - 2, dy - 2, dx + 2, dy + 2], fill=dot_c)
+
+    # center dot
+    draw.ellipse([RADAR_CX - 3, RADAR_CY - 3,
+                  RADAR_CX + 3, RADAR_CY + 3], fill=sc)
+
+    # monitor badge
+    if monitor_act:
+        mf  = _font(_SANS_BOLD, 8)
+        mon_c = (255, 120, 30) if tick else (80, 40, 10)
+        mw    = int(draw.textlength("◻ MON", font=mf))
+        draw.text((RADAR_CX - mw // 2, RADAR_CY + RADAR_R + 4),
+                  "◻ MON", font=mf, fill=mon_c)
+
+    # ── Right column ─────────────────────────────────────────────────────────
+    RX = RADAR_CX + RADAR_R + 10
+    RW = W - RX - 4
+    ry = HDR_H + 6
+
+    # state badge
+    sf2   = _font(_SANS_BOLD, 12)
+    sname = state_str.upper()
+    sw    = int(draw.textlength(sname, font=sf2))
+    badge_bg = tuple(max(0, v - 80) for v in sc)
+    rect(draw, RX, ry, RX + sw + 14, ry + 18, fill=badge_bg)
+    rect(draw, RX, ry, RX + sw + 14, ry + 18, outline=sc)
+    draw.text((RX + 7, ry + 3), sname, font=sf2, fill=sc)
+
+    # online/offline badge
+    on_c  = C["ok"] if online else C["err"]
+    on_l  = ("●" if tick else "○") + (" ONLINE" if online else " OFFLINE")
+    on_f  = _font(_SANS_BOLD, 9)
+    draw.text((RX + sw + 20, ry + 4), on_l, font=on_f, fill=on_c)
+    ry += 22
+
+    # message
+    mf2 = _font(_MONO, 10)
+    draw.text((RX, ry), message[:40], font=mf2, fill=C["text"])
+    ry += 14
+
+    # target SSID
+    if current:
+        draw.text((RX, ry), "▶ " + current[:22], font=_font(_SANS_BOLD, 10), fill=C["warn"])
+        ry += 13
+
+    # AI chips (2-column grid)
+    epsilon = ai.get("epsilon", 0)
+    epoch   = ai.get("epoch", 0)
+    hs      = ai.get("total_handshakes", 0)
+    mood    = ai.get("mood", "—")
+    exc     = ai.get("excitement", 0)
+    bored   = ai.get("boredom", 0)
+
+    chips = [
+        (f"ε {epsilon:.2f}", (80, 160, 255)),
+        (f"ep {epoch}",      (160, 100, 255)),
+        (f"♥ {hs}",          (255, 100, 100)),
+        (f"{mood[:6]}",      sc),
+    ]
+    cf  = _font(_MONO, 9)
+    cw  = RW // 2
+    for i, (lbl, lc) in enumerate(chips):
+        cx2 = RX + (i % 2) * cw
+        cy2 = ry + (i // 2) * 12
+        draw.text((cx2, cy2), lbl, font=cf, fill=lc)
+    ry += 26
+
+    # epoch timer bar
+    if epoch_dur > 0 and epoch_start > 0:
+        elapsed   = time.time() - epoch_start
+        pct_ep    = min(1.0, max(0.0, elapsed / epoch_dur))
+        rem_secs  = max(0, int(epoch_dur - elapsed))
+        ef = _font(_SANS, 8)
+        draw.text((RX, ry), f"EP {rem_secs}s", font=ef, fill=C["text2"])
+        progress_bar(draw, RX + 42, ry + 1, RW - 44, 6, pct_ep, sc)
+        ry += 11
+
+    # tool pills
+    pill_f = _font(_MONO, 8)
+    px2    = RX
+    for key, abbr in [("aircrack", "AC"), ("airodump", "AD"), ("aireplay", "AR")]:
+        avail = tools.get(key, False)
+        tc    = C["ok"] if avail else C["err"]
+        draw.text((px2, ry), abbr, font=pill_f, fill=tc)
+        px2 += int(draw.textlength(abbr, font=pill_f)) + 8
+    ry += 11
+
+    # boredom / excitement bars
+    draw.text((RX, ry), "B", font=_font(_MONO, 8), fill=C["warn"])
+    half = (RW - 20) // 2
+    progress_bar(draw, RX + 10, ry + 1, half, 5,
+                 min(1.0, bored / 20), C["warn"])
+    draw.text((RX + 14 + half, ry), "E", font=_font(_MONO, 8), fill=C["ok"])
+    progress_bar(draw, RX + 24 + half, ry + 1, half, 5,
+                 min(1.0, exc / 10), C["ok"])
+
+    # ── Network list (below radar) ───────────────────────────────────────────
+    nl_y = RADAR_CY + RADAR_R + 16
+    if nl_y + 10 < H - NAV_H - 42:
+        nets_sorted = sorted(networks, key=lambda n: n.get("signal", 0), reverse=True)[:4]
+        nf = _font(_MONO, 9)
+        draw.text((4, nl_y - 11), "NETS", font=_font(_SANS_BOLD, 8), fill=C["text2"])
+        for ni, net in enumerate(nets_sorted):
+            ny   = nl_y + ni * 13
+            ssid = (net.get("ssid") or "?")[:13]
+            sig  = net.get("signal", 0)
+            wl   = net.get("whitelisted", False)
+            nc   = (0, 200, 80) if wl else (0, 180, 255) if sig > 60 else C["text2"]
+            draw.text((4, ny), ("✓" if wl else " ") + " " + ssid, font=nf, fill=nc)
+            sw_str = f"{sig}%"
+            draw.text((RADAR_CX * 2 - int(draw.textlength(sw_str, font=nf)) - 2, ny),
+                      sw_str, font=nf, fill=nc)
+
+    # ── Activity log strip ───────────────────────────────────────────────────
+    # Header row: LOG left, ACTIVE/IDLE status right (no separate row below)
+    ACT_Y = H - NAV_H - 46
+    hline(draw, ACT_Y, color=C["border"])
+    draw.text((4, ACT_Y + 2), "LOG", font=_font(_SANS_BOLD, 8), fill=C["text2"])
+    if running:
+        run_c  = C["ok"] if tick else (0, 60, 30)
+        ri_f   = _font(_SANS_BOLD, 8)
+        ri_lbl = "ACTIVE"
+        ri_w   = int(draw.textlength(ri_lbl, font=ri_f))
+        draw.ellipse([W - ri_w - 16, ACT_Y + 3, W - ri_w - 9, ACT_Y + 10], fill=run_c)
+        draw.text((W - ri_w - 6, ACT_Y + 2), ri_lbl, font=ri_f, fill=run_c)
+    else:
+        id_f = _font(_SANS_BOLD, 8)
+        draw.text((W - int(draw.textlength("IDLE", font=id_f)) - 6, ACT_Y + 2),
+                  "IDLE", font=id_f, fill=C["dim"])
+
+    EV_COLORS_PI = {
+        "init": "#3b82f6", "scan": "#22c55e", "target": "#eab308",
+        "monitor": "#06b6d4", "deauth": "#ef4444", "capture": "#f97316",
+        "crack": "#a855f7", "connect": "#22c55e", "fail": "#ef4444",
+        "happy": "#22c55e", "error": "#f59e0b",
+    }
+    EV_GLYPH = {
+        "init": "!",  "scan": "o",  "target": "@",   "monitor": "+",
+        "deauth": "x","capture": "~","crack": "*",    "connect": "v",
+        "fail": "x",  "happy": "v", "error": "!",
+    }
+    recent = list(reversed(activity))[:3]
+    af = _font(_MONO, 9)
+    for li, ev in enumerate(recent):
+        ey    = ACT_Y + 12 + li * 11
+        etype = ev.get("type", "")
+        emsg  = ev.get("msg", "")
+        glyph = EV_GLYPH.get(etype, ".")
+        eg    = _hex_rgb(EV_COLORS_PI.get(etype, "#888888"))
+        draw.text(( 4, ey), glyph, font=af, fill=eg)
+        draw.text((14, ey), emsg[:58], font=af, fill=C["text"])
+    draw_nav(draw, 5)
     return img
 
 
@@ -6187,8 +6489,10 @@ def main():
                 frame = render_logview(lines or [])
             elif page == 3:
                 frame = render_avatar()
-            else:
+            elif page == 4:
                 frame = render_brain()
+            else:
+                frame = render_wifi()
 
             rotated = frame.rotate(180)
             write_fb(to_rgb565(rotated))

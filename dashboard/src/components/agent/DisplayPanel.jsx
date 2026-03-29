@@ -162,8 +162,8 @@ export default function DisplayPanel() {
         )}
 
         <p style={s.hint}>
-          {pages.length > 0 && curPage !== null ? `Página: ${pages[curPage]}  ·  ` : ''}
-          {mode === 'stream' ? 'MJPEG — actualización automática' : 'Snapshot — cada 2 s'}
+          {pages.length > 0 && curPage !== null ? `Page: ${pages[curPage]}  ·  ` : ''}
+          {mode === 'stream' ? 'MJPEG — auto refresh' : 'Snapshot — every 2 s'}
         </p>
       </div>
     </div>

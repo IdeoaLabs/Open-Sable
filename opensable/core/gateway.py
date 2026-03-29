@@ -279,6 +279,9 @@ class Gateway:
         self._monitor_clients: Set[_Client] = set()
         self._monitor_agent_wired = False
 
+        # WiFi survival skill (optional, Pi-specific)
+        self._wifi_skill = None
+
         # aiohttp internals
         self._app: Optional[web.Application] = None
         self._runner: Optional[web.AppRunner] = None
@@ -309,6 +312,10 @@ class Gateway:
         # Agent environment editor
         app.router.add_get("/api/env", self._env_get_handler)
         app.router.add_post("/api/env", self._env_post_handler)
+
+        # WiFi survival skill
+        app.router.add_get("/api/wifi", self._wifi_status_handler)
+        app.router.add_post("/api/wifi", self._wifi_command_handler)
 
         # Polymarket public API proxy
         app.router.add_get("/api/polymarket/{endpoint:.*}", self._polymarket_proxy)
@@ -771,6 +778,65 @@ class Gateway:
             text=json.dumps({"ok": True, "applied": applied, "added": added,
                              "deleted": deleted, "missing": missing}),
         )
+
+    # ── WiFi Survival handlers ────────────────────────────────────────────────
+
+    async def _wifi_status_handler(self, request: web.Request) -> web.Response:
+        """GET /api/wifi — return WifiSurvivalSkill status as JSON."""
+        if self._wifi_skill is None:
+            return web.Response(
+                status=503,
+                content_type="application/json",
+                text=json.dumps({"error": "wifi skill not running",
+                                 "hint": "Set WIFI_HUNT_ENABLED=true in profile.env"}),
+            )
+        return web.Response(
+            content_type="application/json",
+            text=json.dumps(self._wifi_skill.status()),
+        )
+
+    async def _wifi_command_handler(self, request: web.Request) -> web.Response:
+        """POST /api/wifi — send commands to WifiSurvivalSkill."""
+        if self._wifi_skill is None:
+            return web.Response(
+                status=503,
+                content_type="application/json",
+                text=json.dumps({"error": "wifi skill not running"}),
+            )
+        try:
+            body = await request.json()
+        except Exception:
+            return web.Response(status=400, content_type="application/json",
+                                text='{"error":"invalid JSON body"}')
+
+        cmd = body.get("cmd", "")
+        if cmd == "force_hunt":
+            asyncio.create_task(self._wifi_skill.force_hunt())
+        elif cmd == "add_whitelist":
+            ssid = str(body.get("ssid", "")).strip()
+            if not ssid:
+                return web.Response(status=400, content_type="application/json",
+                                    text='{"error":"ssid required"}')
+            added = self._wifi_skill.add_to_whitelist(ssid)
+            return web.Response(content_type="application/json",
+                                text=json.dumps({"ok": True, "added": added}))
+        elif cmd == "add_credential":
+            ssid     = str(body.get("ssid", "")).strip()
+            password = str(body.get("password", ""))
+            bssid    = str(body.get("bssid", "00:00:00:00:00:00"))
+            if not ssid or not password:
+                return web.Response(status=400, content_type="application/json",
+                                    text='{"error":"ssid and password required"}')
+            self._wifi_skill.add_credential(ssid, bssid, password)
+        elif cmd == "stop":
+            self._wifi_skill._enabled = False
+        elif cmd == "start":
+            self._wifi_skill._enabled = True
+        else:
+            return web.Response(status=400, content_type="application/json",
+                                text=json.dumps({"error": f"unknown cmd: {cmd}"}))
+
+        return web.Response(content_type="application/json", text='{"ok":true}')
 
     async def _polymarket_proxy(self, request: web.Request) -> web.Response:
         """Proxy requests to Polymarket public APIs (Gamma + CLOB)."""
@@ -1272,6 +1338,15 @@ class Gateway:
 
         self._running = True
         self._hb_task = asyncio.create_task(self._heartbeat())
+
+        # WiFi survival skill — activate if enabled in profile.env
+        if os.environ.get("WIFI_HUNT_ENABLED", "false").lower() == "true":
+            try:
+                from opensable.skills.network.wifi_survival_skill import WifiSurvivalSkill
+                self._wifi_skill = WifiSurvivalSkill(self.config)
+                await self._wifi_skill.initialize()
+            except Exception as _wifi_exc:
+                logger.warning("[Gateway] WifiSurvivalSkill init failed: %s", _wifi_exc)
 
         # Wire up the interactive permission confirmation callback so that
         # "ask" permissions are forwarded to the user via WebSocket.

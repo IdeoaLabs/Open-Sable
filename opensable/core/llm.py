@@ -1837,6 +1837,8 @@ class CloudLLM:
 
 async def check_ollama_models(base_url: str = "http://localhost:11434") -> list:
     """Check which models are available in Ollama"""
+    if not base_url:
+        return []
     try:
         client = ollama.Client(host=base_url)
         models = client.list()
@@ -1911,9 +1913,10 @@ async def list_all_models(config) -> dict:
 
     # Ollama models
     try:
-        ollama_models = await check_ollama_models(config.ollama_base_url)
-        if ollama_models:
-            result["ollama"] = ollama_models
+        if config.ollama_base_url:
+            ollama_models = await check_ollama_models(config.ollama_base_url)
+            if ollama_models:
+                result["ollama"] = ollama_models
     except Exception:
         pass
 
