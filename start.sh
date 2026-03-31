@@ -331,6 +331,16 @@ _kill_orphans() {
 }
 
 do_start() {
+    # ── Supply-chain security check ──────────────────────────────────
+    if [ -f "$DIR/scripts/depshield.py" ] && [ -f "$DIR/.depshield.json" ]; then
+        echo "🛡️  depshield: Pre-flight supply-chain scan..."
+        if python "$DIR/scripts/depshield.py" --root "$DIR" scan 2>/dev/null; then
+            echo "  ✅ Supply chain clean"
+        else
+            echo "  ⚠️  Dependency changes detected — review with: python scripts/depshield.py audit"
+        fi
+    fi
+
     # Clean stale PID file if process is dead
     if [ -f "$PIDFILE" ] && ! kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
         rm -f "$PIDFILE"

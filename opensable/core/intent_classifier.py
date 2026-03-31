@@ -226,7 +226,18 @@ _SOCIAL = re.compile(
 
 # ── Image analysis (not screenshot) ──────────────────────────────────────────
 _IMAGE_ANALYZE = re.compile(
-    r'\b(analyze\s+(this\s+)?(image|photo|picture)|what.{0,20}image|describe\s+(the\s+)?image)\b',
+    r'\b('
+    r'analyze\s+(this\s+)?(image|photo|picture)'
+    r'|what.{0,20}image'
+    r'|describe\s+(the\s+)?image'
+    r'|generat[e]?\s+(a[n]?\s+)?(image|photo|picture|art|illustration)'
+    r'|create\s+(a[n]?\s+)?(image|photo|picture|art|illustration)'
+    r'|make\s+(a[n]?\s+|me\s+(a[n]?\s+)?)?(image|photo|picture|art|illustration)'
+    r'|draw\s+(a[n]?\s+|me\s+(a[n]?\s+)?)?'
+    r'|paint\s+(a[n]?\s+|me\s+(a[n]?\s+)?)?'
+    r'|render\s+(a[n]?\s+)?(image|photo|picture|scene)'
+    r'|image\s+of\b'
+    r')\b',
     re.IGNORECASE,
 )
 

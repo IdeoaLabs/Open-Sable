@@ -35,6 +35,12 @@ from opensable.core.commands import CommandHandler
 from opensable.core.heartbeat import HeartbeatManager
 from opensable.core.voice_handler import VoiceMessageHandler
 from opensable.core.image_analyzer import ImageAnalyzer, handle_telegram_photo
+from opensable.interfaces.telegram_group import (
+    PromptPoisonFilter,
+    GroupMemory,
+    EngagementEngine,
+    RateLimiter,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -230,6 +236,18 @@ class TelegramInterface:
         # Image analyzer
         self.image_analyzer = ImageAnalyzer(config)
 
+        # Group intelligence layer
+        self._poison_filter = PromptPoisonFilter()
+        self._group_memory = GroupMemory(
+            max_messages=getattr(config, "telegram_group_context_size", 30)
+        )
+        self._engagement = None  # initialized after bot.get_me in start()
+        self._rate_limiter = RateLimiter(max_requests=5, window_sec=120)
+        self._group_only = getattr(config, "telegram_group_only", False)
+        self._allowed_groups = set(getattr(config, "telegram_allowed_groups", []))
+        self._anti_poison = getattr(config, "telegram_anti_poison", True)
+        self._engagement_level = getattr(config, "telegram_group_engagement", "medium")
+
     # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
@@ -251,16 +269,32 @@ class TelegramInterface:
         # Register callback query handler for inline buttons
         self.dp.callback_query.register(self._h_callback)
 
+        # Initialize engagement engine (needs bot username)
+        bot_me = await self.bot.get_me()
+        self._bot_username = bot_me.username or ""
+        self._bot_id = bot_me.id
+        self._engagement = EngagementEngine(
+            bot_name=self._bot_username or self.config.agent_name,
+            engagement=self._engagement_level,
+        )
+        logger.info(
+            f"Group mode: only={self._group_only}  "
+            f"engagement={self._engagement_level}  "
+            f"anti_poison={self._anti_poison}"
+        )
+
         # Start heartbeat for proactive checking
         from opensable.core.heartbeat import (
             check_system_health,
             check_pending_tasks,
             check_idle_time,
+            check_supply_chain,
         )
 
         self.heartbeat.register_check(check_system_health, "System Health")
         self.heartbeat.register_check(check_pending_tasks, "Pending Goals")
         self.heartbeat.register_check(check_idle_time, "Idle Check")
+        self.heartbeat.register_check(check_supply_chain, "Supply Chain")
 
         # Wire heartbeat alerts to Telegram
         owner_id = self.pairing.owner_id()
@@ -609,40 +643,120 @@ class TelegramInterface:
             await message.answer(f"❌ Image analysis error: {str(e)}")
 
     async def _h_message(self, message: Message):
-        """Main message handler,  slash commands + regular chat with streaming."""
+        """Main message handler with group intelligence layer."""
         if not message.text:
             return
 
         user_id = str(message.from_user.id)
+        username = message.from_user.username or message.from_user.first_name or user_id
+        text = message.text.strip()
+        is_group = message.chat.type in (ChatType.GROUP, ChatType.SUPERGROUP)
+        group_id = str(message.chat.id)
 
-        # Auth gate
-        if not await self._check_auth(message):
+        # ── DM gate: group-only mode ───────────────────────────────────
+        if self._group_only and not is_group:
+            is_owner = user_id == self.pairing.owner_id()
+            if not is_owner:
+                await message.answer(
+                    "Hey — I only chat inside the group. "
+                    "Come talk to me there!"
+                )
+                return
+            # Owner DMs always allowed (for /pair, admin, etc.)
+
+        # ── Group allowlist ────────────────────────────────────────────
+        if is_group and self._allowed_groups and group_id not in self._allowed_groups:
+            return  # silently ignore groups we're not configured for
+
+        # ── Auth gate (pairing) ────────────────────────────────────────
+        if not is_group:
+            # Private chats still use full pairing auth
+            if not await self._check_auth(message):
+                return
+
+        # ── Anti-prompt-poisoning filter ───────────────────────────────
+        if self._anti_poison and not self._poison_filter.is_safe(text):
+            matched = self._poison_filter.matched_pattern(text)
+            logger.warning(
+                f"[Telegram] Prompt injection blocked from {username} "
+                f"({user_id}): {matched}"
+            )
+            if is_group:
+                return  # silently drop in groups
+            await message.answer("Nice try. 🛡️")
             return
 
-        # Group activation check
-        is_group = message.chat.type in (ChatType.GROUP, ChatType.SUPERGROUP)
+        # ── Group intelligence layer ───────────────────────────────────
         if is_group:
-            session_tmp = self.session_manager.get_or_create_session(
-                user_id=user_id,
-                channel=f"telegram_group_{message.chat.id}",
-                config=SessionConfig(model=self.config.default_model),
+            # Always observe — even if we don't respond
+            self._group_memory.observe(
+                group_id, username, user_id, text, is_bot=False,
             )
-            activation = session_tmp.metadata.get("activation_mode", "mention")
-            if activation == "mention":
-                bot_info = await self.bot.get_me()
-                bot_username = bot_info.username or ""
-                if f"@{bot_username}" not in (message.text or ""):
+
+            # Detect mention / reply-to-bot
+            is_mentioned = (
+                f"@{self._bot_username}" in text if self._bot_username else False
+            )
+            is_reply_to_bot = (
+                message.reply_to_message is not None
+                and message.reply_to_message.from_user is not None
+                and message.reply_to_message.from_user.id == self._bot_id
+            )
+
+            # Strip @mention from text before processing
+            if is_mentioned and self._bot_username:
+                text = text.replace(f"@{self._bot_username}", "").strip()
+
+            # Slash commands in groups always handled if directed at bot
+            if text.startswith("/"):
+                pass  # fall through to command handling below
+            else:
+                # Engagement decision
+                score = self._engagement.score(
+                    text, self._group_memory, group_id,
+                    is_reply_to_bot=is_reply_to_bot,
+                    is_mentioned=is_mentioned,
+                )
+                decision = self._engagement.decide(score)
+
+                if decision == "no":
+                    return  # stay silent, we observed already
+
+                if decision == "maybe":
+                    # Tier 2: lightweight LLM tiebreak
+                    llm = getattr(self.agent, "llm", None)
+                    if llm and hasattr(llm, "acomplete"):
+                        ctx = self._group_memory.format_context(group_id, 15)
+                        should = await EngagementEngine.llm_tiebreak(
+                            llm, ctx, username, text,
+                        )
+                        if not should:
+                            logger.debug(
+                                f"[Telegram] LLM tiebreak → skip "
+                                f"(score={score}, user={username})"
+                            )
+                            return
+                    else:
+                        # No LLM available for tiebreak → skip borderline
+                        return
+
+                # Rate limit per user in groups
+                if not self._rate_limiter.allow(user_id):
+                    logger.debug(f"[Telegram] Rate-limited {username} in group")
                     return
 
-        # Session,  per user, per channel
-        channel_key = f"telegram_group_{message.chat.id}" if is_group else "telegram"
+                logger.info(
+                    f"[Telegram] Engaging in group (score={score}, "
+                    f"mention={is_mentioned}, reply={is_reply_to_bot})"
+                )
+
+        # ── Session — per user, per channel ────────────────────────────
+        channel_key = f"telegram_group_{group_id}" if is_group else "telegram"
         session = self.session_manager.get_or_create_session(
             user_id=user_id,
             channel=channel_key,
             config=SessionConfig(model=self.config.default_model),
         )
-
-        text = message.text.strip()
 
         # ── Slash command handling ──────────────────────────────────────
         if text.startswith("/"):
@@ -655,7 +769,15 @@ class TelegramInterface:
             if not result.should_continue:
                 return
 
-        # ── Regular message,  streamed response ─────────────────────────
+        # ── Inject group context so agent understands the conversation ─
+        agent_text = text
+        if is_group:
+            ctx = self._group_memory.format_context(group_id, 12)
+            if ctx:
+                agent_text = (
+                    f"[Recent group conversation:\n{ctx}\n]\n\n"
+                    f"{username} says: {text}"
+                )
         await message.bot.send_chat_action(message.chat.id, "typing")
 
         # Add user message to session history
@@ -665,12 +787,20 @@ class TelegramInterface:
         # Build conversation history to pass to agent
         history = session.get_llm_messages(limit=20)
 
-        response = await self._stream_to_telegram(message, user_id, text, history)
+        response = await self._stream_to_telegram(
+            message, user_id, agent_text, history,
+        )
 
-        # Persist assistant reply
+        # Persist assistant reply + group memory bookkeeping
         if response:
             session.add_message("assistant", response)
             self.session_manager._save_session(session)
+            if is_group:
+                self._group_memory.observe(
+                    group_id, self._bot_username or "sable",
+                    str(self._bot_id), response, is_bot=True,
+                )
+                self._group_memory.log_response(group_id)
 
         # ── Follow-through: if the agent promised to investigate, do it ──
         if response and self._promises_followup(response):

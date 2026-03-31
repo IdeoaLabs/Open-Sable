@@ -2,68 +2,53 @@
 # SableCore,  Core Requirements (minimal install, ~100 MB)
 # ===================================================================
 # For optional/heavy deps: pip install -r requirements-extras.txt
-
 # Core Framework
 pydantic>=2.5.0,<3
 python-dotenv>=1.0.0
-
 # CLI
 rich>=13.7.0
-
 # LLM / AI
 ollama>=0.1.6,<1
 openai>=1.0.0        # OpenAI, OpenRouter, DeepSeek, Groq, Together, xAI, Mistral, Kimi, Qwen
 google-genai>=1.0.0  # Gemini (Google)
 anthropic>=0.40.0    # Anthropic Claude
 cohere>=5.0.0        # Cohere Command
-
 # Memory & Vector DB
 chromadb>=0.4.22,<1
 tiktoken>=0.5.2,<1
-
 # HTTP & Networking
 aiohttp>=3.9.0,<4
 httpx>=0.26.0,<1
-
 # File I/O
 aiofiles>=23.2.1
-
 # Code Execution & Sandbox
 RestrictedPython>=6.2,<8
-
 # Monitoring
 psutil>=5.9.0
 py-cpuinfo>=9.0.0
-
 # Browser Automation
 playwright>=1.40.0
 beautifulsoup4>=4.12.0
 fake-useragent>=1.4.0
-
 # Misc
 python-dateutil>=2.8.0
 PyJWT>=2.8.0
 pyyaml>=6.0.1
 click>=8.1.7
 cryptography>=41.0
-
 # Document creation
 python-docx>=1.1.0
 openpyxl>=3.1.0
 reportlab>=4.0.0
 python-pptx>=0.6.23
-
 # Clipboard (cross-platform)
 pyperclip>=1.8.0
-
 # Chat Platforms (lightweight,  bot libs are optional)
 aiogram>=3.3.0
-
 # X (Twitter) / Grok
 twikit>=2.3.0
 twikit_grok>=0.0.3
 curl_cffi>=0.7.0  # TLS fingerprint impersonation (Android Chrome)
-
 # Testing
 pytest>=7.4.3
 pytest-asyncio>=0.23.2

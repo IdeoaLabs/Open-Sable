@@ -1142,7 +1142,7 @@ class SableAgent:
         "window_list":        ("desktop_", "screen_", "window_"),
         "window_focus":       ("desktop_", "screen_", "window_"),
         "navigate_url":       ("browser_",),
-        "image_request":      ("grok_", "screen_", "ocr_"),
+        "image_request":      ("grok_", "genelia_", "screen_", "ocr_"),
         "social_media":       ("x_", "grok_", "ig_", "fb_", "linkedin_", "tiktok_", "yt_"),
         "trading":            ("trading_",),
         "file_operation":     ("delete_", "move_"),
@@ -1152,7 +1152,7 @@ class SableAgent:
 
     # Intent → extra exact tool names that get FULL schemas
     _INTENT_FULL_EXACT: dict = {
-        "image_request":      frozenset({"generate_image", "grok_generate_image", "grok_analyze_image"}),
+        "image_request":      frozenset({"generate_image", "genelia_generate", "genelia_status", "grok_generate_image", "grok_analyze_image"}),
         "social_media":       frozenset({"generate_image", "grok_generate_image"}),
         "desktop_screenshot": frozenset({"desktop_screenshot", "screen_analyze", "screen_find"}),
         "trading":            frozenset({"trading_place_trade", "trading_price", "trading_portfolio"}),
@@ -2523,13 +2523,17 @@ class SableAgent:
             _PINGPONG_LEN = 4     # A-B-A-B pattern length
             # ────────────────────────────────────────────────────────
 
+            _last_tool_had_error = False
+
             for _round in range(_MAX_ROUNDS):
                 offer_tools = (
                     (not tool_results)
                     or _last_tool_was_code_error
+                    or _last_tool_had_error
                     or (plan and not plan.is_complete)
                 )
                 _last_tool_was_code_error = False
+                _last_tool_had_error = False
 
                 thinking_msg = f"💭 Thinking... (round {_round + 1})" if _round > 0 else "💭 Thinking..."
                 await self._notify_progress(thinking_msg)
@@ -2573,6 +2577,12 @@ class SableAgent:
 
                     results = await self._execute_tools_parallel(all_tool_calls, user_id=user_id)
                     tool_results.extend(results)
+
+                    # Detect tool errors so we re-offer tools next round
+                    _last_tool_had_error = any(
+                        isinstance(r, str) and r.startswith("❌")
+                        for r in results
+                    )
 
                     # If load_tool_details was called, expand those tools'
                     # schemas for subsequent rounds so the model sees full params.

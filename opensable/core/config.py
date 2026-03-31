@@ -69,6 +69,13 @@ class OpenSableConfig(BaseModel):
     telegram_session_name: str = "opensable_session"
     userbot_auto_respond: bool = True
 
+    # Telegram Group Mode
+    telegram_group_only: bool = False
+    telegram_allowed_groups: List[str] = Field(default_factory=list)
+    telegram_group_engagement: str = "medium"
+    telegram_group_context_size: int = 30
+    telegram_anti_poison: bool = True
+
     discord_bot_token: Optional[str] = None
     discord_guild_id: Optional[str] = None
     whatsapp_enabled: bool = False
@@ -425,6 +432,13 @@ def load_config() -> OpenSableConfig:
         "telegram_phone_number": os.getenv("TELEGRAM_PHONE_NUMBER"),
         "telegram_session_name": os.getenv("TELEGRAM_SESSION_NAME", "opensable_session"),
         "userbot_auto_respond": os.getenv("USERBOT_AUTO_RESPOND", "true").lower() == "true",
+        "telegram_group_only": os.getenv("TELEGRAM_GROUP_ONLY", "false").lower() == "true",
+        "telegram_allowed_groups": [
+            g.strip() for g in os.getenv("TELEGRAM_ALLOWED_GROUPS", "").split(",") if g.strip()
+        ],
+        "telegram_group_engagement": os.getenv("TELEGRAM_GROUP_ENGAGEMENT", "medium"),
+        "telegram_group_context_size": int(os.getenv("TELEGRAM_GROUP_CONTEXT_SIZE", "30")),
+        "telegram_anti_poison": os.getenv("TELEGRAM_ANTI_POISON", "true").lower() == "true",
         "discord_bot_token": os.getenv("DISCORD_BOT_TOKEN"),
         "discord_guild_id": os.getenv("DISCORD_GUILD_ID"),
         "whatsapp_enabled": os.getenv("WHATSAPP_ENABLED", "false").lower() == "true",

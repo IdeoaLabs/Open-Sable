@@ -231,3 +231,37 @@ async def check_idle_time() -> Dict[str, Any]:
         return {"alert": False}
     except Exception:
         return {"alert": False}
+
+
+async def check_supply_chain() -> Dict[str, Any]:
+    """Run depshield supply-chain scan against baseline."""
+    try:
+        import subprocess
+        root = Path(__file__).resolve().parent.parent.parent  # SableCore_/
+        depshield = root / "scripts" / "depshield.py"
+        baseline = root / ".depshield.json"
+
+        if not depshield.exists() or not baseline.exists():
+            return {"alert": False}
+
+        result = subprocess.run(
+            ["python3", str(depshield), "--root", str(root), "scan", "--strict"],
+            capture_output=True, text=True, timeout=30,
+        )
+
+        if result.returncode != 0:
+            # Extract the relevant lines (new deps, changed, etc.)
+            lines = [
+                l.strip() for l in result.stdout.splitlines()
+                if any(k in l for k in ("NEW", "CHANGED", "HASH", "+", "→"))
+            ]
+            summary = "\n".join(lines[:5]) if lines else "Unknown changes"
+            return {
+                "alert": True,
+                "message": f"Supply-chain change detected:\n{summary}\nRun: depshield.py audit",
+                "priority": "urgent",
+            }
+
+        return {"alert": False}
+    except Exception:
+        return {"alert": False}
