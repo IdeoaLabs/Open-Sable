@@ -45,23 +45,58 @@ class ComputerTools:
         # Workspace root for resolving relative file paths
         self.workspace_root = Path.cwd()
 
+    # Directories the agent is allowed to READ outside the workspace.
+    _READ_ALLOWED_ROOTS: tuple = ()
+
     def _resolve_path(self, path: str) -> Path:
-        """Resolve a file path, trying workspace root if the raw path doesn't exist."""
+        """Resolve a file path, always sandboxed to the workspace root.
+
+        The agent must not browse arbitrary system directories.
+        Absolute paths outside the workspace are re-anchored inside it.
+        """
+        ws = self.workspace_root.resolve()
         p = Path(path).resolve()
-        if p.exists():
-            return p
-        # Try stripping leading / and resolving relative to workspace
+
+        # Check if already inside workspace
+        try:
+            p.relative_to(ws)
+            if p.exists():
+                return p
+        except ValueError:
+            pass
+
+        # Check allowed external roots (e.g. home dir data)
+        for root in self._READ_ALLOWED_ROOTS:
+            try:
+                p.relative_to(Path(root).resolve())
+                if p.exists():
+                    return p
+            except ValueError:
+                continue
+
+        # Outside workspace — re-anchor: strip leading / and resolve relative
         relative = path.lstrip("/")
-        workspace_p = (self.workspace_root / relative).resolve()
-        if workspace_p.exists():
-            return workspace_p
-        # Try just the filename in the workspace root (LLM may fabricate dirs)
+        workspace_p = (ws / relative).resolve()
+        try:
+            workspace_p.relative_to(ws)
+            if workspace_p.exists():
+                return workspace_p
+        except ValueError:
+            pass
+
+        # Try just the filename in workspace root (LLM may fabricate dirs)
         basename = Path(path).name
         if basename:
-            base_p = (self.workspace_root / basename).resolve()
-            if base_p.exists():
-                return base_p
-        return p
+            base_p = (ws / basename).resolve()
+            try:
+                base_p.relative_to(ws)
+                if base_p.exists():
+                    return base_p
+            except ValueError:
+                pass
+
+        # Default: return path inside workspace (even if it doesn't exist)
+        return (ws / relative).resolve()
 
     # Directories inside the workspace where the agent is allowed to write.
     # Everything else is READ-ONLY to prevent polluting the repo root.
@@ -657,7 +692,7 @@ class ComputerTools:
         try:
             import re
 
-            dir_path = Path(path).resolve()
+            dir_path = self._resolve_path(path)
             matches = []
 
             if not dir_path.exists():

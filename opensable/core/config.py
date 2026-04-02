@@ -245,12 +245,12 @@ class OpenSableConfig(BaseModel):
 
     # ── Autonomous Mode ──────────────────────────────────────────
     autonomous_mode: bool = False  # Enable autonomous tick loop
-    autonomous_check_interval: int = 60  # Seconds between ticks
-    autonomous_max_tasks: int = 3  # Max tasks per tick
+    autonomous_check_interval: int = 600  # Seconds between ticks (10 min)
+    autonomous_max_tasks: int = 2  # Max tasks per tick
     autonomous_sources: str = "calendar,email,system_monitoring,news"  # comma-separated
 
     # ── Proactive Reasoning ─────────────────────────────────────
-    proactive_think_every_n_ticks: int = 5  # LLM reasoning every N ticks
+    proactive_think_every_n_ticks: int = 3  # LLM reasoning every N ticks (with 180s interval = every ~9 min)
     proactive_max_risk: str = "medium"  # low / medium / high
 
     # ── GitHub Integration ──────────────────────────────────────
@@ -577,8 +577,8 @@ def load_config() -> OpenSableConfig:
         "skill_install_auto_approve": os.getenv("SKILL_INSTALL_AUTO_APPROVE", "false").lower() == "true",
         # ── Autonomous Mode ─────────────────────────────────────
         "autonomous_mode": os.getenv("AUTONOMOUS_MODE", "false").lower() == "true",
-        "autonomous_check_interval": int(os.getenv("AUTONOMOUS_CHECK_INTERVAL", "60")),
-        "autonomous_max_tasks": int(os.getenv("AUTONOMOUS_MAX_TASKS", "3")),
+        "autonomous_check_interval": int(os.getenv("AUTONOMOUS_CHECK_INTERVAL", "600")),
+        "autonomous_max_tasks": int(os.getenv("AUTONOMOUS_MAX_TASKS", "2")),
         "autonomous_sources": os.getenv("AUTONOMOUS_SOURCES", "calendar,email,system_monitoring,news"),
         # ── Proactive Reasoning ─────────────────────────────────
         "proactive_think_every_n_ticks": int(os.getenv("PROACTIVE_THINK_EVERY_N_TICKS", "5")),

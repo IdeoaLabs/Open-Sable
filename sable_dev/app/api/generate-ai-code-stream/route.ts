@@ -1830,7 +1830,7 @@ Provide the complete file content without any truncation. Include all necessary 
           });
         }
       } finally {
-        await writer.close();
+        try { await writer.close(); } catch { /* stream already closed */ }
       }
     })();
     

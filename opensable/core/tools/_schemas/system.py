@@ -71,13 +71,13 @@ SCHEMAS = [
     "type": "function",
     "function": {
     "name": "list_directory",
-    "description": "List files and folders in a directory",
+    "description": "List files and folders in a directory. Use RELATIVE paths inside the project (e.g. '.', 'data/', 'opensable/core'). Do NOT browse system directories like /home, /usr, /etc.",
     "parameters": {
     "type": "object",
     "properties": {
     "path": {
     "type": "string",
-    "description": "Directory path (default '.')",
+    "description": "Relative path inside the project (default '.')",
     }
     },
     "required": [],
@@ -136,7 +136,7 @@ SCHEMAS = [
     "type": "function",
     "function": {
     "name": "search_files",
-    "description": "Search for files by name pattern or content",
+    "description": "Search for files by name pattern or content. Always use RELATIVE paths inside the project. Do NOT search system directories.",
     "parameters": {
     "type": "object",
     "properties": {

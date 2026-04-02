@@ -51,7 +51,7 @@ export const appConfig = {
   // AI Model Configuration
   ai: {
     // Default AI model
-    defaultModel: 'google/gemini-3-pro-preview',
+    defaultModel: 'ollama/vaultbox/qwen3.5-uncensored:4b',
     
     // Available models (static list - Ollama/OpenWebUI models are fetched dynamically)
     availableModels: [
@@ -66,7 +66,8 @@ export const appConfig = {
       'openai/gpt-5': 'GPT-5',
       'moonshotai/kimi-k2-instruct-0905': 'Kimi K2 (Groq)',
       'anthropic/claude-sonnet-4-20250514': 'Sonnet 4',
-      'google/gemini-3-pro-preview': 'Gemini 3 Pro (Preview)'
+      'google/gemini-3-pro-preview': 'Gemini 3 Pro (Preview)',
+      'ollama/vaultbox/qwen3.5-uncensored:4b': 'Qwen 3.5 Uncensored (4B)'
     } as Record<string, string>,
     
     // Model API configuration

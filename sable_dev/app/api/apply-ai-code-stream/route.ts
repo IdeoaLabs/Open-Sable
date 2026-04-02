@@ -412,8 +412,12 @@ export async function POST(request: NextRequest) {
 
     // Function to send progress updates
     const sendProgress = async (data: any) => {
-      const message = `data: ${JSON.stringify(data)}\n\n`;
-      await writer.write(encoder.encode(message));
+      try {
+        const message = `data: ${JSON.stringify(data)}\n\n`;
+        await writer.write(encoder.encode(message));
+      } catch {
+        // Client disconnected — ignore write errors
+      }
     };
 
     // Start processing in background (pass provider and request to the async function)
@@ -795,7 +799,7 @@ export async function POST(request: NextRequest) {
           error: (error as Error).message
         });
       } finally {
-        await writer.close();
+        try { await writer.close(); } catch { /* stream already closed */ }
       }
     })(provider, request);
 

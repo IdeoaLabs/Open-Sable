@@ -70,6 +70,24 @@ export default function HomePage() {
   };
 
   const [dynamicModels, setDynamicModels] = useState<Array<{ id: string; name: string; provider: string }>>([]);
+  const [recentProjects, setRecentProjects] = useState<Array<{
+    id: string; name: string; prompt: string; template: string;
+    model: string; createdAt: number; updatedAt: number; fileCount: number; sandboxId?: string;
+  }>>([]);
+
+  // Fetch recent projects on mount
+  useEffect(() => {
+    const fetchProjects = async () => {
+      try {
+        const res = await fetch('/api/project-history');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success) setRecentProjects(data.projects || []);
+        }
+      } catch { /* silent */ }
+    };
+    fetchProjects();
+  }, []);
 
   // Fetch dynamic models from Ollama & OpenWebUI on mount
   useEffect(() => {
@@ -799,6 +817,46 @@ export default function HomePage() {
                 </div>
               </div>
             )}
+          </section>
+        )}
+
+        {/* Recent Projects */}
+        {recentProjects.length > 0 && !showSearchTiles && (
+          <section className="container max-w-3xl mx-auto mt-16 mb-20 px-6">
+            <h2 className="text-sm font-medium text-gray-400 mb-4 flex items-center gap-2">
+              <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" className="text-gray-500">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Recent Projects
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {recentProjects.slice(0, 6).map((proj) => (
+                <div
+                  key={proj.id}
+                  className="group p-4 rounded-xl bg-[#12122a] border border-[#2a2a4a] hover:border-orange-500/40 hover:bg-[#1a1a3a] cursor-pointer transition-all duration-200"
+                  onClick={() => {
+                    sessionStorage.setItem('selectedModel', proj.model);
+                    sessionStorage.setItem('selectedTemplate', proj.template);
+                    if (proj.sandboxId) sessionStorage.setItem('restoreSandboxId', proj.sandboxId);
+                    router.push(`/generation?sandbox=${encodeURIComponent(proj.sandboxId || proj.id)}`);
+                  }}
+                >
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <span className="text-xs font-medium text-gray-200 truncate flex-1">
+                      {proj.name === '[object Object]' ? 'Untitled Project' : proj.name}
+                    </span>
+                    <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" className="text-gray-600 group-hover:text-orange-400 transition-colors flex-shrink-0 mt-0.5">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[10px] text-gray-500 bg-[#1a1a2e] px-1.5 py-0.5 rounded">{proj.template}</span>
+                    <span className="text-[10px] text-gray-500">{proj.fileCount} files</span>
+                    <span className="text-[10px] text-gray-600 ml-auto">{new Date(proj.updatedAt).toLocaleDateString()}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
           </section>
         )}
 
