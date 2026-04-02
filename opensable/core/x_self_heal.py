@@ -180,12 +180,30 @@ KNOWN_ERRORS: List[ErrorPattern] = [
     ),
     ErrorPattern(
         name="grok_fail",
-        pattern=r"grok.*fail|grok.*error|add_response.*[45]\d\d",
+        pattern=r"grok.*fail|grok.*error|KEY_BYTE|add_response.*[45]\d\d",
         severity=Severity.LOW,
         remedy="fallback_llm",
         params={},
         cooldown=120,
         description="Grok API failed. Fallback to LLM.",
+    ),
+    ErrorPattern(
+        name="calendar_datetime_error",
+        pattern=r"Calendar error|offset-naive and offset-aware",
+        severity=Severity.LOW,
+        remedy="skip",
+        params={},
+        cooldown=60,
+        description="Calendar datetime comparison error. Already handled in code.",
+    ),
+    ErrorPattern(
+        name="search_regex_error",
+        pattern=r"Search failed: nothing to repeat|Search failed: .*regex|Search failed: .*re\.error",
+        severity=Severity.LOW,
+        remedy="skip",
+        params={},
+        cooldown=60,
+        description="Search regex compilation error. Already handled in code.",
     ),
     ErrorPattern(
         name="daily_limit",
@@ -326,6 +344,10 @@ class RemedyEngine:
                 result.update(await self._emergency_pause(params))
             elif remedy == "pause_until_midnight":
                 result.update(self._pause_until_midnight())
+            elif remedy == "skip":
+                # Known non-critical error, already handled in code — just log it
+                logger.debug(f"🩺 Known benign error '{error_pattern.name}', skipping remedy")
+                result.update({"action": "skip", "applied": True})
             elif remedy == "grok_custom_fix":
                 result.update(await self._grok_custom_fix(error_context))
             else:

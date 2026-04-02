@@ -137,7 +137,7 @@ class IntelLoop:
                 # Expose results to agent memory if available
                 if self.agent and hasattr(self.agent, "memory"):
                     try:
-                        self.agent.memory.store(
+                        await self.agent.memory.store(
                             "intel_cycle",
                             {
                                 "cycle": self._cycle_count - 1,

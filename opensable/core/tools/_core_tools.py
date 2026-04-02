@@ -4,7 +4,7 @@ Core tools,  file system, commands, browser, voice, image, database, RAG, code e
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict
 
 logger = logging.getLogger(__name__)
@@ -311,8 +311,14 @@ class CoreToolsMixin:
 
             if action == "list":
                 # Show upcoming events
-                now = datetime.now()
-                upcoming = [e for e in events if datetime.fromisoformat(e["datetime"]) >= now]
+                now = datetime.now(timezone.utc)
+                upcoming = []
+                for e in events:
+                    dt = datetime.fromisoformat(e["datetime"])
+                    # Ensure both are timezone-aware for comparison
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    upcoming.append(e) if dt >= now else None
                 upcoming.sort(key=lambda x: x["datetime"])
 
                 if not upcoming:
@@ -351,13 +357,15 @@ class CoreToolsMixin:
                     else:
                         return f"⚠️ Could not parse date '{date_str}'. Use format: YYYY-MM-DD HH:MM"
 
-                # Add event
+                # Add event — ensure timezone-aware
+                if event_dt.tzinfo is None:
+                    event_dt = event_dt.replace(tzinfo=timezone.utc)
                 new_event = {
                     "id": len(events) + 1,
                     "title": title,
                     "datetime": event_dt.isoformat(),
                     "description": description,
-                    "created_at": datetime.now().isoformat(),
+                    "created_at": datetime.now(timezone.utc).isoformat(),
                 }
                 events.append(new_event)
 

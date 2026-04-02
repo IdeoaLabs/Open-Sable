@@ -664,7 +664,11 @@ class ComputerTools:
                 return {"success": False, "matches": [], "error": "Directory not found"}
 
             regex_flags = 0 if case_sensitive else re.IGNORECASE
-            regex = re.compile(pattern, regex_flags)
+            try:
+                regex = re.compile(pattern, regex_flags)
+            except re.error:
+                # Invalid regex — treat pattern as literal string
+                regex = re.compile(re.escape(pattern), regex_flags)
 
             for item in dir_path.rglob("*"):
                 if item.is_file():
