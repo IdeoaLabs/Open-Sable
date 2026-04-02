@@ -310,14 +310,14 @@ _kill_orphans() {
     session_name=$(grep -m1 '^WHATSAPP_SESSION_NAME=' "$PROFILE_DIR/profile.env" 2>/dev/null | cut -d= -f2)
     session_name="${session_name:-opensable}"
 
-    # Kill orphan opensable processes for this profile
+    # Kill orphan opensable processes for this profile (parent + children it spawned)
     pgrep -f "opensable.*--profile $PROFILE" 2>/dev/null | while read -r opid; do
         # Don't kill ourselves
         [[ -f "$PIDFILE" ]] && [[ "$opid" == "$(cat "$PIDFILE" 2>/dev/null)" ]] && continue
         echo "   🧹 Killing orphan opensable (PID $opid)"
         kill "$opid" 2>/dev/null
         sleep 1
-        kill -9 "$opid" 2>/dev/null
+        kill -0 "$opid" 2>/dev/null && kill -9 "$opid" 2>/dev/null
     done
 
     # Kill orphan bridge.js + chromium for this profile's session
@@ -328,6 +328,31 @@ _kill_orphans() {
         done
         pkill -f "puppeteer.*session-${session_name}" 2>/dev/null
     fi
+}
+
+# Kill ALL opensable processes across ALL profiles (nuclear option for clean restarts)
+_kill_all_agents() {
+    local pids
+    pids=$(pgrep -f "python.*opensable" 2>/dev/null)
+    if [[ -z "$pids" ]]; then
+        return 0
+    fi
+    echo "   🧹 Killing all opensable processes..."
+    echo "$pids" | while read -r opid; do
+        kill "$opid" 2>/dev/null
+    done
+    sleep 2
+    # Force kill any survivors
+    pids=$(pgrep -f "python.*opensable" 2>/dev/null)
+    if [[ -n "$pids" ]]; then
+        echo "$pids" | while read -r opid; do
+            kill -9 "$opid" 2>/dev/null
+        done
+        sleep 1
+    fi
+    # Clean up all PID files and stale sockets/locks
+    rm -f "$DIR"/.sable-*.pid
+    rm -f /tmp/sable-*.sock /tmp/sable-ollama.lock 2>/dev/null
 }
 
 do_start() {
@@ -412,8 +437,22 @@ do_stop() {
         kill "$pid" 2>/dev/null
     fi
 
-    # Wait up to 10s for graceful shutdown
-    for i in $(seq 1 10); do
+    # Also kill any child agents this profile may have spawned
+    # (AgentManager spawns children like: python -m opensable --profile <child>)
+    _kill_orphans
+
+    # Kill child agent profiles (e.g. nano-sweaters when stopping nano)
+    pgrep -f "opensable.*--profile ${PROFILE}-" 2>/dev/null | while read -r cpid; do
+        echo "   🧹 Killing child agent (PID $cpid)"
+        kill "$cpid" 2>/dev/null
+        sleep 1
+        kill -0 "$cpid" 2>/dev/null && kill -9 "$cpid" 2>/dev/null
+    done
+    rm -f "$DIR"/.sable-${PROFILE}-*.pid 2>/dev/null
+    rm -f /tmp/sable-${PROFILE}-*.sock 2>/dev/null
+
+    # Wait up to 5s for graceful shutdown
+    for i in $(seq 1 5); do
         if ! kill -0 "$pid" 2>/dev/null; then
             break
         fi
@@ -429,8 +468,11 @@ do_stop() {
     fi
     rm -f "$PIDFILE"
 
-    # Clean any orphaned child processes
+    # Final sweep for any remaining orphans
     _kill_orphans
+
+    # Clean stale sockets for this profile
+    rm -f /tmp/sable-${PROFILE}.sock 2>/dev/null
     echo "✅ Stopped"
 }
 
@@ -519,11 +561,11 @@ case "$ACTION" in
     stop)
         if [[ "$ALL_PROFILES" == "1" ]]; then
             echo "⏹️  Stopping ALL agents..."
-            for p in $(get_all_profiles); do
-                run_for_profile "$p"
-                echo "── $p ──"
-                do_stop
-            done
+            _kill_all_agents
+            # Also stop desktop/dev-studio
+            stop_desktop
+            stop_dev_studio
+            echo "✅ All agents stopped"
         else
             do_stop
         fi
@@ -531,11 +573,9 @@ case "$ACTION" in
     restart)
         if [[ "$ALL_PROFILES" == "1" ]]; then
             echo "🔄 Restarting ALL agents..."
-            for p in $(get_all_profiles); do
-                run_for_profile "$p"
-                echo "── stopping $p ──"
-                do_stop
-            done
+            # Nuclear kill: stop ALL opensable processes to prevent zombie accumulation
+            _kill_all_agents
+            echo "   ✅ All processes killed"
             sleep 2
             for p in $(get_all_profiles); do
                 run_for_profile "$p"
@@ -543,7 +583,16 @@ case "$ACTION" in
                 do_start
             done
         else
+            # For single-profile restart, also kill child agents (e.g. nano-sweaters for nano)
             do_stop
+            # Kill anything still matching this profile
+            pkill -9 -f "opensable.*--profile $PROFILE" 2>/dev/null
+            # Kill child agents whose profile starts with this profile name (e.g. nano-*)
+            pkill -9 -f "opensable.*--profile ${PROFILE}-" 2>/dev/null
+            # Clean sockets for this profile AND its children
+            rm -f /tmp/sable-${PROFILE}.sock /tmp/sable-${PROFILE}-*.sock /tmp/sable-ollama.lock 2>/dev/null
+            # Clean child PID files
+            rm -f "$DIR"/.sable-${PROFILE}-*.pid 2>/dev/null
             sleep 2
             do_start
         fi

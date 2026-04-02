@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { ChevronDown, RefreshCw } from 'lucide-react';
+import { ChevronDown, RefreshCw, Loader2 } from 'lucide-react';
 
 const PROVIDER_ICONS = {
   ollama:     '🦙',
@@ -72,7 +72,27 @@ export default function ModelSelector({ model, modelGroups = [], onModelSwitch, 
   const [open, setOpen] = useState(false);
   const [hoveredItem, setHoveredItem] = useState(null);
   const [hoverTrigger, setHoverTrigger] = useState(false);
+  const [switching, setSwitching] = useState(null); // model name being switched to
+  const switchedAt = useRef(0);
   const ref = useRef(null);
+
+  // Clear switching state when the model prop actually changes (with minimum display time)
+  useEffect(() => {
+    if (switching && model === switching) {
+      const elapsed = Date.now() - switchedAt.current;
+      const minDuration = 1500;
+      const delay = Math.max(0, minDuration - elapsed);
+      const t = setTimeout(() => setSwitching(null), delay);
+      return () => clearTimeout(t);
+    }
+  }, [model, switching]);
+
+  // Safety timeout: clear switching state after 10s even if model prop never changes (e.g. switch failed)
+  useEffect(() => {
+    if (!switching) return;
+    const t = setTimeout(() => setSwitching(null), 10000);
+    return () => clearTimeout(t);
+  }, [switching]);
 
   // Close on outside click
   useEffect(() => {
@@ -101,8 +121,11 @@ export default function ModelSelector({ model, modelGroups = [], onModelSwitch, 
         onMouseLeave={() => setHoverTrigger(false)}
       >
         <span>🧠</span>
-        <span>{displayName}</span>
-        <ChevronDown size={12} style={{ opacity: 0.5, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }} />
+        <span>{switching ? `Switching to ${switching.length > 18 ? switching.slice(0, 16) + '…' : switching}` : displayName}</span>
+        {switching
+          ? <Loader2 size={12} style={{ opacity: 0.7, animation: 'spin 1s linear infinite' }} />
+          : <ChevronDown size={12} style={{ opacity: 0.5, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }} />
+        }
       </div>
 
       {open && (
@@ -145,6 +168,8 @@ export default function ModelSelector({ model, modelGroups = [], onModelSwitch, 
                     onMouseLeave={() => setHoveredItem(null)}
                     onClick={() => {
                       if (!isActive && onModelSwitch) {
+                        setSwitching(m.name);
+                        switchedAt.current = Date.now();
                         onModelSwitch(m.name, group.provider, agentProfile);
                       }
                       setOpen(false);

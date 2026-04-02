@@ -272,6 +272,11 @@ MODEL_CAPABILITIES = {
     "gemma2:9b": {"reasoning": 7, "vision": 0, "tools": 6, "speed": 8, "vram": 6},
     "phi3:14b": {"reasoning": 8, "vision": 0, "tools": 7, "speed": 6, "vram": 8},
     "mistral:7b": {"reasoning": 7, "vision": 0, "tools": 6, "speed": 8, "vram": 4},
+    # Gemma 3 models
+    "gemma3:latest": {"reasoning": 7, "vision": 0, "tools": 5, "speed": 7, "vram": 5},
+    "gemma3:4b": {"reasoning": 6, "vision": 0, "tools": 4, "speed": 8, "vram": 2},
+    "gemma3:12b": {"reasoning": 7, "vision": 0, "tools": 5, "speed": 7, "vram": 8},
+    "gemma3:27b": {"reasoning": 8, "vision": 0, "tools": 6, "speed": 5, "vram": 16},
     # CPU/Low RAM models
     "llama3.2:3b": {"reasoning": 6, "vision": 0, "tools": 6, "speed": 9, "vram": 0},
     "gemma2:2b": {"reasoning": 5, "vision": 0, "tools": 5, "speed": 9, "vram": 0},
@@ -572,7 +577,10 @@ class AdaptiveLLM:
             if not _skip_no_think:
                 _chat_kwargs["think"] = False
             async with _ollama_lock():
-                response = await client.chat(**_chat_kwargs)
+                response = await asyncio.wait_for(
+                    client.chat(**_chat_kwargs),
+                    timeout=120,
+                )
             msg = response.get("message", {})
 
             # Track tokens (Ollama provides prompt_eval_count / eval_count)
@@ -692,7 +700,10 @@ class AdaptiveLLM:
         if not _skip_nt:
             _chat_kw["think"] = False
         async with _ollama_lock():
-            resp = await client.chat(**_chat_kw)
+            resp = await asyncio.wait_for(
+                client.chat(**_chat_kw),
+                timeout=120,
+            )
         # Token tracking
         prompt_tokens = resp.get("prompt_eval_count", 0)
         completion_tokens = resp.get("eval_count", 0)

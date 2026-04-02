@@ -58,10 +58,46 @@ class AgentManager:
             and (d / "soul.md").exists()          # must have a soul
         )
 
+    def _find_peers(self) -> List[str]:
+        """Return top-level profiles that are not the current parent and
+        not children of any existing profile.
+
+        A profile is a "child" if another profile is a prefix before the
+        first dash (e.g. ``nano-sweaters`` is a child of ``nano``).
+        Peers are started so they can in turn auto-start their own children.
+        """
+        if not _AGENTS_DIR.exists():
+            return []
+        all_profiles = sorted(
+            d.name
+            for d in _AGENTS_DIR.iterdir()
+            if d.is_dir()
+            and not d.name.startswith("_")
+            and not d.name.startswith(".")
+            and (d / "soul.md").exists()
+        )
+        peers = []
+        for name in all_profiles:
+            if name == self.parent:
+                continue
+            # A profile is a child if any other profile is its parent prefix
+            is_child = any(
+                name.startswith(f"{other}-")
+                for other in all_profiles
+                if other != name
+            )
+            if not is_child:
+                peers.append(name)
+        return peers
+
     # ── Auto-start all children ───────────────────────────────────────────
 
     async def auto_start_children(self) -> List[dict]:
-        """Discover and start all child agents. Returns info about started children."""
+        """Discover and start all child agents.
+
+        Children are profiles named ``{parent}-{suffix}``
+        (e.g. ``nano-sweaters`` is a child of ``nano``).
+        """
         children = self._find_children()
         started = []
         for name in children:
@@ -103,11 +139,23 @@ class AgentManager:
             except OSError:
                 pass
 
-        # Build env overrides for the child
+        # Build env overrides for the child.
+        # IMPORTANT: Clear parent-set internal vars so the child's
+        # profile.apply_env() writes its own values cleanly.
         child_env = {**os.environ}
         child_env["WEBCHAT_PORT"] = str(port)
         child_env["SABLE_PROFILE"] = profile_name
         child_env["_SABLE_PARENT_PROFILE"] = self.parent
+        child_env["_SABLE_PROFILE"] = profile_name
+        child_env["_SABLE_SOCKET_PATH"] = f"/tmp/sable-{profile_name}.sock"
+        child_env["_SABLE_DATA_DIR"] = str(_AGENTS_DIR / profile_name / "data")
+        child_env["_SABLE_PROFILE_DIR"] = str(_AGENTS_DIR / profile_name)
+
+        # Clear behavior-specific vars so child's profile.env can set its own
+        # (apply_env skips keys already present when _SABLE_PARENT_PROFILE is set)
+        for k in ("BROWSER_HEADLESS", "DEFAULT_MODEL", "AGENT_PERSONALITY",
+                   "AGENT_NAME", "AUTONOMOUS_CHECK_INTERVAL", "AUTONOMOUS_MAX_TASKS"):
+            child_env.pop(k, None)
 
         # Log file for the child (same convention as start.sh)
         log_dir = _PROJECT_ROOT / "logs"
@@ -170,10 +218,32 @@ class AgentManager:
                     except ProcessLookupError:
                         pass
                     pid_file.unlink(missing_ok=True)
+                    sock_path = Path(f"/tmp/sable-{profile_name}.sock")
+                    sock_path.unlink(missing_ok=True)
                     logger.info(f"[AgentManager] Stopped {profile_name} via PID file (PID {pid})")
                     return True
                 except Exception:
                     pass
+            # Fallback: find process by command line pattern
+            try:
+                import subprocess
+                result = subprocess.run(
+                    ["pgrep", "-f", f"--profile {profile_name}"],
+                    capture_output=True, text=True,
+                )
+                current_pid = os.getpid()
+                for line in result.stdout.strip().splitlines():
+                    pid = int(line.strip())
+                    if pid != current_pid:
+                        os.kill(pid, signal.SIGTERM)
+                        logger.info(f"[AgentManager] Sent SIGTERM to {profile_name} (PID {pid})")
+                if result.stdout.strip():
+                    await asyncio.sleep(2)
+                    sock_path = Path(f"/tmp/sable-{profile_name}.sock")
+                    sock_path.unlink(missing_ok=True)
+                    return True
+            except Exception:
+                pass
             return False
 
         proc = info.get("proc")

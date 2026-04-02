@@ -107,11 +107,11 @@ async def async_main():
         local_node = None
         if getattr(config, "gateway_enabled", True):
             try:
-                from opensable.core.gateway import Gateway
+                from opensable.core.gateway import Gateway, SOCKET_PATH as _gw_sock
 
                 gateway = Gateway(agent, config)
                 await gateway.start()
-                logger.info("Internal Gateway started on /tmp/sable.sock")
+                logger.info(f"Internal Gateway started on {_gw_sock}")
                 webchat_port = gateway._webchat_port  # may differ from config if auto-assigned
                 console.print("[bold green]🔌 Gateway running[/bold green]")
                 console.print(
@@ -139,12 +139,9 @@ async def async_main():
             agent._agent_manager = _agent_mgr   # expose to tools
             if gateway:
                 gateway._agent_manager = _agent_mgr
-            _child_procs = await _agent_mgr.auto_start_children()
-            if _child_procs:
-                names = [c["name"] for c in _child_procs]
-                console.print(f"[bold magenta]👥 Sub-agents started: {', '.join(names)}[/bold magenta]")
+            # Children are not auto-started; use the dashboard to start them.
         except Exception as e:
-            logger.warning(f"Child agent auto-start failed: {e}")
+            logger.warning(f"Agent manager init failed: {e}")
 
         # ── Pixel-Bridge (Pixel Agents VS Code extension) ─────────────────────
         _bridge_proc = None
