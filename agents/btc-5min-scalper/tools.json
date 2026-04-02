@@ -1,0 +1,4 @@
+{
+  "mode": "allowlist",
+  "tools": ["group:trading", "group:web"]
+}

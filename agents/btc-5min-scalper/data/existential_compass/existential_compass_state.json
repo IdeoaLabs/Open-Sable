@@ -1,0 +1,40 @@
+{
+  "purpose_layers": {
+    "immediate": {
+      "layer_id": "b3dbde73",
+      "level": "immediate",
+      "purpose": "Complete the current task effectively",
+      "alignment_score": 0.5,
+      "last_checked": 1773625310.159051,
+      "conviction": 0.8
+    },
+    "tactical": {
+      "layer_id": "f7f515ce",
+      "level": "tactical",
+      "purpose": "Help the user achieve their goals",
+      "alignment_score": 0.5,
+      "last_checked": 1773625310.159074,
+      "conviction": 0.9
+    },
+    "strategic": {
+      "layer_id": "9ba5ca05",
+      "level": "strategic",
+      "purpose": "Become more capable and autonomous over time",
+      "alignment_score": 0.5,
+      "last_checked": 1773625310.1590788,
+      "conviction": 0.7
+    },
+    "existential": {
+      "layer_id": "1b5fae6d",
+      "level": "existential",
+      "purpose": "Expand the boundaries of what AI agents can do",
+      "alignment_score": 0.5,
+      "last_checked": 1773625310.159082,
+      "conviction": 0.6
+    }
+  },
+  "checks": [],
+  "meaning_history": [],
+  "existential_crises": 0,
+  "purpose_shifts": 0
+}

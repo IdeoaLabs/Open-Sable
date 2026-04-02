@@ -41,6 +41,56 @@ except ImportError:
     CHROMADB_AVAILABLE = False
     logger.info("ChromaDB not installed. RAG will use in-memory fallback.")
 
+try:
+    import httpx as _httpx
+    _HTTPX_OK = True
+except ImportError:
+    _HTTPX_OK = False
+
+_EMBED_MODEL = "nomic-embed-text"
+
+
+async def _embed_texts(texts: List[str]) -> Optional[List[List[float]]]:
+    """Compute embeddings via Ollama nomic-embed-text."""
+    if not _HTTPX_OK:
+        return None
+    try:
+        async with _httpx.AsyncClient(timeout=30) as client:
+            results = []
+            for text in texts:
+                # Try new /api/embed endpoint (Ollama >=0.2)
+                try:
+                    r = await client.post(
+                        "http://127.0.0.1:11434/api/embed",
+                        json={"model": _EMBED_MODEL, "input": text},
+                    )
+                    if r.status_code == 200:
+                        data = r.json()
+                        emb = data.get("embeddings") or data.get("embedding")
+                        if emb:
+                            results.append(emb[0] if isinstance(emb[0], list) else emb)
+                            continue
+                except Exception:
+                    pass
+                # Fallback: legacy /api/embeddings
+                try:
+                    r = await client.post(
+                        "http://127.0.0.1:11434/api/embeddings",
+                        json={"model": _EMBED_MODEL, "prompt": text},
+                    )
+                    if r.status_code == 200:
+                        emb = r.json().get("embedding")
+                        if emb:
+                            results.append(emb)
+                            continue
+                except Exception:
+                    pass
+                return None  # failed for this text
+            return results
+    except Exception as e:
+        logger.debug(f"Embedding request failed: {e}")
+        return None
+
 
 @dataclass
 class Document:
@@ -194,11 +244,15 @@ class RAGEngine:
 
         # Store in ChromaDB if available
         if self._collection is not None and chunks:
-            self._collection.upsert(
+            embeddings = await _embed_texts([c.content for c in chunks])
+            upsert_kwargs = dict(
                 ids=[c.chunk_id for c in chunks],
                 documents=[c.content for c in chunks],
                 metadatas=[c.metadata for c in chunks],
             )
+            if embeddings:
+                upsert_kwargs["embeddings"] = embeddings
+            self._collection.upsert(**upsert_kwargs)
 
         logger.info(f"📄 Ingested '{source}': {len(chunks)} chunks from {len(content)} chars")
         return doc
@@ -230,10 +284,13 @@ class RAGEngine:
         # ChromaDB search
         if self._collection is not None and self._collection.count() > 0:
             try:
-                results = self._collection.query(
-                    query_texts=[query],
-                    n_results=min(top_k, self._collection.count()),
-                )
+                query_kwargs = {"n_results": min(top_k, self._collection.count())}
+                query_emb = await _embed_texts([query])
+                if query_emb:
+                    query_kwargs["query_embeddings"] = query_emb
+                else:
+                    query_kwargs["query_texts"] = [query]
+                results = self._collection.query(**query_kwargs)
                 search_results = []
                 for i, doc in enumerate(results["documents"][0]):
                     score = 1.0
