@@ -29,7 +29,7 @@ const styles = {
   right: { marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 },
 };
 
-export default function Topbar({ connected, model, stats, agents, currentAgent, onAgentSelect, modelGroups, activeProvider, onModelSwitch, onRefreshModels, agentProfile, onStartAgent, onStopAgent, pendingAgents }) {
+export default function Topbar({ connected, model, stats, agents, currentAgent, onAgentSelect, modelGroups, activeProvider, onModelSwitch, onRefreshModels, agentProfile }) {
   return (
     <div style={styles.bar}>
       <div style={styles.brand}>
@@ -54,9 +54,6 @@ export default function Topbar({ connected, model, stats, agents, currentAgent, 
         agents={agents}
         currentAgent={currentAgent}
         onSelect={onAgentSelect}
-        onStartAgent={onStartAgent}
-        onStopAgent={onStopAgent}
-        pendingAgents={pendingAgents}
       />
 
       <div style={styles.right}>

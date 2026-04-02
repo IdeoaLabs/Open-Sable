@@ -46,19 +46,6 @@ export function useMultiAgent(wsRef, connected) {
     subscribedRef.current.delete(profile);
   }, [wsRef]);
 
-  // ── Pending agents (optimistic UI) ─────────────────────────────────────
-  const [pendingAgents, setPendingAgents] = useState({});  // { profile: 'starting'|'stopping' }
-  const pendingTimers = useRef({});  // track minimum display duration
-  const pendingTimeouts = useRef({});  // safety timeout handles
-
-  // Clear pending state for a profile
-  const clearPending = useCallback((profile) => {
-    delete pendingTimers.current[profile];
-    clearTimeout(pendingTimeouts.current[profile]);
-    delete pendingTimeouts.current[profile];
-    setPendingAgents(prev => { const n = { ...prev }; delete n[profile]; return n; });
-  }, []);
-
   // ── Process incoming multi-agent messages ──────────────────────────────
   const handleAgentMessage = useCallback((msg) => {
     switch (msg.type) {
@@ -128,26 +115,6 @@ export function useMultiAgent(wsRef, connected) {
       case 'agents.unsubscribed':
         break;
 
-      case 'agents.start.result':
-      case 'agents.stop.result': {
-        // Keep spinner visible for at least 1.5s so the user sees clear feedback
-        const doneProfile = msg.profile;
-        if (doneProfile) {
-          // Clear the safety timeout since we got a real response
-          clearTimeout(pendingTimeouts.current[doneProfile]);
-          delete pendingTimeouts.current[doneProfile];
-          const started = pendingTimers.current[doneProfile] || 0;
-          const elapsed = Date.now() - started;
-          const minDuration = 1500;
-          const delay = Math.max(0, minDuration - elapsed);
-          setTimeout(() => {
-            clearPending(doneProfile);
-          }, delay);
-        }
-        refreshAgents();
-        break;
-      }
-
       // Remote agent model list / switch results (forwarded from useWebSocket)
       case 'models.list.result': {
         const profile = msg._profile;
@@ -184,7 +151,7 @@ export function useMultiAgent(wsRef, connected) {
         return false; // not handled here
     }
     return true;
-  }, [_setCurrentAgent, subscribeAgent, refreshAgents, clearPending]);
+  }, [_setCurrentAgent, subscribeAgent]);
 
   // ── Process proxied messages from remote agents ────────────────────────
   const handleProxiedMessage = useCallback((msg) => {
@@ -279,34 +246,16 @@ export function useMultiAgent(wsRef, connected) {
 
         case 'message.start':
           newState.streaming = true;
-          newState._streamBuf = '';
           break;
 
-        case 'message.chunk': {
-          const buf = (state._streamBuf || '') + (msg.text || '');
-          newState._streamBuf = buf;
-          const prev = [...(state.messages || [])];
-          if (prev.length > 0 && prev[prev.length - 1]._streaming) {
-            prev[prev.length - 1] = { ...prev[prev.length - 1], content: buf };
-          } else {
-            prev.push({ role: 'assistant', content: buf, ts: Date.now(), _streaming: true });
-          }
-          newState.messages = prev;
-          break;
-        }
-
-        case 'message.done': {
+        case 'message.done':
           newState.streaming = false;
-          newState._streamBuf = '';
-          const msgs = [...(state.messages || [])];
-          if (msgs.length > 0 && msgs[msgs.length - 1]._streaming) {
-            msgs[msgs.length - 1] = { role: 'assistant', content: msg.text || msgs[msgs.length - 1].content, ts: Date.now() };
-          } else if (msg.text) {
-            msgs.push({ role: 'assistant', content: msg.text, ts: Date.now() });
+          if (msg.text) {
+            newState.messages = [...(state.messages || []),
+              { role: 'assistant', content: msg.text, ts: Date.now() },
+            ];
           }
-          newState.messages = msgs;
           break;
-        }
 
         case 'progress': {
           const id = ++actId.current;
@@ -413,39 +362,6 @@ export function useMultiAgent(wsRef, connected) {
     });
   }, []);
 
-  // ── Start / stop an agent via gateway ──────────────────────────────────
-  const startAgent = useCallback((profile) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      setPendingAgents(prev => ({ ...prev, [profile]: 'starting' }));
-      pendingTimers.current[profile] = Date.now();
-      // Safety timeout: clear spinner after 45s even if no response
-      clearTimeout(pendingTimeouts.current[profile]);
-      pendingTimeouts.current[profile] = setTimeout(() => {
-        clearPending(profile);
-        refreshAgents();
-      }, 45000);
-      // Optimistically flip running state so dot turns green immediately
-      setAgents(prev => prev.map(a => a.name === profile ? { ...a, running: true } : a));
-      wsRef.current.send(JSON.stringify({ type: 'agents.start', profile }));
-    }
-  }, [wsRef, clearPending, refreshAgents]);
-
-  const stopAgent = useCallback((profile) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      setPendingAgents(prev => ({ ...prev, [profile]: 'stopping' }));
-      pendingTimers.current[profile] = Date.now();
-      // Safety timeout: clear spinner after 15s even if no response
-      clearTimeout(pendingTimeouts.current[profile]);
-      pendingTimeouts.current[profile] = setTimeout(() => {
-        clearPending(profile);
-        refreshAgents();
-      }, 15000);
-      // Optimistically flip running state so dot turns gray immediately
-      setAgents(prev => prev.map(a => a.name === profile ? { ...a, running: false } : a));
-      wsRef.current.send(JSON.stringify({ type: 'agents.stop', profile }));
-    }
-  }, [wsRef, clearPending, refreshAgents]);
-
   return {
     agents,
     currentAgent,
@@ -458,8 +374,5 @@ export function useMultiAgent(wsRef, connected) {
     unsubscribeAgent,
     sendToAgent,
     setAgentMessages,
-    startAgent,
-    stopAgent,
-    pendingAgents,
   };
 }

@@ -201,9 +201,6 @@ class TradingSkill:
         from .strategies.sentiment import SentimentStrategy
         from .strategies.arbitrage import ArbitrageStrategy
         from .strategies.polymarket_edge import PolymarketEdgeStrategy
-        from .strategies.polymarket_btc_5min import PolymarketBtc5MinStrategy
-        from .strategies.vol_directional import VolatilityDirectionalStrategy
-        from .strategies.mean_reversion_5min import MeanReversionStrategy as MeanRev5MinStrategy
 
         available = {
             "momentum": MomentumStrategy,
@@ -211,9 +208,6 @@ class TradingSkill:
             "sentiment": SentimentStrategy,
             "arbitrage": ArbitrageStrategy,
             "polymarket_edge": PolymarketEdgeStrategy,
-            "polymarket_btc_5min": PolymarketBtc5MinStrategy,
-            "vol_directional": VolatilityDirectionalStrategy,
-            "mean_reversion_5min": MeanRev5MinStrategy,
         }
 
         names = [
