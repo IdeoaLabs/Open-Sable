@@ -1,0 +1,23 @@
+{
+  "run_id": "78df6df9-91c",
+  "user_id": "dashboard_user",
+  "original_message": "whats the price of btc right now? (today is March 17, 2026)",
+  "plan": [],
+  "current_step_index": 0,
+  "steps": [
+    {
+      "step_id": "78df6df9-91c-s0",
+      "step_type": "synthesis",
+      "data": {
+        "response": "$75,218.00 USD"
+      },
+      "timestamp": 1773716617.594063,
+      "status": "completed"
+    }
+  ],
+  "messages_history": [],
+  "metadata": {},
+  "created_at": 1773716605.655364,
+  "updated_at": 1773716617.5940638,
+  "status": "completed"
+}

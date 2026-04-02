@@ -17,6 +17,7 @@ import ThoughtsPanel from './components/agent/ThoughtsPanel';
 import BrainPanel from './components/agent/BrainPanel';
 import DisplayPanel from './components/agent/DisplayPanel';
 import SettingsPanel from './components/settings/SettingsPanel';
+import AgentLogsPanel from './components/chat/AgentLogsPanel';
 import EnvEditorPanel from './components/settings/EnvEditorPanel';
 import WifiHuntPanel from './components/network/WifiHuntPanel';
 import PermissionDialog from './components/PermissionDialog';
@@ -90,7 +91,7 @@ export default function App() {
   let panelProps;
   if (isLocal) {
     panelProps = {
-      chat:     { messages: ws.messages, streaming: ws.streaming, onSend: ws.sendMessage, onClear: ws.clearMessages, sessions: localSessions, activeSessionId: ws.activeSessionId, onLoadSession: ws.loadSession, onNewChat: () => ws.loadSession(null), onDeleteSession: ws.deleteSession },
+      chat:     { messages: ws.messages, streaming: ws.streaming, onSend: ws.sendMessage, onCancel: ws.cancelMessage, onClear: ws.clearMessages, sessions: localSessions, activeSessionId: ws.activeSessionId, onLoadSession: ws.loadSession, onNewChat: () => ws.loadSession(null), onDeleteSession: ws.deleteSession },
       activity: { activity: ws.activity, onClear: ws.clearActivity },
       terminal: { terminal: ws.terminal, onClear: ws.clearTerminal },
       status:   { stats: ws.stats, sessions: localSessions, model: ws.model, activity: ws.activity },
@@ -119,7 +120,7 @@ export default function App() {
       });
     };
     panelProps = {
-      chat:     { messages: rs.messages || [], streaming: rs.streaming || false, onSend: sendToRemote, onClear: clearRemoteMsgs, sessions: agentSessions, activeSessionId: remoteActiveSessionId, onLoadSession: handleRemoteLoadSession, onNewChat: () => { ma.setAgentMessages(ma.currentAgent, []); }, onDeleteSession: ws.deleteSession },
+      chat:     { messages: rs.messages || [], streaming: rs.streaming || false, onSend: sendToRemote, onCancel: ws.cancelMessage, onClear: clearRemoteMsgs, sessions: agentSessions, activeSessionId: remoteActiveSessionId, onLoadSession: handleRemoteLoadSession, onNewChat: () => { ma.setAgentMessages(ma.currentAgent, []); }, onDeleteSession: ws.deleteSession },
       activity: { activity: rs.activity || [], onClear: () => {} },
       terminal: { terminal: rs.terminal || [], onClear: () => {} },
       status:   { stats: rs.stats || {}, sessions: rs.sessions || [], model: rs.model || '', activity: rs.activity || [] },
@@ -152,6 +153,9 @@ export default function App() {
         onModelSwitch={ws.switchModel}
         onRefreshModels={ws.requestModels}
         agentProfile={isLocal ? null : ma.currentAgent}
+        onStartAgent={ma.startAgent}
+        onStopAgent={ma.stopAgent}
+        pendingAgents={ma.pendingAgents}
       />
 
       {(isLocal ? ws.streaming : remoteState?.streaming) && (
@@ -180,6 +184,13 @@ export default function App() {
           )}
           <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
             <Panel key={ma.currentAgent || '_local'} {...(panelProps[tab] || {})} />
+            <AgentLogsPanel
+              activity={isLocal ? ws.activity : (remoteState?.activity || [])}
+              terminal={isLocal ? ws.terminal : (remoteState?.terminal || [])}
+              agentName={isLocal ? (ma.agents.find(a => a.is_current)?.name || 'sable') : ma.currentAgent}
+              ws={ws.wsRef}
+              agentProfile={isLocal ? null : ma.currentAgent}
+            />
           </div>
         </div>
       </div>

@@ -1,0 +1,8 @@
+{
+  "energy": 100.0,
+  "total_consumed": 0.0,
+  "total_regenerated": 0.0,
+  "burnout_count": 0,
+  "current_mode": "normal",
+  "events": []
+}

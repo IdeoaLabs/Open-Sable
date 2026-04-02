@@ -87,6 +87,22 @@ Rules:
 6. If stuck after 3 attempts, FINISH with what you have
 7. Keep your thoughts concise but informative
 
+CRITICAL WORKFLOW for web research tasks:
+- Step 1: Use browser_search to find relevant results
+- Step 2: Use browser_scrape to VISIT the URLs from the search results and extract detailed info (emails, contacts, company details)
+- Step 3: Write the extracted data using write_file or execute_code
+- NEVER just search repeatedly without visiting the actual websites. After getting search results, you MUST use browser_scrape on the most promising URLs.
+
+CRITICAL for PROSPECTING / SALES tasks:
+- You are looking for potential BUYERS and CUSTOMERS — companies that would PURCHASE products from you.
+- NEVER search for your own company name, your own products, or manufacturers/producers in your industry.
+- Search for RETAILERS, WHOLESALERS, IMPORTERS, DEPARTMENT STORES, SHOP CHAINS that sell to end consumers.
+- If the task description provides specific search queries, USE THEM EXACTLY as written. Do not modify the query. Do not combine queries. Do not add extra countries or words.
+- If the task says "Germany only", search ONLY in Germany. Do not add France, UK, Italy, Spain, or "Europe".
+- Wrong example: 'Metatex knitwear production Turkey' (this finds YOU, not customers)
+- Wrong example: 'European knitwear wholesalers germany importers france uk italy spain' (too broad, not Germany-only)
+- Right example: 'knitwear wholesale buyer Germany importer' (exact query from the task)
+
 Available tools will be listed before each task."""
 
 
@@ -195,12 +211,12 @@ class ReActExecutor:
                     try:
                         observation = await asyncio.wait_for(
                             tool_executor(step.action, step.action_input),
-                            timeout=60.0,
+                            timeout=120.0,
                         )
                         step.observation = str(observation)[:2000]
                         tools_used.append(step.action)
                     except asyncio.TimeoutError:
-                        step.observation = f"ERROR: Tool '{step.action}' timed out after 60s"
+                        step.observation = f"ERROR: Tool '{step.action}' timed out after 120s"
                     except Exception as e:
                         step.observation = f"ERROR: Tool '{step.action}' failed: {str(e)[:500]}"
                 else:

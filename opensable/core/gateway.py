@@ -1424,7 +1424,9 @@ class Gateway:
                     {"type": "error", "text": "Rate limit exceeded. Try again in a moment."}
                 )
                 return
-            await self._on_message(client, msg)
+            # Run as background task so cancel can be dispatched while agent is thinking
+            task = asyncio.ensure_future(self._on_message(client, msg))
+            client._chat_task = task
         elif t == "command":
             await self._on_command(client, msg)
         elif t == "sessions.list":
@@ -1470,6 +1472,10 @@ class Gateway:
             await self._on_code_autofix(client, msg)
         elif t == "agents.list":
             await self._on_agents_list(client)
+        elif t == "agents.start":
+            await self._on_agents_start(client, msg)
+        elif t == "agents.stop":
+            await self._on_agents_stop(client, msg)
         elif t == "agents.status":
             await self._on_agents_status(client, msg)
         elif t == "agents.subscribe":
@@ -1492,6 +1498,10 @@ class Gateway:
             await self._on_llm_switch(client, msg)
         elif t == "ping":
             await client.send({"type": "pong", "ts": time.time()})
+        elif t == "message.cancel":
+            await self._on_message_cancel(client, msg)
+        elif t == "logs.tail":
+            await self._on_logs_tail(client, msg)
         else:
             await client.send({"type": "error", "text": f"Unknown type: {t!r}"})
 
@@ -1713,20 +1723,19 @@ class Gateway:
         if profile and profile != _profile_name:
             # Proxy to remote agent
             socket_path = f"/tmp/sable-{profile}.sock"
-            if not Path(socket_path).exists():
-                await client.send({"type": "models.list.result", "groups": [], "current": "", "provider": "", "_profile": profile})
-                return
-            try:
-                resp = await _proxy_ws_request(
-                    socket_path, {"type": "models.list"},
-                    expected_type="models.list.result", timeout=10,
-                )
-                resp["_profile"] = profile
-                await client.send(resp)
-            except Exception as exc:
-                logger.warning(f"[Gateway] models.list proxy to {profile} failed: {exc}")
-                await client.send({"type": "models.list.result", "groups": [], "current": "", "provider": "", "_profile": profile})
-            return
+            if Path(socket_path).exists():
+                try:
+                    resp = await _proxy_ws_request(
+                        socket_path, {"type": "models.list"},
+                        expected_type="models.list.result", timeout=10,
+                    )
+                    resp["_profile"] = profile
+                    await client.send(resp)
+                    return
+                except Exception as exc:
+                    logger.warning(f"[Gateway] models.list proxy to {profile} failed: {exc}")
+            # Remote agent not reachable — fall through to list local models
+            # so the user can still see and select available models
         groups: list[dict] = []  # [{provider, name, models: [{name, active}]}]
         current_model: str = ""
         provider_type: str = "ollama"  # default
@@ -1785,12 +1794,15 @@ class Gateway:
                             })
         except Exception as exc:
             logger.debug(f"[Gateway] models.list error: {exc}")
-        await client.send({
+        result = {
             "type": "models.list.result",
             "groups": groups,
             "current": current_model,
             "provider": provider_type,
-        })
+        }
+        if profile and profile != _profile_name:
+            result["_profile"] = profile
+        await client.send(result)
 
     async def _on_models_set(self, client: _Client, msg: dict):
         """Switch the active model.  Supports both local and cloud models."""
@@ -1798,26 +1810,33 @@ class Gateway:
         if profile and profile != _profile_name:
             # Proxy to remote agent via models.set, return models.set.result
             socket_path = f"/tmp/sable-{profile}.sock"
-            if not Path(socket_path).exists():
-                await client.send({"type": "models.set.result", "success": False, "error": f"Agent '{profile}' is not running", "_profile": profile})
-                return
-            try:
-                resp = await _proxy_ws_request(
-                    socket_path,
-                    {"type": "models.set", "model": msg.get("model", ""), "provider": msg.get("provider", "")},
-                    expected_type="models.set.result", timeout=10,
-                )
-                resp["_profile"] = profile
-                await client.send(resp)
-            except Exception as exc:
-                logger.warning(f"[Gateway] models.set proxy to {profile} failed: {exc}")
-                await client.send({"type": "models.set.result", "success": False, "error": str(exc), "_profile": profile})
-            return
+            if Path(socket_path).exists():
+                try:
+                    resp = await _proxy_ws_request(
+                        socket_path,
+                        {"type": "models.set", "model": msg.get("model", ""), "provider": msg.get("provider", "")},
+                        expected_type="models.set.result", timeout=10,
+                    )
+                    resp["_profile"] = profile
+                    await client.send(resp)
+                    return
+                except Exception as exc:
+                    logger.warning(f"[Gateway] models.set proxy to {profile} failed: {exc}")
+            # Remote agent not reachable — fall through to set model locally
+            # since all agents share the same Ollama instance
         model_name: str = msg.get("model", "").strip()
         provider: str = msg.get("provider", "").strip()  # optional: force provider
         if not model_name:
             await client.send({"type": "models.set.result", "success": False, "error": "No model specified"})
             return
+
+        # If the agent is busy thinking, cancel the current request first
+        # so the model switch isn't blocked waiting for inference to finish.
+        if getattr(self.agent, "_user_chatting", False):
+            self.agent.cancel_current_request()
+            # Brief yield so the cancelled task can clean up
+            await asyncio.sleep(0.1)
+
         try:
             llm = getattr(self.agent, "llm", None)
             if not llm:
@@ -2148,6 +2167,31 @@ class Gateway:
 
     # ── Multi-Agent handlers ──────────────────────────────────────────────────
 
+    async def _on_logs_tail(self, client: _Client, msg: dict):
+        """Return the last N lines of an agent's log file."""
+        import re as _re
+        profile = msg.get("profile", "") or _profile_name
+        lines = min(int(msg.get("lines", 100)), 500)
+        # Sanitize profile name to prevent path traversal
+        if not _re.match(r'^[a-zA-Z0-9_-]+$', profile):
+            await client.send({"type": "logs.tail.result", "lines": [], "error": "Invalid profile name"})
+            return
+        log_path = Path(__file__).resolve().parent.parent.parent / "logs" / f"sable-{profile}.log"
+        result_lines = []
+        if log_path.exists():
+            try:
+                with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+                    # Read last N lines efficiently
+                    all_lines = f.readlines()
+                    result_lines = [l.rstrip() for l in all_lines[-lines:]]
+            except Exception as exc:
+                logger.debug(f"[Gateway] logs.tail error: {exc}")
+        await client.send({
+            "type": "logs.tail.result",
+            "profile": profile,
+            "lines": result_lines,
+        })
+
     async def _on_agents_list(self, client: _Client):
         """Return list of all agent profiles and their running status."""
         try:
@@ -2170,6 +2214,55 @@ class Gateway:
             "agents": agents,
             "current": _profile_name,
         })
+
+    async def _on_agents_start(self, client: _Client, msg: dict):
+        """Start a remote agent via AgentManager."""
+        profile = msg.get("profile", "")
+        if not profile:
+            await client.send({"type": "agents.start.result", "success": False, "error": "Missing 'profile'"})
+            return
+        if profile == _profile_name:
+            await client.send({"type": "agents.start.result", "success": False, "error": "Cannot start the current agent from itself", "profile": profile})
+            return
+        mgr = getattr(self, "_agent_manager", None)
+        if not mgr:
+            await client.send({"type": "agents.start.result", "success": False, "error": "Agent manager not available", "profile": profile})
+            return
+        try:
+            info = await mgr.start_child(profile)
+            if info:
+                await client.send({"type": "agents.start.result", "success": True, "profile": profile, "pid": info.get("pid")})
+                # Refresh agent list for all clients
+                for c in list(self._clients):
+                    await self._on_agents_list(c)
+            else:
+                await client.send({"type": "agents.start.result", "success": False, "error": f"Failed to start '{profile}'", "profile": profile})
+        except Exception as exc:
+            logger.warning(f"[Gateway] agents.start {profile} failed: {exc}")
+            await client.send({"type": "agents.start.result", "success": False, "error": str(exc), "profile": profile})
+
+    async def _on_agents_stop(self, client: _Client, msg: dict):
+        """Stop a remote agent via AgentManager."""
+        profile = msg.get("profile", "")
+        if not profile:
+            await client.send({"type": "agents.stop.result", "success": False, "error": "Missing 'profile'"})
+            return
+        if profile == _profile_name:
+            await client.send({"type": "agents.stop.result", "success": False, "error": "Cannot stop the current agent from itself", "profile": profile})
+            return
+        mgr = getattr(self, "_agent_manager", None)
+        if not mgr:
+            await client.send({"type": "agents.stop.result", "success": False, "error": "Agent manager not available", "profile": profile})
+            return
+        try:
+            stopped = await mgr.stop_child(profile)
+            await client.send({"type": "agents.stop.result", "success": stopped, "profile": profile, "error": "" if stopped else f"Agent '{profile}' was not running"})
+            # Refresh agent list for all clients
+            for c in list(self._clients):
+                await self._on_agents_list(c)
+        except Exception as exc:
+            logger.warning(f"[Gateway] agents.stop {profile} failed: {exc}")
+            await client.send({"type": "agents.stop.result", "success": False, "error": str(exc), "profile": profile})
 
     async def _on_agents_status(self, client: _Client, msg: dict):
         """Get status from a specific agent, proxied via Unix socket."""
@@ -2279,6 +2372,7 @@ class Gateway:
                     await ws.send_json({"type": "sessions.list"})
                     await ws.send_json({"type": "monitor.subscribe"})
                     await ws.send_json({"type": "thoughts.list", "limit": 500})
+                    await ws.send_json({"type": "models.list"})
 
                     # Periodically request status updates
                     last_status = time.time()
@@ -2383,13 +2477,37 @@ class Gateway:
 
         # If targeting the current agent, just handle locally
         if profile == _profile_name:
-            await self._on_message(client, msg)
+            task = asyncio.ensure_future(self._on_message(client, msg))
+            client._chat_task = task
             return
 
         socket_path = f"/tmp/sable-{profile}.sock"
         if not Path(socket_path).exists():
-            await client.send({"type": "error", "text": f"Agent '{profile}' is not running"})
-            return
+            # Auto-start the agent so the user's message isn't lost
+            mgr = getattr(self, "_agent_manager", None)
+            if not mgr:
+                await client.send({"type": "error", "text": f"Agent '{profile}' is not running and agent manager is unavailable"})
+                return
+            await client.send({
+                "type": "progress",
+                "_profile": profile,
+                "text": f"Starting agent '{profile}'…",
+            })
+            try:
+                info = await mgr.start_child(profile)
+                if not info:
+                    await client.send({"type": "error", "text": f"Failed to start agent '{profile}'"})
+                    return
+                # Broadcast updated agent list to all clients
+                for c in list(self._clients):
+                    try:
+                        await self._on_agents_list(c)
+                    except Exception:
+                        pass
+            except Exception as exc:
+                logger.warning(f"[Gateway] agents.chat auto-start {profile} failed: {exc}")
+                await client.send({"type": "error", "text": f"Could not auto-start agent '{profile}': {exc}"})
+                return
 
         # Save user message to local session so it appears in sidebar
         sm = SessionManager()
@@ -2407,7 +2525,11 @@ class Gateway:
         try:
             conn = aiohttp.UnixConnector(path=socket_path)
             async with aiohttp.ClientSession(connector=conn) as session:
-                async with session.ws_connect("http://localhost/") as ws:
+                async with session.ws_connect(
+                    "http://localhost/",
+                    heartbeat=30,
+                    receive_timeout=300,
+                ) as ws:
                     # Send the chat message to the remote agent
                     await ws.send_json({
                         "type": "message",
@@ -2562,9 +2684,34 @@ class Gateway:
                 logger.debug(f"[Gateway] session persist error: {_se}")
 
             await client.send({"type": "message.done", "session_id": sid, "text": reply})
+        except asyncio.CancelledError:
+            logger.info(f"[Gateway] Request cancelled for session {sid}")
+            await client.send({"type": "message.done", "session_id": sid, "text": "*(Request cancelled)*"})
         except Exception as exc:
             logger.warning(f"[Gateway] Agent processing failed: {exc}")
             await client.send({"type": "error", "session_id": sid, "text": str(exc)})
+
+    async def _on_message_cancel(self, client: _Client, msg: dict):
+        """Cancel the currently running LLM request."""
+        # Cancel the agent-level task
+        cancelled = self.agent.cancel_current_request()
+        # Also cancel the gateway-level chat task if still running
+        chat_task = getattr(client, '_chat_task', None)
+        if chat_task and not chat_task.done():
+            chat_task.cancel()
+            cancelled = True
+        await client.send({
+            "type": "message.cancel.result",
+            "success": cancelled,
+            "session_id": msg.get("session_id", ""),
+        })
+        if cancelled:
+            # Send message.done so the UI exits streaming state
+            await client.send({
+                "type": "message.done",
+                "session_id": msg.get("session_id", ""),
+                "text": "*(Request cancelled)*",
+            })
 
     async def _on_command(self, client: _Client, msg: dict):
         from opensable.core.commands import CommandHandler

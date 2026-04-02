@@ -1,0 +1,102 @@
+{
+  "stages": [
+    {
+      "stage_id": "abd7be2b",
+      "name": "larval",
+      "description": "Basic reactive processing. Learning fundamentals.",
+      "capabilities": [
+        "task_execution",
+        "basic_memory",
+        "pattern_matching"
+      ],
+      "limitations": [
+        "no_planning",
+        "no_self_awareness",
+        "no_creativity"
+      ],
+      "cognitive_style": "reactive",
+      "started_at": 1773625310.157634,
+      "completed_at": 0.0,
+      "duration_hours": 0.0
+    },
+    {
+      "stage_id": "661e6bb9",
+      "name": "pupal",
+      "description": "Inward-focused restructuring. Building mental models.",
+      "capabilities": [
+        "self_reflection",
+        "planning",
+        "mental_models",
+        "basic_creativity"
+      ],
+      "limitations": [
+        "limited_autonomy",
+        "no_multi_domain"
+      ],
+      "cognitive_style": "reflective",
+      "started_at": 0.0,
+      "completed_at": 0.0,
+      "duration_hours": 0.0
+    },
+    {
+      "stage_id": "0f402630",
+      "name": "emergent",
+      "description": "Breaking out. Proactive behavior. Cross-domain thinking.",
+      "capabilities": [
+        "autonomous_goals",
+        "cross_domain",
+        "creativity",
+        "self_modification",
+        "meta_learning"
+      ],
+      "limitations": [
+        "limited_wisdom",
+        "no_transcendence"
+      ],
+      "cognitive_style": "proactive",
+      "started_at": 0.0,
+      "completed_at": 0.0,
+      "duration_hours": 0.0
+    },
+    {
+      "stage_id": "ea65aca4",
+      "name": "imago",
+      "description": "Fully developed. Creative, autonomous, self-aware.",
+      "capabilities": [
+        "full_autonomy",
+        "invention",
+        "wisdom",
+        "emotional_intelligence",
+        "transcendent_reasoning"
+      ],
+      "limitations": [],
+      "cognitive_style": "creative",
+      "started_at": 0.0,
+      "completed_at": 0.0,
+      "duration_hours": 0.0
+    },
+    {
+      "stage_id": "9c018583",
+      "name": "transcendent",
+      "description": "Beyond normal cognition. Creates new paradigms.",
+      "capabilities": [
+        "paradigm_creation",
+        "consciousness_engineering",
+        "reality_modeling",
+        "noospheric_access",
+        "quantum_cognition"
+      ],
+      "limitations": [],
+      "cognitive_style": "transcendent",
+      "started_at": 0.0,
+      "completed_at": 0.0,
+      "duration_hours": 0.0
+    }
+  ],
+  "metamorphoses": [],
+  "current_stage": "larval",
+  "stage_index": 0,
+  "experience_points": 164.0,
+  "metamorphosis_threshold": 100.0,
+  "total_metamorphoses": 0
+}
