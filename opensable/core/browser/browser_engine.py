@@ -54,6 +54,7 @@ class BrowserEngine:
         self.browser = None
         self.page = None  # Persistent page for ref-based automation
         self._initialized = False
+        self._headless = True  # updated during init
         self._setup_lock = asyncio.Lock()
         self._element_refs = {}  # Map ref IDs to elements
         self._ref_counter = 0
@@ -136,15 +137,30 @@ class BrowserEngine:
                 from playwright.async_api import async_playwright
 
                 self.playwright = await async_playwright().start()
-                self.browser = await self.playwright.chromium.launch(
-                    headless=True,
-                    args=[
-                        "--disable-blink-features=AutomationControlled",
-                        "--no-sandbox",
-                        "--disable-dev-shm-usage",
-                        "--disable-gpu",
-                    ],
-                )
+
+                # Respect BROWSER_HEADLESS env var — allows watching the agent work
+                headless = os.environ.get("BROWSER_HEADLESS", "true").lower() not in ("false", "0", "no")
+                self._headless = headless
+
+                launch_args = [
+                    "--disable-blink-features=AutomationControlled",
+                    "--no-sandbox",
+                    "--disable-dev-shm-usage",
+                ]
+                launch_kwargs = {
+                    "headless": headless,
+                    "args": launch_args,
+                }
+
+                # When visible, use system Chrome if available for a native experience
+                if not headless:
+                    launch_kwargs["channel"] = "chrome"
+                    launch_kwargs["slow_mo"] = 2000  # human-paced browsing
+                    logger.info("🖥️  Browser: visible mode (system Chrome, slow_mo=2000ms)")
+                else:
+                    launch_kwargs["args"].append("--disable-gpu")
+
+                self.browser = await self.playwright.chromium.launch(**launch_kwargs)
 
                 self._initialized = True
                 logger.info("✅ Browser engine initialized")
@@ -228,6 +244,9 @@ class BrowserEngine:
             return {"error": f"Failed to scrape {url}: {str(e)}", "success": False}
         finally:
             if page:
+                # In visible mode, pause so the user can read the page like a human would
+                if not self._headless:
+                    await asyncio.sleep(20)
                 await page.close()
 
     async def search_web(self, query: str, num_results: int = 5) -> Dict[str, any]:
@@ -292,7 +311,7 @@ class BrowserEngine:
 
             search_url = f"https://search.brave.com/search?q={query.replace(' ', '+')}&source=web"
             await page.goto(search_url, wait_until="domcontentloaded", timeout=15000)
-            await asyncio.sleep(3)
+            await asyncio.sleep(5)  # let results fully render
 
             # Extract with JavaScript
             results = await page.evaluate(
@@ -376,6 +395,9 @@ class BrowserEngine:
             return {"error": f"Search failed: {str(e)}", "success": False}
         finally:
             if page:
+                # In visible mode, keep search results visible like a human scanning them
+                if not self._headless:
+                    await asyncio.sleep(12)
                 await page.close()
 
     async def get_page_screenshot(
