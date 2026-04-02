@@ -1,9 +1,0 @@
-{
-  "events": [],
-  "permeability": 0.7,
-  "absorbed": 0,
-  "deflected": 0,
-  "quarantined": 0,
-  "integrity": 1.0,
-  "adaptive_permeability": {}
-}

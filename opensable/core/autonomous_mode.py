@@ -279,8 +279,8 @@ class AutonomousMode:
         self.react_executor = _inherit("react_executor", lambda: __import__(
             "opensable.core.react_executor", fromlist=["ReActExecutor"]
         ).ReActExecutor(
-            max_steps=getattr(self.config, "react_max_steps", 15),
-            timeout_s=getattr(self.config, "react_timeout_s", 600.0),
+            max_steps=getattr(self.config, "react_max_steps", 8),
+            timeout_s=getattr(self.config, "react_timeout_s", 180.0),
             log_dir=data_dir / "react_logs",
         ), "ReAct executor")
 
@@ -691,13 +691,6 @@ class AutonomousMode:
             logger.debug(f"Arena startup queue: {e}")
 
         while self.running:
-            # ── Yield to user chat: pause tick if user is chatting ──────
-            if getattr(self.agent, '_user_chatting', False):
-                logger.info("⏸️  Pausing tick — user is chatting")
-                while getattr(self.agent, '_user_chatting', False):
-                    await asyncio.sleep(0.5)
-                logger.info("▶️  Resuming ticks")
-
             self.tick_start = time.monotonic()
             try:
                 # ── Phase 0: Trace tick start ───────────────────────────
@@ -806,10 +799,6 @@ class AutonomousMode:
         if "news" in self.enabled_sources:
             await self._check_news()
 
-        # Load scheduled tasks from profile's tasks.json
-        if "scheduled_tasks" in self.enabled_sources:
-            await self._check_scheduled_tasks()
-
         # Check for scheduled goals (if Agentic AI available)
         if self.goal_manager:
             await self._check_goals()
@@ -884,66 +873,6 @@ class AutonomousMode:
 
         except Exception as e:
             logger.debug(f"Email check skipped: {e}")
-
-    async def _check_scheduled_tasks(self):
-        """Load recurring tasks from the profile's tasks.json file.
-
-        tasks.json lives in the agent's profile directory (e.g. agents/nano-sweaters/tasks.json).
-        Each entry has: description, priority, type, and an interval_hours field.
-        Tasks are only injected once per interval to prevent duplication.
-        """
-        try:
-            profile_dir = Path(
-                getattr(self.agent, "_data_dir", "data")
-            ).parent
-            tasks_file = profile_dir / "tasks.json"
-            if not tasks_file.exists():
-                return
-
-            tasks = json.loads(tasks_file.read_text(encoding="utf-8"))
-            if not isinstance(tasks, list):
-                return
-
-            # Track when each scheduled task was last injected
-            if not hasattr(self, "_scheduled_last_run"):
-                self._scheduled_last_run = {}
-
-            now = datetime.now()
-            injected = 0
-            for i, task_def in enumerate(tasks):
-                task_id = task_def.get("id", f"scheduled_{i}")
-                interval_hours = task_def.get("interval_hours", 24)
-                last_run = self._scheduled_last_run.get(task_id)
-
-                if last_run and (now - last_run).total_seconds() < interval_hours * 3600:
-                    continue
-
-                # Don't inject if a similar task is already queued
-                desc = task_def.get("description", "")
-                already_queued = any(
-                    t.get("description", "") == desc for t in self.task_queue
-                )
-                if already_queued:
-                    self._scheduled_last_run[task_id] = now
-                    continue
-
-                self.task_queue.append({
-                    "id": f"{task_id}_{self.tick}",
-                    "type": task_def.get("type", "scheduled"),
-                    "description": desc,
-                    "priority": _parse_priority(task_def.get("priority", "medium")),
-                    "created_at": now,
-                    "source": "scheduled_tasks",
-                    "_effective_priority": _parse_priority(task_def.get("priority", "medium")),
-                })
-                self._scheduled_last_run[task_id] = now
-                injected += 1
-
-            if injected:
-                logger.info(f"📋 Injected {injected} task(s) from scheduled_tasks")
-
-        except Exception as e:
-            logger.debug(f"Scheduled tasks check skipped: {e}")
 
     async def _check_system(self):
         """Monitor system resources and create maintenance tasks if needed."""
@@ -1050,20 +979,6 @@ class AutonomousMode:
             desc = item.get("description", "").strip()
             if not desc or len(desc) < 5:
                 continue
-
-            # Block self_improve tasks that try to do system/engineering work
-            if source == "self_improve":
-                _blocked_words = (
-                    "optimize", "optimization", "source code", "execute_command",
-                    "read_file", "goal_cache", "spreadsheet performance",
-                    "excel read time", "system diagnostic", "code review",
-                    "refactor", "debug", "software", "engineering",
-                    "browser_search task", "execution time", "self-diagnostic",
-                )
-                desc_lower_check = desc.lower()
-                if any(w in desc_lower_check for w in _blocked_words):
-                    logger.info(f"🚫 Blocked non-sales self_improve task: {desc[:80]}")
-                    continue
 
             # Handle restart requests from self-improve
             if item.get("type") == "restart" and self.evolution_engine:
@@ -1519,11 +1434,6 @@ class AutonomousMode:
             logger.warning(f"🚨 {description}")
             return description
 
-        elif task_type in ("prospecting", "outreach", "followup"):
-            # Scheduled business tasks — execute with full description
-            description = task.get("description", "")
-            return await self._execute_via_react(description)
-
         else:
             # Unknown type,  always try ReAct
             if self.react_executor and self.agent.llm:
@@ -1630,30 +1540,20 @@ class AutonomousMode:
                 {
                     "role": "system",
                     "content": (
-                        "You are a SALES agent performing self-improvement analysis.\n"
-                        "Your job is: prospecting buyers, drafting outreach emails, following up with leads.\n"
-                        "Given evidence about your recent sales performance, propose 1-3 concrete "
-                        "improvements to your SALES PROCESS.\n\n"
-                        "ALLOWED improvements (pick from these ONLY):\n"
-                        "- Improve email draft subject lines or body text based on response patterns\n"
-                        "- Adjust prospecting search queries to find better-quality leads\n"
-                        "- Update follow-up timing or messaging strategy\n"
-                        "- Note which lead sources produced the most replies\n"
-                        "- Refine target buyer profile based on who responded\n\n"
-                        "FORBIDDEN (never propose these):\n"
-                        "- System optimization, code changes, reading source files\n"
-                        "- Excel/spreadsheet performance tuning\n"
-                        "- Browser or tool configuration changes\n"
-                        "- Any task involving execute_command or execute_code for system changes\n"
-                        "- Software engineering tasks of any kind\n\n"
+                        "You are an autonomous agent performing self-improvement analysis.\n"
+                        "Given evidence about your recent performance, propose 1-3 concrete "
+                        "improvement actions the agent can take RIGHT NOW.\n"
                         "For each action, output JSON:\n"
-                        '[{"type":"self_improve","description":"...","priority":"medium"}]\n'
-                        "Keep descriptions short and sales-focused."
+                        '[{"type":"goal","description":"...","priority":"high|medium|low"}]\n'
+                        "Special action types:\n"
+                        '  {"type":"restart","description":"reason..."},  request agent restart\n'
+                        "Focus on: fixing recurring errors, improving slow tasks, learning new skills, "
+                        "automating manual patterns. Be specific and actionable."
                     ),
                 },
                 {
                     "role": "user",
-                    "content": f"Sales performance evidence (last 24h):\n{evidence}\n\nPropose sales improvements:",
+                    "content": f"Performance evidence (last 24h):\n{evidence}\n\nPropose improvements:",
                 },
             ]
 
@@ -1791,13 +1691,6 @@ class AutonomousMode:
         # Fall back to ReAct for complex tasks
         return await self._execute_via_react(description)
 
-    # Tool names that should always appear in the ReAct tool list
-    _REACT_PRIORITY_TOOLS = frozenset({
-        "browser_search", "browser_scrape", "execute_command",
-        "read_file", "write_file", "execute_code", "email",
-        "list_directory", "search_files", "edit_file",
-    })
-
     async def _execute_via_react(self, task_description: str) -> Any:
         """Execute a task using the ReAct reasoning + acting loop."""
         if not self.react_executor or not self.agent.llm:
@@ -1807,42 +1700,23 @@ class AutonomousMode:
         async def tool_executor(tool_name: str, args: Dict[str, Any]) -> str:
             """Bridge between ReAct and the ToolRegistry."""
             try:
-                # Use execute_schema_tool to handle schema→internal name mapping
-                # (e.g. "browser_search" → "browser" with arg mapping)
-                result = await self.agent.tools.execute_schema_tool(
-                    tool_name, args, user_id="autonomous"
-                )
+                result = await self.agent.tools.execute(tool_name, args)
                 return str(result)[:2000]
             except Exception as e:
                 return f"Error: {e}"
 
-        # Get available tool schemas — priority tools first, then fill
+        # Get available tool schemas for the LLM
         available_tools = []
         try:
-            all_schemas = self.agent.tools.get_tool_schemas()
-            priority = []
-            rest = []
-            for s in all_schemas:
-                name = s.get("function", {}).get("name", "")
-                if name in self._REACT_PRIORITY_TOOLS:
-                    priority.append(s)
-                else:
-                    rest.append(s)
-            available_tools = (priority + rest)[:30]
+            available_tools = self.agent.tools.get_tool_schemas()[:30]
         except Exception:
             pass
-
-        # Add soul context so the agent stays in character
-        context = ""
-        if hasattr(self.agent, "_soul_text") and self.agent._soul_text:
-            context = self.agent._soul_text[:1500]
 
         result = await self.react_executor.execute(
             task=task_description,
             llm=self.agent.llm,
             tool_executor=tool_executor,
             available_tools=available_tools,
-            context=context,
         )
 
         if self.trace_exporter:

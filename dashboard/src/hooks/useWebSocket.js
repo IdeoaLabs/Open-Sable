@@ -28,13 +28,7 @@ export function useWebSocket(onExternalMessage) {
 
   const wsRef = useRef(null);
   const streamBuf = useRef('');
-  const streamingRef = useRef(false);
-  const responseSentTimer = useRef(null);
-  const activeSessionRef = useRef(activeSessionId);
   const actIdRef = useRef(0);
-
-  // Keep session ref in sync for timer closures
-  useEffect(() => { activeSessionRef.current = activeSessionId; }, [activeSessionId]);
 
   const addActivity = useCallback((type, icon, title, detail) => {
     const id = ++actIdRef.current;
@@ -75,20 +69,6 @@ export function useWebSocket(onExternalMessage) {
         break;
       case 'response.sent':
         addActivity('success', '📤', 'Response sent', `${data.length} chars`);
-        // Safety: if streaming is still true 3s after agent says response.sent,
-        // the message.done frame was likely lost — reload session to recover.
-        clearTimeout(responseSentTimer.current);
-        responseSentTimer.current = setTimeout(() => {
-          if (streamingRef.current) {
-            setStreaming(false);
-            streamingRef.current = false;
-            // Reload current session to get the saved response
-            if (wsRef.current?.readyState === WebSocket.OPEN) {
-              const sid = activeSessionRef.current || 'webchat_default';
-              wsRef.current.send(JSON.stringify({ type: 'sessions.history', session_id: sid }));
-            }
-          }
-        }, 3000);
         break;
       default:
         addActivity('info', '📌', event, JSON.stringify(data).slice(0, 80));
@@ -107,7 +87,6 @@ export function useWebSocket(onExternalMessage) {
       case 'message.start':
         streamBuf.current = '';
         setStreaming(true);
-        streamingRef.current = true;
         addActivity('info', '💬', 'Processing', 'Agent is thinking…');
         break;
       case 'message.chunk':
@@ -124,8 +103,6 @@ export function useWebSocket(onExternalMessage) {
         break;
       case 'message.done':
         setStreaming(false);
-        streamingRef.current = false;
-        clearTimeout(responseSentTimer.current);
         setMessages(prev => {
           const copy = [...prev];
           if (copy.length && copy[copy.length - 1]._streaming) {
@@ -141,11 +118,6 @@ export function useWebSocket(onExternalMessage) {
         addActivity('info', '⚡', 'Progress', msg.text || '');
         addTerminal(`[progress] ${msg.text}`, 'info');
         break;
-      case 'message.cancel.result':
-        setStreaming(false);
-        streamingRef.current = false;
-        clearTimeout(responseSentTimer.current);
-        break;
       case 'error':
         setStreaming(false);
         setMessages(prev => [...prev, { role: 'assistant', content: '⚠️ ' + msg.text, ts: Date.now() }]);
@@ -158,14 +130,11 @@ export function useWebSocket(onExternalMessage) {
         break;
       case 'sessions.list.result':
         setSessions(msg.sessions || []);
-        // Auto-load the most recent LOCAL session if we haven't loaded one yet
+        // Auto-load the most recent session if we haven't loaded one yet
         if (msg.sessions?.length > 0) {
           setActiveSessionId(prev => {
             if (prev === 'webchat_default') {
-              // Only consider sessions without agent_profile (local agent sessions)
-              const locals = msg.sessions.filter(s => !s.agent_profile);
-              if (locals.length === 0) return prev;
-              const latest = locals[0];
+              const latest = msg.sessions[0];
               const sid = latest.session_id || latest.id;
               // Request its full history
               if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -394,17 +363,9 @@ export function useWebSocket(onExternalMessage) {
     setPendingPermission(null);
   }, [pendingPermission]);
 
-  const cancelMessage = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      const sid = activeSessionId || 'webchat_default';
-      wsRef.current.send(JSON.stringify({ type: 'message.cancel', session_id: sid }));
-    }
-    setStreaming(false);
-  }, [activeSessionId]);
-
   return {
     connected, streaming, messages, activity, terminal, stats, sessions, model, thoughts, brainData,
     modelGroups, activeProvider, pendingPermission, activeSessionId,
-    sendMessage, cancelMessage, loadSession, deleteSession, clearMessages, clearActivity, clearTerminal, requestModels, switchModel, importGGUF, respondPermission, wsRef,
+    sendMessage, loadSession, deleteSession, clearMessages, clearActivity, clearTerminal, requestModels, switchModel, importGGUF, respondPermission, wsRef,
   };
 }

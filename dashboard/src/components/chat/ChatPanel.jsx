@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Send, Trash2, Plus, MessageSquare, ChevronLeft, ChevronRight, Square } from 'lucide-react';
+import { Send, Trash2, Plus, MessageSquare, ChevronLeft, ChevronRight } from 'lucide-react';
 import { fmtTime } from '../../lib/utils';
 
 /* ── Chat-area styles ──────────────────────────────────────────────────── */
@@ -106,7 +106,7 @@ function relativeTime(ts) {
   return new Date(ts).toLocaleDateString();
 }
 
-export default function ChatPanel({ messages, streaming, onSend, onCancel, onClear, sessions, activeSessionId, onLoadSession, onNewChat, onDeleteSession }) {
+export default function ChatPanel({ messages, streaming, onSend, onClear, sessions, activeSessionId, onLoadSession, onNewChat, onDeleteSession }) {
   const [input, setInput] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [ctxMenu, setCtxMenu] = useState(null); // {x, y, sessionId}
@@ -274,24 +274,13 @@ export default function ChatPanel({ messages, streaming, onSend, onCancel, onCle
                 disabled={streaming}
                 rows={1}
               />
-              {streaming ? (
-                <button
-                  type="button"
-                  style={{ ...s.sendBtn, background: '#ef4444' }}
-                  onClick={onCancel}
-                  title="Stop generation"
-                >
-                  <Square size={16} />
-                </button>
-              ) : (
-                <button
-                  type="submit"
-                  style={{ ...s.sendBtn, opacity: !input.trim() ? 0.5 : 1 }}
-                  disabled={!input.trim()}
-                >
-                  <Send size={16} />
-                </button>
-              )}
+              <button
+                type="submit"
+                style={{ ...s.sendBtn, opacity: streaming || !input.trim() ? 0.5 : 1 }}
+                disabled={streaming || !input.trim()}
+              >
+                <Send size={16} />
+              </button>
             </div>
           </form>
         </div>
