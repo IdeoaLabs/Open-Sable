@@ -458,7 +458,21 @@ class CoreToolsMixin:
             if not result.get("success"):
                 return f"⚠️ {result.get('error', 'Unknown error')}"
 
-            return f"📸 Screenshot saved: {result['path']}"
+            path = result["path"]
+            msg = f"📸 Screenshot saved: {path}"
+
+            # Auto-cleanup: delete temp screenshot after reading
+            if result.get("auto_cleanup"):
+                try:
+                    import base64, os
+                    with open(path, "rb") as f:
+                        img_b64 = base64.b64encode(f.read()).decode()
+                    os.remove(path)
+                    msg = f"📸 Screenshot taken ({len(img_b64)//1024}KB base64). File cleaned up."
+                except Exception:
+                    pass  # file already gone or unreadable — fine
+
+            return msg
 
         else:
             return f"Unknown browser action: {action}. Available: scrape, search, screenshot"

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   MessageSquare, Activity, Terminal, BarChart3,
   QrCode, Settings, Cpu, Smartphone,
-  TrendingUp, Sparkles, Clock, Brain, Orbit,
+  TrendingUp, Sparkles, Clock, Brain, Orbit, Monitor, SlidersHorizontal, Wifi,
 } from 'lucide-react';
 
 const tabs = [
@@ -18,7 +18,10 @@ const tabs = [
   { id: 'qr',       icon: QrCode,        label: 'QR Pair' },
   { id: 'agent',    icon: Cpu,           label: 'Agent' },
   { id: 'devices',  icon: Smartphone,    label: 'Devices' },
-  { id: 'settings', icon: Settings,      label: 'Settings' },
+  { id: 'display',  icon: Monitor,             label: 'Display' },
+  { id: 'config',   icon: SlidersHorizontal,   label: 'Config' },
+  { id: 'wifi',     icon: Wifi,                label: 'WiFi' },
+  { id: 'settings', icon: Settings,             label: 'Settings' },
 ];
 
 const sidebarStyles = {

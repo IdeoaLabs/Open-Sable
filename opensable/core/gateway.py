@@ -279,6 +279,9 @@ class Gateway:
         self._monitor_clients: Set[_Client] = set()
         self._monitor_agent_wired = False
 
+        # WiFi survival skill (optional, Pi-specific)
+        self._wifi_skill = None
+
         # aiohttp internals
         self._app: Optional[web.Application] = None
         self._runner: Optional[web.AppRunner] = None
@@ -299,6 +302,20 @@ class Gateway:
         # Aggr trading terminal SPA
         app.router.add_get("/aggr/{path:.*}", self._aggr_handler)
         app.router.add_get("/aggr", self._aggr_handler)
+
+        # Pi HUD display stream
+        app.router.add_get("/api/display/frame", self._display_frame_handler)
+        app.router.add_get("/api/display/stream", self._display_stream_handler)
+        app.router.add_get("/api/display/status", self._display_status_handler)
+        app.router.add_post("/api/display/page", self._display_set_page_handler)
+
+        # Agent environment editor
+        app.router.add_get("/api/env", self._env_get_handler)
+        app.router.add_post("/api/env", self._env_post_handler)
+
+        # WiFi survival skill
+        app.router.add_get("/api/wifi", self._wifi_status_handler)
+        app.router.add_post("/api/wifi", self._wifi_command_handler)
 
         # Polymarket public API proxy
         app.router.add_get("/api/polymarket/{endpoint:.*}", self._polymarket_proxy)
@@ -484,7 +501,342 @@ class Gateway:
             "<p>Run: <code>cd aggr && npm install && npm run build</code></p></body></html>",
         )
 
-    # ── Polymarket public API proxy ───────────────────────────────────────────
+    # ── Pi display stream ─────────────────────────────────────────────────────
+
+    _DISPLAY_FRAME_PATH = "/tmp/sable_hud_frame.jpg"
+    _DISPLAY_BOUNDARY   = b"--sablehudframe"
+
+    async def _display_frame_handler(self, request: web.Request) -> web.Response:
+        """Return the latest HUD snapshot as a JPEG image."""
+        path = self._DISPLAY_FRAME_PATH
+        if not os.path.exists(path):
+            return web.Response(status=503, text="Display not active")
+        with open(path, "rb") as fh:
+            data = fh.read()
+        return web.Response(
+            body=data,
+            content_type="image/jpeg",
+            headers={"Cache-Control": "no-store"},
+        )
+
+    async def _display_status_handler(self, request: web.Request) -> web.Response:
+        """Return current page index and page list as JSON."""
+        status_path = "/tmp/sable_hud_status.json"
+        if not os.path.exists(status_path):
+            return web.Response(status=503, content_type="application/json",
+                                text='{"error":"display not active"}')
+        with open(status_path) as fh:
+            data = fh.read()
+        return web.Response(body=data.encode(), content_type="application/json",
+                            headers={"Cache-Control": "no-store"})
+
+    async def _display_set_page_handler(self, request: web.Request) -> web.Response:
+        """Write a page-change request for display_hud.py to pick up."""
+        try:
+            body = await request.json()
+            page = int(body.get("page", -1))
+        except Exception:
+            return web.Response(status=400, content_type="application/json",
+                                text='{"error":"invalid body"}')
+        if page < 0 or page > 9:
+            return web.Response(status=400, content_type="application/json",
+                                text='{"error":"page out of range"}')
+        req_path = "/tmp/sable_hud_page_req"
+        try:
+            with open(req_path, "w") as fh:
+                fh.write(str(page))
+        except OSError as exc:
+            return web.Response(status=500, content_type="application/json",
+                                text=json.dumps({"error": str(exc)}))
+        return web.Response(content_type="application/json",
+                            text=json.dumps({"ok": True, "page": page}))
+
+    async def _display_stream_handler(self, request: web.Request) -> web.StreamResponse:
+        """MJPEG stream of the Pi HUD — suitable for <img src=...>."""
+        resp = web.StreamResponse(headers={
+            "Content-Type": f"multipart/x-mixed-replace; boundary={self._DISPLAY_BOUNDARY.decode()}",
+            "Cache-Control": "no-store",
+            "X-Accel-Buffering": "no",
+        })
+        await resp.prepare(request)
+        path = self._DISPLAY_FRAME_PATH
+        last_mtime = None
+        idle_loops = 0
+        try:
+            while not request.transport.is_closing():
+                if not os.path.exists(path):
+                    await asyncio.sleep(0.5)
+                    idle_loops += 1
+                    if idle_loops > 20:
+                        break
+                    continue
+                idle_loops = 0
+                mtime = os.path.getmtime(path)
+                if mtime != last_mtime:
+                    last_mtime = mtime
+                    try:
+                        with open(path, "rb") as fh:
+                            data = fh.read()
+                    except OSError:
+                        await asyncio.sleep(0.1)
+                        continue
+                    part = (
+                        self._DISPLAY_BOUNDARY + b"\r\n"
+                        + b"Content-Type: image/jpeg\r\n"
+                        + f"Content-Length: {len(data)}\r\n\r\n".encode()
+                        + data + b"\r\n"
+                    )
+                    await resp.write(part)
+                await asyncio.sleep(0.15)
+        except (ConnectionResetError, asyncio.CancelledError):
+            pass
+        return resp
+
+    # ── Env editor ────────────────────────────────────────────────────────────
+
+    def _profile_env_path(self) -> Path:
+        """Return the absolute path to the active profile's profile.env file."""
+        return self._project_root / "agents" / _profile_name / "profile.env"
+
+    async def _env_get_handler(self, request: web.Request) -> web.Response:
+        """Return the profile.env contents as a structured JSON object."""
+        import re as _re
+        env_path = self._profile_env_path()
+        if not env_path.exists():
+            return web.Response(
+                status=404,
+                content_type="application/json",
+                text=json.dumps({"error": f"profile.env not found: {env_path}"}),
+            )
+        raw = env_path.read_text(encoding="utf-8")
+        sections: list[dict] = []
+        current_section: dict | None = None
+        pending_comments: list[str] = []
+
+        # Matches: # ── Title ────...   or   # === Title ===...
+        _section_re = _re.compile(
+            r'^#\s*[─═\-]{2,}\s*(.+?)\s*[─═\-]*\s*$'
+        )
+        # Strip inline comment from a value: VALUE   # comment
+        def _strip_inline(v: str) -> str:
+            # Split on first occurrence of whitespace + # (not inside a URL)
+            m = _re.search(r'\s{2,}#\s', v)
+            if m:
+                return v[:m.start()].strip()
+            return v.strip()
+
+        for line in raw.splitlines():
+            stripped = line.strip()
+
+            # Skip pure decorator lines (=== or ─── with no word chars)
+            if stripped.startswith("#") and not _re.search(r'[a-zA-Z]', stripped):
+                continue
+
+            # Section header  # ── Title ─────
+            m = _section_re.match(stripped)
+            if m:
+                title = m.group(1).strip()
+                # Skip generic file headers
+                if any(k in title.lower() for k in ("generated by", "opensable —", "device:")):
+                    continue
+                current_section = {"title": title, "entries": []}
+                sections.append(current_section)
+                pending_comments = []
+                continue
+
+            # Blank comment separator
+            if stripped == "#":
+                pending_comments = []
+                continue
+
+            # Regular comment (inline doc for next key)
+            if stripped.startswith("#"):
+                pending_comments.append(stripped[1:].strip())
+                continue
+
+            # Blank line — flush pending comments
+            if not stripped:
+                pending_comments = []
+                continue
+
+            # KEY=VALUE line
+            if "=" in stripped and not stripped.startswith("#"):
+                key, _, value = stripped.partition("=")
+                key = key.strip()
+                if not key:
+                    continue
+                value = _strip_inline(value)
+                if current_section is None:
+                    current_section = {"title": "General", "entries": []}
+                    sections.append(current_section)
+                current_section["entries"].append({
+                    "key": key,
+                    "value": value,
+                    "comment": " ".join(pending_comments) if pending_comments else None,
+                })
+                pending_comments = []
+
+        # Drop empty sections
+        sections = [s for s in sections if s["entries"]]
+
+        return web.Response(
+            content_type="application/json",
+            text=json.dumps({
+                "profile": _profile_name,
+                "path": str(env_path),
+                "sections": sections,
+            }),
+            headers={"Cache-Control": "no-store"},
+        )
+
+    async def _env_post_handler(self, request: web.Request) -> web.Response:
+        """Update, add, or delete keys in profile.env without touching other content."""
+        import re as _re2
+        try:
+            body = await request.json()
+            updates: dict[str, str] = body.get("updates", {})
+            adds: list[dict]        = body.get("adds", [])    # [{key, value}]
+            deletes: list[str]      = body.get("deletes", [])
+        except Exception:
+            return web.Response(status=400, content_type="application/json",
+                                text='{"error":"invalid JSON body"}')
+
+        if not isinstance(updates, dict):
+            updates = {}
+        if not isinstance(adds, list):
+            adds = []
+        if not isinstance(deletes, list):
+            deletes = []
+
+        if not updates and not adds and not deletes:
+            return web.Response(status=400, content_type="application/json",
+                                text='{"error":"no operations specified"}')
+
+        # Validate new key names (must be valid shell identifiers)
+        _key_re = _re2.compile(r'^[A-Z_][A-Z0-9_]*$', _re2.IGNORECASE)
+        adds = [a for a in adds if isinstance(a, dict) and _key_re.match(str(a.get("key", "")))]
+
+        env_path = self._profile_env_path()
+        if not env_path.exists():
+            return web.Response(status=404, content_type="application/json",
+                                text=json.dumps({"error": f"profile.env not found: {env_path}"}))
+
+        raw = env_path.read_text(encoding="utf-8")
+        lines = raw.splitlines(keepends=True)
+        applied: list[str] = []
+        deleted: list[str] = []
+        new_lines: list[str] = []
+        delete_set = set(deletes)
+
+        for line in lines:
+            stripped = line.strip()
+            if "=" in stripped and not stripped.startswith("#"):
+                key = stripped.split("=", 1)[0].strip()
+                if key in delete_set:
+                    deleted.append(key)
+                    continue  # Remove this line
+                if key in updates:
+                    eol = "\n" if line.endswith("\n") else ""
+                    new_lines.append(f"{key}={updates[key]}{eol}")
+                    applied.append(key)
+                    continue
+            new_lines.append(line)
+
+        # Append new keys at end of file
+        added: list[str] = []
+        for add_entry in adds:
+            key = str(add_entry.get("key", "")).strip()
+            value = str(add_entry.get("value", ""))
+            if not key:
+                continue
+            if not new_lines or new_lines[-1].endswith("\n"):
+                new_lines.append(f"{key}={value}\n")
+            else:
+                new_lines.append(f"\n{key}={value}\n")
+            added.append(key)
+
+        # Atomic write — write to temp then rename
+        import tempfile
+        tmp_fd, tmp_path = tempfile.mkstemp(
+            dir=str(env_path.parent), prefix=".profile.env.tmp"
+        )
+        try:
+            with os.fdopen(tmp_fd, "w", encoding="utf-8") as fh:
+                fh.writelines(new_lines)
+            os.replace(tmp_path, str(env_path))
+        except OSError as exc:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            return web.Response(status=500, content_type="application/json",
+                                text=json.dumps({"error": str(exc)}))
+
+        missing = [k for k in updates if k not in applied]
+        return web.Response(
+            content_type="application/json",
+            text=json.dumps({"ok": True, "applied": applied, "added": added,
+                             "deleted": deleted, "missing": missing}),
+        )
+
+    # ── WiFi Survival handlers ────────────────────────────────────────────────
+
+    async def _wifi_status_handler(self, request: web.Request) -> web.Response:
+        """GET /api/wifi — return WifiSurvivalSkill status as JSON."""
+        if self._wifi_skill is None:
+            return web.Response(
+                status=503,
+                content_type="application/json",
+                text=json.dumps({"error": "wifi skill not running",
+                                 "hint": "Set WIFI_HUNT_ENABLED=true in profile.env"}),
+            )
+        return web.Response(
+            content_type="application/json",
+            text=json.dumps(self._wifi_skill.status()),
+        )
+
+    async def _wifi_command_handler(self, request: web.Request) -> web.Response:
+        """POST /api/wifi — send commands to WifiSurvivalSkill."""
+        if self._wifi_skill is None:
+            return web.Response(
+                status=503,
+                content_type="application/json",
+                text=json.dumps({"error": "wifi skill not running"}),
+            )
+        try:
+            body = await request.json()
+        except Exception:
+            return web.Response(status=400, content_type="application/json",
+                                text='{"error":"invalid JSON body"}')
+
+        cmd = body.get("cmd", "")
+        if cmd == "force_hunt":
+            asyncio.create_task(self._wifi_skill.force_hunt())
+        elif cmd == "add_whitelist":
+            ssid = str(body.get("ssid", "")).strip()
+            if not ssid:
+                return web.Response(status=400, content_type="application/json",
+                                    text='{"error":"ssid required"}')
+            added = self._wifi_skill.add_to_whitelist(ssid)
+            return web.Response(content_type="application/json",
+                                text=json.dumps({"ok": True, "added": added}))
+        elif cmd == "add_credential":
+            ssid     = str(body.get("ssid", "")).strip()
+            password = str(body.get("password", ""))
+            bssid    = str(body.get("bssid", "00:00:00:00:00:00"))
+            if not ssid or not password:
+                return web.Response(status=400, content_type="application/json",
+                                    text='{"error":"ssid and password required"}')
+            self._wifi_skill.add_credential(ssid, bssid, password)
+        elif cmd == "stop":
+            self._wifi_skill._enabled = False
+        elif cmd == "start":
+            self._wifi_skill._enabled = True
+        else:
+            return web.Response(status=400, content_type="application/json",
+                                text=json.dumps({"error": f"unknown cmd: {cmd}"}))
+
+        return web.Response(content_type="application/json", text='{"ok":true}')
 
     async def _polymarket_proxy(self, request: web.Request) -> web.Response:
         """Proxy requests to Polymarket public APIs (Gamma + CLOB)."""
@@ -950,7 +1302,18 @@ class Gateway:
     async def start(self):
         """Bind the Unix socket and TCP port, then start accepting connections."""
         self._app = self._build_app()
-        self._runner = web.AppRunner(self._app)
+        # Suppress access logging for high-frequency display polling endpoints
+        _display_paths = ("/api/display/stream", "/api/display/status",
+                          "/api/display/frame")
+
+        class _FilteredAccessLogger(web.AccessLogger):
+            def log(self, request, response, time):
+                if request.path.startswith(_display_paths):
+                    return
+                super().log(request, response, time)
+
+        self._runner = web.AppRunner(self._app,
+                                     access_log_class=_FilteredAccessLogger)
         await self._runner.setup()
 
         # Unix socket
@@ -975,6 +1338,15 @@ class Gateway:
 
         self._running = True
         self._hb_task = asyncio.create_task(self._heartbeat())
+
+        # WiFi survival skill — activate if enabled in profile.env
+        if os.environ.get("WIFI_HUNT_ENABLED", "false").lower() == "true":
+            try:
+                from opensable.skills.network.wifi_survival_skill import WifiSurvivalSkill
+                self._wifi_skill = WifiSurvivalSkill(self.config)
+                await self._wifi_skill.initialize()
+            except Exception as _wifi_exc:
+                logger.warning("[Gateway] WifiSurvivalSkill init failed: %s", _wifi_exc)
 
         # Wire up the interactive permission confirmation callback so that
         # "ask" permissions are forwarded to the user via WebSocket.

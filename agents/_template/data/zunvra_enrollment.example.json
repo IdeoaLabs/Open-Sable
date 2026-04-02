@@ -1,0 +1,4 @@
+{
+  "gateway_secret": "YOUR_GATEWAY_SECRET_HERE",
+  "user_token": "YOUR_ZUNVRA_USER_JWT_HERE"
+}

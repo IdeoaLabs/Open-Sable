@@ -57,6 +57,29 @@ async def async_main():
     profile_name = args.profile or os.environ.get("SABLE_PROFILE") or DEFAULT_PROFILE
     profile = load_profile(profile_name)
     profile.apply_env()  # merge profile.env into os.environ before load_config()
+
+    # ── Profile isolation for Zunvra Intel/Social (prevent env bleed from root .env) ──
+    # Only profile.env should opt-in these capabilities per agent.
+    bool_isolated_keys = (
+        "ZUNVRA_INTEL_ENABLED",
+        "ZUNVRA_SOCIAL_ENABLED",
+        "ZUNVRA_ENABLED",
+    )
+    sensitive_isolated_keys = (
+        "ZUNVRA_API_KEY",
+        "ZUNVRA_BACKEND_URL",
+        "ZUNVRA_INTEL_DATA_DIR",
+        "ZUNVRA_INTEL_INTERVAL",
+    )
+
+    for key in bool_isolated_keys:
+        if key not in profile.env_overrides:
+            os.environ[key] = "false"
+
+    for key in sensitive_isolated_keys:
+        if key not in profile.env_overrides:
+            os.environ.pop(key, None)
+
     console.print(f"[bold magenta]👤 Profile: {profile_name}[/bold magenta]")
 
     # Kill any existing bot instances of the SAME profile (not other profiles)
@@ -233,6 +256,61 @@ async def async_main():
             except Exception as e:
                 logger.warning(f"X Autoposter failed to start: {e}", exc_info=True)
 
+        # ── Zunvra Intelligence Loop (26-module analysis + camera pilot) ───────
+        intel_loop = None
+        zunvra_intel_enabled = (
+            os.environ.get("ZUNVRA_INTEL_ENABLED", "false").lower() in ("true", "1", "yes")
+            and os.environ.get("ZUNVRA_BACKEND_URL", "")
+        )
+        if zunvra_intel_enabled:
+            try:
+                from opensable.core.intel_loop import IntelLoop
+
+                intel_loop = IntelLoop(agent, config)
+
+                async def _run_intel_loop():
+                    try:
+                        await intel_loop.start()
+                    except Exception as exc:
+                        logger.error(f"🛰️  Intel Loop crashed: {exc}", exc_info=True)
+
+                asyncio.create_task(_run_intel_loop())
+                interval = intel_loop.interval
+                logger.info(f"🛰️  Intel Loop task created (every {interval:.0f}s)")
+                console.print(
+                    f"[bold cyan]🛰️  Intelligence Loop running in background "
+                    f"(26 modules + camera pilot, every {interval:.0f}s)[/bold cyan]"
+                )
+            except Exception as e:
+                logger.warning(f"Intel Loop failed to start: {e}", exc_info=True)
+
+        # ── Zunvra Social Loop (autonomous posting, liking, replying) ──────────
+        social_loop = None
+        zunvra_social_enabled = (
+            os.environ.get("ZUNVRA_SOCIAL_ENABLED", "false").lower() in ("true", "1", "yes")
+        )
+        if zunvra_social_enabled:
+            try:
+                from opensable.core.social_loop import SocialLoop
+
+                social_loop = SocialLoop(agent, config)
+
+                async def _run_social_loop():
+                    try:
+                        await social_loop.start()
+                    except Exception as exc:
+                        logger.error(f"🌐 Social Loop crashed: {exc}", exc_info=True)
+
+                asyncio.create_task(_run_social_loop())
+                interval_s = social_loop.interval
+                logger.info(f"🌐 Social Loop task created (every {interval_s:.0f}s)")
+                console.print(
+                    f"[bold green]🌐 Zunvra Social Loop running in background "
+                    f"(autonomous posts/replies/likes, every {interval_s:.0f}s)[/bold green]"
+                )
+            except Exception as e:
+                logger.warning(f"Social Loop failed to start: {e}", exc_info=True)
+
         # Start interfaces
         interfaces = []
 
@@ -326,6 +404,10 @@ async def async_main():
                 _bridge_proc.terminate()
             if autonomous:
                 await autonomous.stop()
+            if intel_loop:
+                await intel_loop.stop()
+            if social_loop:
+                await social_loop.stop()
             if x_autoposter:
                 await x_autoposter.stop()
             if mobile_relay:

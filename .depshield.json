@@ -1,0 +1,329 @@
+{
+  "version": "1.0.0",
+  "created": "2026-03-31T17:22:58.126301+00:00",
+  "lockfiles": {
+    "npm": "package-lock.json",
+    "pip": "requirements.txt"
+  },
+  "lockfile_hashes": {
+    "npm": "fe7dff7a4a97b64461d2f39e3dc868c5b07854e33ef55e446b37842f5563845e",
+    "pip": "b2534c10fb2d265855dddb2ab5300de745ae519a5d1aa4ac15beeeedf57f32db"
+  },
+  "dependencies": [
+    {
+      "name": "pydantic",
+      "version": "2.5.0,<3",
+      "ecosystem": "pip",
+      "integrity": "",
+      "resolved_url": "",
+      "has_install_script": false,
+      "direct": true
+    },
+    {
+      "name": "python-dotenv",
+      "version": "1.0.0",
+      "ecosystem": "pip",
+      "integrity": "",
+      "resolved_url": "",
+      "has_install_script": false,
+      "direct": true
+    },
+    {
+      "name": "rich",
+      "version": "13.7.0",
+      "ecosystem": "pip",
+      "integrity": "",
+      "resolved_url": "",
+      "has_install_script": false,
+      "direct": true
+    },
+    {
+      "name": "ollama",
+      "version": "0.1.6,<1",
+      "ecosystem": "pip",
+      "integrity": "",
+      "resolved_url": "",
+      "has_install_script": false,
+      "direct": true
+    },
+    {
+      "name": "openai",
+      "version": "1.0.0",
+      "ecosystem": "pip",
+      "integrity": "",
+      "resolved_url": "",
+      "has_install_script": false,
+      "direct": true
+    },
+    {
+      "name": "google-genai",
+      "version": "1.0.0",
+      "ecosystem": "pip",
+      "integrity": "",
+      "resolved_url": "",
+      "has_install_script": false,
+      "direct": true
+    },
+    {
+      "name": "anthropic",
+      "version": "0.40.0",
+      "ecosystem": "pip",
+      "integrity": "",
+      "resolved_url": "",
+      "has_install_script": false,
+      "direct": true
+    },
+    {
+      "name": "cohere",
+      "version": "5.0.0",
+      "ecosystem": "pip",
+      "integrity": "",
+      "resolved_url": "",
+      "has_install_script": false,
+      "direct": true
+    },
+    {
+      "name": "chromadb",
+      "version": "0.4.22,<1",
+      "ecosystem": "pip",
+      "integrity": "",
+      "resolved_url": "",
+      "has_install_script": false,
+      "direct": true
+    },
+    {
+      "name": "tiktoken",
+      "version": "0.5.2,<1",
+      "ecosystem": "pip",
+      "integrity": "",
+      "resolved_url": "",
+      "has_install_script": false,
+      "direct": true
+    },
+    {
+      "name": "aiohttp",
+      "version": "3.9.0,<4",
+      "ecosystem": "pip",
+      "integrity": "",
+      "resolved_url": "",
+      "has_install_script": false,
+      "direct": true
+    },
+    {
+      "name": "httpx",
+      "version": "0.26.0,<1",
+      "ecosystem": "pip",
+      "integrity": "",
+      "resolved_url": "",
+      "has_install_script": false,
+      "direct": true
+    },
+    {
+      "name": "aiofiles",
+      "version": "23.2.1",
+      "ecosystem": "pip",
+      "integrity": "",
+      "resolved_url": "",
+      "has_install_script": false,
+      "direct": true
+    },
+    {
+      "name": "restrictedpython",
+      "version": "6.2,<8",
+      "ecosystem": "pip",
+      "integrity": "",
+      "resolved_url": "",
+      "has_install_script": false,
+      "direct": true
+    },
+    {
+      "name": "psutil",
+      "version": "5.9.0",
+      "ecosystem": "pip",
+      "integrity": "",
+      "resolved_url": "",
+      "has_install_script": false,
+      "direct": true
+    },
+    {
+      "name": "py-cpuinfo",
+      "version": "9.0.0",
+      "ecosystem": "pip",
+      "integrity": "",
+      "resolved_url": "",
+      "has_install_script": false,
+      "direct": true
+    },
+    {
+      "name": "playwright",
+      "version": "1.40.0",
+      "ecosystem": "pip",
+      "integrity": "",
+      "resolved_url": "",
+      "has_install_script": false,
+      "direct": true
+    },
+    {
+      "name": "beautifulsoup4",
+      "version": "4.12.0",
+      "ecosystem": "pip",
+      "integrity": "",
+      "resolved_url": "",
+      "has_install_script": false,
+      "direct": true
+    },
+    {
+      "name": "fake-useragent",
+      "version": "1.4.0",
+      "ecosystem": "pip",
+      "integrity": "",
+      "resolved_url": "",
+      "has_install_script": false,
+      "direct": true
+    },
+    {
+      "name": "python-dateutil",
+      "version": "2.8.0",
+      "ecosystem": "pip",
+      "integrity": "",
+      "resolved_url": "",
+      "has_install_script": false,
+      "direct": true
+    },
+    {
+      "name": "pyjwt",
+      "version": "2.8.0",
+      "ecosystem": "pip",
+      "integrity": "",
+      "resolved_url": "",
+      "has_install_script": false,
+      "direct": true
+    },
+    {
+      "name": "pyyaml",
+      "version": "6.0.1",
+      "ecosystem": "pip",
+      "integrity": "",
+      "resolved_url": "",
+      "has_install_script": false,
+      "direct": true
+    },
+    {
+      "name": "click",
+      "version": "8.1.7",
+      "ecosystem": "pip",
+      "integrity": "",
+      "resolved_url": "",
+      "has_install_script": false,
+      "direct": true
+    },
+    {
+      "name": "cryptography",
+      "version": "41.0",
+      "ecosystem": "pip",
+      "integrity": "",
+      "resolved_url": "",
+      "has_install_script": false,
+      "direct": true
+    },
+    {
+      "name": "python-docx",
+      "version": "1.1.0",
+      "ecosystem": "pip",
+      "integrity": "",
+      "resolved_url": "",
+      "has_install_script": false,
+      "direct": true
+    },
+    {
+      "name": "openpyxl",
+      "version": "3.1.0",
+      "ecosystem": "pip",
+      "integrity": "",
+      "resolved_url": "",
+      "has_install_script": false,
+      "direct": true
+    },
+    {
+      "name": "reportlab",
+      "version": "4.0.0",
+      "ecosystem": "pip",
+      "integrity": "",
+      "resolved_url": "",
+      "has_install_script": false,
+      "direct": true
+    },
+    {
+      "name": "python-pptx",
+      "version": "0.6.23",
+      "ecosystem": "pip",
+      "integrity": "",
+      "resolved_url": "",
+      "has_install_script": false,
+      "direct": true
+    },
+    {
+      "name": "pyperclip",
+      "version": "1.8.0",
+      "ecosystem": "pip",
+      "integrity": "",
+      "resolved_url": "",
+      "has_install_script": false,
+      "direct": true
+    },
+    {
+      "name": "aiogram",
+      "version": "3.3.0",
+      "ecosystem": "pip",
+      "integrity": "",
+      "resolved_url": "",
+      "has_install_script": false,
+      "direct": true
+    },
+    {
+      "name": "twikit",
+      "version": "2.3.0",
+      "ecosystem": "pip",
+      "integrity": "",
+      "resolved_url": "",
+      "has_install_script": false,
+      "direct": true
+    },
+    {
+      "name": "twikit-grok",
+      "version": "0.0.3",
+      "ecosystem": "pip",
+      "integrity": "",
+      "resolved_url": "",
+      "has_install_script": false,
+      "direct": true
+    },
+    {
+      "name": "curl-cffi",
+      "version": "0.7.0",
+      "ecosystem": "pip",
+      "integrity": "",
+      "resolved_url": "",
+      "has_install_script": false,
+      "direct": true
+    },
+    {
+      "name": "pytest",
+      "version": "7.4.3",
+      "ecosystem": "pip",
+      "integrity": "",
+      "resolved_url": "",
+      "has_install_script": false,
+      "direct": true
+    },
+    {
+      "name": "pytest-asyncio",
+      "version": "0.23.2",
+      "ecosystem": "pip",
+      "integrity": "",
+      "resolved_url": "",
+      "has_install_script": false,
+      "direct": true
+    }
+  ]
+}

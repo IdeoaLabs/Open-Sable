@@ -195,6 +195,9 @@ class SableAgent:
         self._monitor_subscribers: list = []
         self._monitor_stats = {"messages": 0, "tool_calls": 0, "errors": 0}
 
+        # Pending images captured from tool results (screenshot, etc.) to inject as multimodal messages
+        self._pending_images: list = []
+
         # Mobile phone context (updated by MobileRelay)
         self._mobile_context: dict = {"location": None, "battery": None, "clipboard": None}
 
@@ -1083,6 +1086,24 @@ class SableAgent:
                     cb(event, data)
             except Exception:
                 pass
+        # Push to Pi brain display (non-blocking)
+        try:
+            from opensable.utils.avatar import brain_event as _brain_event
+            if event == "thinking":
+                _brain_event("thinking", data.get("message", "")[:200])
+            elif event == "reasoning":
+                _brain_event("reasoning", data.get("content", "")[:200])
+            elif event == "tool.start":
+                _brain_event("tool", f"▶ {data.get('name', '')} {str(data.get('args', ''))[:120]}")
+            elif event == "tool.done":
+                ok = "✓" if data.get("success") else "✗"
+                _brain_event("tool", f"{ok} {data.get('name', '')} → {data.get('result', '')[:100]}")
+            elif event == "message.received":
+                _brain_event("user", data.get("text", "")[:200])
+            elif event == "response.sent":
+                _brain_event("divider", "─" * 30)
+        except Exception:
+            pass
 
     def get_monitor_snapshot(self) -> dict:
         """Return a full snapshot of agent state for the monitor UI."""
@@ -1216,7 +1237,7 @@ class SableAgent:
         "window_list":        ("desktop_", "screen_", "window_"),
         "window_focus":       ("desktop_", "screen_", "window_"),
         "navigate_url":       ("browser_",),
-        "image_request":      ("grok_", "screen_", "ocr_"),
+        "image_request":      ("grok_", "genelia_", "screen_", "ocr_"),
         "social_media":       ("x_", "grok_", "ig_", "fb_", "linkedin_", "tiktok_", "yt_"),
         "trading":            ("trading_",),
         "file_operation":     ("delete_", "move_"),
@@ -1226,7 +1247,7 @@ class SableAgent:
 
     # Intent → extra exact tool names that get FULL schemas
     _INTENT_FULL_EXACT: dict = {
-        "image_request":      frozenset({"generate_image", "grok_generate_image", "grok_analyze_image"}),
+        "image_request":      frozenset({"generate_image", "genelia_generate", "genelia_status", "grok_generate_image", "grok_analyze_image"}),
         "social_media":       frozenset({"generate_image", "grok_generate_image"}),
         "desktop_screenshot": frozenset({"desktop_screenshot", "screen_analyze", "screen_find"}),
         "trading":            frozenset({"trading_place_trade", "trading_price", "trading_portfolio"}),
@@ -1713,6 +1734,23 @@ class SableAgent:
 
         await self._notify_progress(f"{emoji} {label}...")
         await self._emit_monitor("tool.start", {"name": name, "args": arguments})
+        try:
+            from opensable.utils.avatar import report as _avatar_report
+            _tool_lower = name.lower()
+            if any(k in _tool_lower for k in ("search", "query", "lookup", "find", "web")):
+                _avatar_report('executing', tool=f"🔍 {name}")
+            elif any(k in _tool_lower for k in ("read", "get", "fetch", "load", "open")):
+                _avatar_report('executing', tool=f"📖 {name}")
+            elif any(k in _tool_lower for k in ("write", "create", "save", "edit", "update", "delete", "remove")):
+                _avatar_report('executing', tool=f"✏️ {name}")
+            elif any(k in _tool_lower for k in ("run", "exec", "shell", "cmd", "terminal", "python", "bash")):
+                _avatar_report('executing', tool=f"⚙️ {name}")
+            elif any(k in _tool_lower for k in ("memory", "remember", "store", "recall")):
+                _avatar_report('executing', tool=f"🧠 {name}")
+            else:
+                _avatar_report('executing', tool=name)
+        except Exception:
+            pass
         _t0 = time.time()
         try:
             result = await asyncio.wait_for(
@@ -1731,6 +1769,14 @@ class SableAgent:
                     tool_name=name, result=str(result)[:500], success=True,
                     duration_ms=_dur, user_id=user_id,
                 )
+            # Extract image_base64 for multimodal injection (screenshot, vision tools)
+            if isinstance(result, dict) and result.get("image_base64"):
+                self._pending_images.append({
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{result['image_base64']}"}
+                })
+                dims = f" ({result.get('width', '?')}x{result.get('height', '?')}px)" if result.get('width') else ""
+                return f"**{name}:** Screenshot captured{dims}. Image attached for analysis."
             return f"**{name}:** {result}"
         except asyncio.TimeoutError:
             logger.error(f"Tool {name} timed out")
@@ -2572,13 +2618,17 @@ class SableAgent:
             _PINGPONG_LEN = 4     # A-B-A-B pattern length
             # ────────────────────────────────────────────────────────
 
+            _last_tool_had_error = False
+
             for _round in range(_MAX_ROUNDS):
                 offer_tools = (
                     (not tool_results)
                     or _last_tool_was_code_error
+                    or _last_tool_had_error
                     or (plan and not plan.is_complete)
                 )
                 _last_tool_was_code_error = False
+                _last_tool_had_error = False
 
                 thinking_msg = f"💭 Thinking... (round {_round + 1})" if _round > 0 else "💭 Thinking..."
                 await self._notify_progress(thinking_msg)
@@ -2622,6 +2672,12 @@ class SableAgent:
 
                     results = await self._execute_tools_parallel(all_tool_calls, user_id=user_id)
                     tool_results.extend(results)
+
+                    # Detect tool errors so we re-offer tools next round
+                    _last_tool_had_error = any(
+                        isinstance(r, str) and r.startswith("❌")
+                        for r in results
+                    )
 
                     # If load_tool_details was called, expand those tools'
                     # schemas for subsequent rounds so the model sees full params.
@@ -2717,7 +2773,7 @@ class SableAgent:
                         messages.append(
                             {
                                 "role": "user",
-                                "content": (
+                                "content": self._build_user_message_content(
                                     f"The code execution failed:\n{error_result}\n\n"
                                     "Please fix the code and try again using execute_code."
                                 ),
@@ -2749,7 +2805,7 @@ class SableAgent:
                                 messages.append(
                                     {
                                         "role": "user",
-                                        "content": (
+                                        "content": self._build_user_message_content(
                                             f"Previous step failed. New plan:\n{plan.summary()}\n\n"
                                             f"Execute: {plan.next_step()}"
                                         ),
@@ -2777,7 +2833,7 @@ class SableAgent:
                             messages.append(
                                 {
                                     "role": "user",
-                                    "content": f"Good. Now execute the next step:\n{plan.next_step()}",
+                                    "content": self._build_user_message_content(f"Good. Now execute the next step:\n{plan.next_step()}"),
                                 }
                             )
                             continue
@@ -2799,7 +2855,7 @@ class SableAgent:
                         messages.append(
                             {
                                 "role": "user",
-                                "content": f"Using the tool results above, answer: {task}",
+                                "content": self._build_user_message_content(f"Using the tool results above, answer: {task}"),
                             }
                         )
                 else:
@@ -2817,6 +2873,13 @@ class SableAgent:
             # Direct answer (no tools)
             if not tool_results and final_text:
                 final_text = self._clean_output(final_text)
+                try:
+                    from opensable.utils.avatar import report as _avatar_report
+                    _avatar_report('typing',
+                                   words=len((final_text or "").split()),
+                                   text=(final_text or "")[:400])
+                except Exception:
+                    pass
                 # Emit to streaming client if connected
                 _scb = getattr(self, "_stream_chunk_callback", None)
                 if _scb:
@@ -2836,6 +2899,13 @@ class SableAgent:
 
         # Synthesis
         await self._notify_progress("✍️ Writing response...")
+        try:
+            from opensable.utils.avatar import report as _avatar_report
+            # Estimate word count from tool context length as proxy for response length
+            _est_words = max(10, len(" ".join(valid_tool_results)) // 6)
+            _avatar_report('typing', words=_est_words)
+        except Exception:
+            pass
         synthesis_prompt = (
             base_system + f"\n\nTODAY'S DATE: {today}. This is the real current date."
             "\n\nCRITICAL RULES:"
@@ -2902,6 +2972,15 @@ class SableAgent:
         checkpoint.record_synthesis(final_text or "")
         self.checkpoint_store.save(checkpoint)
 
+        # Update avatar typewriter with actual synthesized text
+        try:
+            from opensable.utils.avatar import report as _avatar_report
+            _avatar_report('typing',
+                           words=len((final_text or "").split()),
+                           text=(final_text or "")[:400])
+        except Exception:
+            pass
+
         # ── Trace: synthesis ──
         if self.trace_exporter:
             self.trace_exporter.record_event(
@@ -2944,6 +3023,24 @@ class SableAgent:
             self.tracer.end_span(span.span_id)
 
         return state
+
+    # ------------------------------------------------------------------
+    # Multimodal message builder
+    # ------------------------------------------------------------------
+
+    def _build_user_message_content(self, text: str):
+        """Return plain text or a multimodal content list if images are pending.
+
+        When a screenshot/vision tool has been executed, its base64 payload is
+        held in ``self._pending_images``.  This helper folds those images into
+        the next user-role message so that the LLM (OpenWebUI / OpenAI vision)
+        can see them natively.  The list is cleared after consumption.
+        """
+        if not self._pending_images:
+            return text
+        content = [{"type": "text", "text": text}] + self._pending_images
+        self._pending_images = []
+        return content
 
     # ------------------------------------------------------------------
     # Media URL re-injection (post-synthesis)
@@ -3295,11 +3392,42 @@ class SableAgent:
             self._user_chatting = False
             self._progress_callback = old_callback
             self._stream_chunk_callback = old_stream
+            try:
+                from opensable.utils.avatar import report as _avatar_report
+                _avatar_report('idle')
+            except Exception:
+                pass
 
     async def _process_message_inner(
         self, user_id: str, message: str, history: Optional[List[dict]] = None
     ) -> str:
+        # Clear any images captured during previous request
+        self._pending_images = []
         self._monitor_stats["messages"] += 1
+        try:
+            from opensable.utils.avatar import report as _avatar_report
+            # Detect gratitude intent so face/0 (thug life) fires briefly
+            _GRATITUDE_KW = {
+                "thanks", "thank", "gracias", "ty", "thnx", "thx",
+                "appreciate", "grateful", "awesome", "perfect",
+                "excellent", "great", "nice", "cheers", "danke",
+                "merci", "obrigado", "grazie", "arigato",
+            }
+            _msg_lower = message.lower()
+            _is_grateful = (
+                any(w in _msg_lower.split() for w in _GRATITUDE_KW)
+                or any(kw in _msg_lower for kw in (
+                    "thank you", "muchas gracias", "mil gracias",
+                    "much appreciated", "you're the best", "you are the best",
+                ))
+            )
+            if _is_grateful:
+                _avatar_report('grateful')
+                import asyncio as _asyncio
+                await _asyncio.sleep(0.6)
+            _avatar_report('thinking', text=message[:80])
+        except Exception:
+            pass
         await self._emit_monitor("message.received", {"user_id": user_id, "text": message[:100], "channel": "agent"})
         if self.advanced_memory:
             try:
@@ -3364,9 +3492,30 @@ class SableAgent:
             if msg["role"] == "final_response":
                 await self._emit_monitor("response.sent", {"user_id": user_id, "channel": "agent", "length": len(msg["content"])})
                 await self._emit_monitor("thinking.done", {})
+                try:
+                    from opensable.utils.avatar import report as _avatar_report
+                    _avatar_report('responding', text=msg["content"][:80])
+                except Exception:
+                    pass
+                # brief responding flash then back to idle
+                import threading as _t
+                def _idle_after():
+                    import time as _time
+                    _time.sleep(2.5)
+                    try:
+                        from opensable.utils.avatar import report as _ra
+                        _ra('idle')
+                    except Exception:
+                        pass
+                _t.Thread(target=_idle_after, daemon=True).start()
                 return msg["content"]
 
         await self._emit_monitor("thinking.done", {})
+        try:
+            from opensable.utils.avatar import report as _avatar_report
+            _avatar_report('idle')
+        except Exception:
+            pass
         return "I processed your request, but couldn't formulate a response."
 
     # ------------------------------------------------------------------

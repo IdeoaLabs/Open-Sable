@@ -184,15 +184,15 @@ class BrowserEngine:
                 nav = await self._pinchtab.navigate(url)
                 if not nav.get("success"):
                     raise RuntimeError(nav.get("error", "nav failed"))
-                tab_id = nav.get("tabId")
-                text_result = await self._pinchtab.text(tab_id)
+                await asyncio.sleep(1)  # Let page render
+                text_result = await self._pinchtab.text()
                 content = text_result.get("text", "")
                 content = sanitize_web_content(content)
                 if len(content) > max_length:
                     content = content[:max_length] + "...\n\n(Content truncated for brevity)"
                 # Try to get title from snapshot
                 title = text_result.get("title", url)
-                await self._pinchtab.close_tab(tab_id)
+                await self._pinchtab.close_tab()
                 return {"title": title, "url": url, "content": content, "success": True,
                         "engine": "pinchtab"}
             except Exception as e:
@@ -263,17 +263,16 @@ class BrowserEngine:
                 nav = await self._pinchtab.navigate(search_url)
                 if not nav.get("success"):
                     raise RuntimeError(nav.get("error", "nav failed"))
-                tab_id = nav.get("tabId")
                 await asyncio.sleep(2)  # Let results render
                 # Get snapshot for structured refs
-                snap = await self._pinchtab.snapshot(tab_id)
+                snap = await self._pinchtab.snapshot()
                 # Extract text for results
-                text_result = await self._pinchtab.text(tab_id)
+                text_result = await self._pinchtab.text()
                 raw = text_result.get("text", "")
                 raw = sanitize_web_content(raw)
                 # Parse search results from text
                 results = self._parse_search_text(raw, num_results)
-                await self._pinchtab.close_tab(tab_id)
+                await self._pinchtab.close_tab()
                 if results:
                     logger.info(f"✅ PinchTab Brave: {len(results)} results")
                     return {"query": query, "results": results, "count": len(results),
@@ -283,6 +282,18 @@ class BrowserEngine:
                 logger.debug(f"PinchTab search failed: {e}")
 
         # ── Playwright path ──────────────────────────────────────────
+
+        if not self.browser:
+            # PinchTab-only mode — Playwright was never initialized
+            try:
+                from playwright.async_api import async_playwright
+                pw = await async_playwright().start()
+                self.browser = await pw.chromium.launch(headless=True)
+                logger.info("🎭 Playwright launched as search fallback")
+            except Exception as e:
+                logger.warning(f"Playwright not available for fallback: {e}")
+                return {"error": "Search failed: no results from PinchTab and Playwright unavailable",
+                        "success": False}
 
         page = None
         try:
@@ -392,26 +403,32 @@ class BrowserEngine:
     async def get_page_screenshot(
         self, url: str, output_path: Optional[str] = None
     ) -> Dict[str, str]:
-        """Take a screenshot of a web page."""
+        """Take a screenshot of a web page.
+
+        When *output_path* is ``None`` (default) a temporary file is used and
+        the returned dict includes ``auto_cleanup: True`` so callers know the
+        file should be deleted after consumption.
+        """
         if not await self.initialize():
             return {"error": "Browser engine not available"}
+
+        auto_cleanup = output_path is None  # caller didn't pick a path → temp
 
         # ── PinchTab path ──────────────────────────────────────────
         if self._pinchtab and self._pinchtab.available:
             try:
                 nav = await self._pinchtab.navigate(url)
                 if nav.get("success"):
-                    tab_id = nav.get("tabId")
                     await asyncio.sleep(1)
-                    png_data = await self._pinchtab.screenshot(tab_id)
-                    await self._pinchtab.close_tab(tab_id)
+                    png_data = await self._pinchtab.screenshot()
+                    await self._pinchtab.close_tab()
                     if png_data:
                         if not output_path:
-                            output_path = f"/tmp/screenshot_{hash(url)}.png"
+                            output_path = f"/tmp/sable_ss_{hash(url)}.png"
                         with open(output_path, "wb") as f:
                             f.write(png_data)
                         return {"path": output_path, "url": url, "success": True,
-                                "engine": "pinchtab"}
+                                "engine": "pinchtab", "auto_cleanup": auto_cleanup}
             except Exception as e:
                 logger.debug(f"PinchTab screenshot failed: {e}")
 
@@ -423,11 +440,12 @@ class BrowserEngine:
             await page.goto(url, wait_until="domcontentloaded", timeout=20000)
 
             if not output_path:
-                output_path = f"/tmp/screenshot_{hash(url)}.png"
+                output_path = f"/tmp/sable_ss_{hash(url)}.png"
 
             await page.screenshot(path=output_path, full_page=True)
 
-            return {"path": output_path, "url": url, "success": True}
+            return {"path": output_path, "url": url, "success": True,
+                    "auto_cleanup": auto_cleanup}
 
         except Exception as e:
             logger.error(f"Screenshot error for {url}: {e}")
@@ -463,17 +481,15 @@ class BrowserEngine:
         # ── PinchTab path (native stable refs) ──────────────────────
         if self._pinchtab and self._pinchtab.available:
             try:
-                tab_id = self._pinchtab._default_tab
                 if url:
                     nav = await self._pinchtab.navigate(url)
-                    if nav.get("success"):
-                        tab_id = nav.get("tabId")
+                    if not nav.get("success"):
+                        raise RuntimeError(nav.get("error", "nav failed"))
                     await asyncio.sleep(1)
-                if tab_id:
-                    snap = await self._pinchtab.snapshot(tab_id, filter_type="interactive")
-                    if snap.get("success"):
-                        snap["engine"] = "pinchtab"
-                        return snap
+                snap = await self._pinchtab.snapshot()
+                if snap.get("success"):
+                    snap["engine"] = "pinchtab"
+                    return snap
             except Exception as e:
                 logger.debug(f"PinchTab snapshot failed: {e}")
 
@@ -596,22 +612,20 @@ class BrowserEngine:
         # ── PinchTab path (native ref support) ──────────────────────
         if self._pinchtab and self._pinchtab.available and ref:
             try:
-                tab_id = self._pinchtab._default_tab
                 if url:
                     nav = await self._pinchtab.navigate(url)
-                    if nav.get("success"):
-                        tab_id = nav.get("tabId")
+                    if not nav.get("success"):
+                        raise RuntimeError(nav.get("error", "nav failed"))
                     await asyncio.sleep(1)
-                if tab_id:
-                    if action == "click":
-                        result = await self._pinchtab.click(ref, tab_id)
-                        return {**result, "engine": "pinchtab"}
-                    elif action in ("fill", "type"):
-                        result = await self._pinchtab.fill(ref, value or "", tab_id)
-                        return {**result, "engine": "pinchtab"}
-                    elif action == "press":
-                        result = await self._pinchtab.press(ref, value or "Enter", tab_id)
-                        return {**result, "engine": "pinchtab"}
+                if action == "click":
+                    result = await self._pinchtab.click(ref)
+                    return {**result, "engine": "pinchtab"}
+                elif action in ("fill", "type"):
+                    result = await self._pinchtab.fill(ref, value or "")
+                    return {**result, "engine": "pinchtab"}
+                elif action == "press":
+                    result = await self._pinchtab.press(value or "Enter", ref=ref)
+                    return {**result, "engine": "pinchtab"}
             except Exception as e:
                 logger.debug(f"PinchTab action failed, trying Playwright: {e}")
 
@@ -704,30 +718,126 @@ class BrowserEngine:
     def _parse_search_text(raw_text: str, max_results: int = 5) -> List[Dict[str, str]]:
         """Parse search results from PinchTab text extraction.
 
-        Brave Search text output typically has title lines followed by URLs
-        and snippet text.  This is a best-effort parser.
+        Brave Search via PinchTab returns text as a continuous block with
+        patterns like: ``domain.com › path   Title  snippet text...``
+        This parser handles both continuous-text and line-separated formats.
         """
+        import re as _re
         results: List[Dict[str, str]] = []
-        lines = raw_text.split("\n")
+
+        # ── Strategy 1: Split by domain › pattern ────────────────────
+        # Brave format: "{source label} domain.com › seg1 › seg2   Title Date - Snippet"
+        tld_pat = r'(?:com|org|net|io|dev|edu|gov|co|info|me|us|uk|de|fr|es|it|ca|au|br|in|ru|jp|ch|nl|se|no|fi|dk|be|at|pt|pl|cz|hu|ro|bg|hr|si|sk|lt|lv|ee|ie|lu|mt|cy)(?:\.[a-z]{2})?'
+        domain_re = _re.compile(
+            r'([\w.-]+\.(?:' + tld_pat + r'))\s*›',
+            _re.IGNORECASE,
+        )
+
+        # Find all domain positions to split text into result blocks
+        matches = list(domain_re.finditer(raw_text))
+
+        for idx, m in enumerate(matches):
+            if len(results) >= max_results:
+                break
+
+            domain = m.group(1)
+            block_start = m.end()  # after "domain ›"
+            # block ends at next domain match or end of text
+            block_end = matches[idx + 1].start() if idx + 1 < len(matches) else len(raw_text)
+            block = raw_text[block_start:block_end].strip()
+
+            # The block is: "seg1 › seg2 › file.html   Title Date - Snippet ..."
+            # Split path from title at the last multi-space gap AFTER all › segments
+            # Find the position of the last › in the block
+            last_arrow = block.rfind('›')
+            if last_arrow >= 0:
+                after_arrow = block[last_arrow + 1:]
+                # Find the multi-space gap after the last path segment
+                gap_match = _re.search(r'(\S)\s{3,}(\S)', after_arrow)
+                if gap_match:
+                    path_end = last_arrow + 1 + gap_match.start() + 1
+                    path_part = block[:path_end].strip()
+                    rest = block[path_end:].strip()
+                else:
+                    # No triple-space gap, try double-space
+                    gap_match = _re.search(r'(\S)\s{2,}(\S)', after_arrow)
+                    if gap_match:
+                        path_end = last_arrow + 1 + gap_match.start() + 1
+                        path_part = block[:path_end].strip()
+                        rest = block[path_end:].strip()
+                    else:
+                        path_part = block[:last_arrow + 1].strip() if last_arrow > 0 else ""
+                        rest = block[last_arrow + 1:].strip()
+            else:
+                # No › in block, try splitting at first triple-space
+                gap_match = _re.search(r'(\S)\s{3,}(\S)', block)
+                if gap_match:
+                    path_part = block[:gap_match.start() + 1].strip()
+                    rest = block[gap_match.end() - 1:].strip()
+                else:
+                    path_part = ""
+                    rest = block.strip()
+
+            # Build URL from path segments
+            path_segs = [s.strip() for s in path_part.replace('›', '/').split('/') if s.strip()]
+            path = '/'.join(path_segs)
+            # URL-encode spaces in path segments
+            from urllib.parse import quote
+            path = quote(path, safe='/.:-_~!$&\'()*+,;=@')
+            url = f"https://{domain}/{path}" if path else f"https://{domain}"
+            url = url.rstrip(" .")
+
+            # Extract title and snippet from rest
+            # Format: "Title Date - Snippet" or "Title - Snippet"
+            date_match = _re.search(
+                r'\s+((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\w*\s+\d{1,2},?\s+\d{4})\s*[-–—]?\s*',
+                rest,
+            )
+            if date_match:
+                title = rest[:date_match.start()].strip()
+                snippet = rest[date_match.end():].strip()
+            else:
+                # Try dash separator: "Title - Snippet" (but title can contain dashes)
+                # Use first sentence-ending dash: "Title – Source  Snippet"
+                dash_match = _re.search(r'\s[-–—]\s', rest)
+                if dash_match and dash_match.start() > 10:
+                    title = rest[:dash_match.start()].strip()
+                    snippet = rest[dash_match.end():].strip()
+                else:
+                    # Take first ~100 chars as title, rest as snippet
+                    title = rest[:100].strip()
+                    snippet = rest[100:].strip()
+
+            title = _re.sub(r'\s{2,}', ' ', title).strip()
+            snippet = _re.sub(r'\s{2,}', ' ', snippet).strip()
+
+            if title and not any(r["url"] == url for r in results):
+                results.append({
+                    "title": title[:200],
+                    "url": url,
+                    "snippet": snippet[:500],
+                })
+
+        if results:
+            return results
+
+        # ── Strategy 2 (fallback): find literal https:// URLs ────────
+        lines = raw_text.replace("  ", "\n").split("\n")
         i = 0
         while i < len(lines) and len(results) < max_results:
             line = lines[i].strip()
-            # Look for URLs (http/https)
-            url_match = re.search(r'(https?://\S+)', line)
+            url_match = _re.search(r'(https?://\S+)', line)
             if url_match:
                 url = url_match.group(1).rstrip(".,;)")
-                # Title is usually the line before the URL
                 title = lines[i - 1].strip() if i > 0 else url
-                # Snippet is usually the line(s) after
                 snippet_parts = []
                 for j in range(i + 1, min(i + 3, len(lines))):
                     sl = lines[j].strip()
-                    if sl and not re.match(r'https?://', sl) and len(sl) > 10:
+                    if sl and not _re.match(r'https?://', sl) and len(sl) > 10:
                         snippet_parts.append(sl)
                     else:
                         break
                 snippet = " ".join(snippet_parts)
-                # De-duplicate
                 if not any(r["url"] == url for r in results):
                     results.append({
                         "title": title[:200],

@@ -15,8 +15,11 @@ import AgentPanel from './components/agent/AgentPanel';
 import DevicesPanel from './components/agent/DevicesPanel';
 import ThoughtsPanel from './components/agent/ThoughtsPanel';
 import BrainPanel from './components/agent/BrainPanel';
+import DisplayPanel from './components/agent/DisplayPanel';
 import SettingsPanel from './components/settings/SettingsPanel';
 import AgentLogsPanel from './components/chat/AgentLogsPanel';
+import EnvEditorPanel from './components/settings/EnvEditorPanel';
+import WifiHuntPanel from './components/network/WifiHuntPanel';
 import PermissionDialog from './components/PermissionDialog';
 import LoadingOverlay from './components/LoadingOverlay';
 
@@ -33,7 +36,10 @@ const panels = {
   qr: QRPanel,
   agent: AgentPanel,
   devices: DevicesPanel,
+  display: DisplayPanel,
   settings: SettingsPanel,
+  config: EnvEditorPanel,
+  wifi: WifiHuntPanel,
 };
 
 export default function App() {
@@ -97,6 +103,7 @@ export default function App() {
       qr:       {},
       agent:    {},
       devices:  {},
+      display:  {},
       settings: { modelGroups: ws.modelGroups, switchModel: ws.switchModel, importGGUF: ws.importGGUF, ws: ws.wsRef, connected: ws.connected, agentProfile: null },
     };
   } else {
@@ -125,6 +132,7 @@ export default function App() {
       qr:       {},
       agent:    {},
       devices:  {},
+      display:  {},
       settings: { modelGroups: remoteModelGroups, switchModel: ws.switchModel, importGGUF: ws.importGGUF, ws: ws.wsRef, connected: ws.connected, agentProfile: ma.currentAgent },
     };
   }

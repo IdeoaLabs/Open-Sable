@@ -1,0 +1,251 @@
+{
+  "skill_id": "zunvra_intel",
+  "name": "Zunvra Intelligence Suite",
+  "version": "3.3.0",
+  "description": "Advanced OSINT intelligence analysis skill for the Zunvra/Central Intelligence real-time dashboard. Provides 26 autonomous capabilities + full dashboard remote control + autonomous intelligence broadcasting + autonomous camera pilot that drives the map. Surpasses Palantir Gotham and matches IC agency coverage.",
+  "author": "OpenSable",
+  "license": "MIT",
+  "min_opensable_version": "1.0.0",
+  "python_requires": ">=3.10",
+  "dependencies": [
+    "aiohttp>=3.9.0"
+  ],
+  "entry_point": "opensable.skills.zunvra_intel",
+  "main_class": "ZunvraIntelSkill",
+  "capabilities": [
+    {
+      "id": "nl_analyst",
+      "name": "Natural Language OSINT Analyst",
+      "description": "Chat with live intelligence data in plain English",
+      "trigger": "chat",
+      "feature_number": 1
+    },
+    {
+      "id": "causal_correlation",
+      "name": "Cross-Domain Causal Correlation",
+      "description": "Detects causal links between disparate OSINT domains (GPS jamming → military movement → cyber attack)",
+      "trigger": "auto",
+      "feature_number": 2
+    },
+    {
+      "id": "swarm_threat",
+      "name": "Swarm Intelligence Threat Assessment",
+      "description": "Multiple AI agents debate threat levels and converge on assessment",
+      "trigger": "auto",
+      "feature_number": 3
+    },
+    {
+      "id": "osint_hunter",
+      "name": "Autonomous OSINT Hunter",
+      "description": "Proactively scans external OSINT sources and enriches Zunvra data",
+      "trigger": "scheduled",
+      "interval_seconds": 300,
+      "feature_number": 4
+    },
+    {
+      "id": "predictive_model",
+      "name": "Predictive World Model",
+      "description": "Trend analysis and forecasting across all intelligence domains",
+      "trigger": "auto",
+      "feature_number": 5
+    },
+    {
+      "id": "temporal_memory",
+      "name": "Temporal Pattern Memory (Déjà Vu)",
+      "description": "Fingerprints situations and matches against historical patterns",
+      "trigger": "auto",
+      "feature_number": 6
+    },
+    {
+      "id": "dream_engine",
+      "name": "Dream Engine Retrospective",
+      "description": "Creative offline analysis discovers non-obvious correlations",
+      "trigger": "scheduled",
+      "interval_seconds": 1800,
+      "feature_number": 7
+    },
+    {
+      "id": "entity_dossier",
+      "name": "Entity Deep Dossier",
+      "description": "Autonomous research on any entity — aircraft, vessel, satellite, person",
+      "trigger": "on_demand",
+      "feature_number": 8
+    },
+    {
+      "id": "cognitive_annotations",
+      "name": "Cognitive Map Annotations",
+      "description": "Floating intelligence notes on map zones with detected anomalies",
+      "trigger": "auto",
+      "feature_number": 9
+    },
+    {
+      "id": "multi_agent_fusion",
+      "name": "Multi-Agent Intelligence Fusion",
+      "description": "SIGINT, GEOINT, HUMINT virtual analysts produce MULTI-INT convergence reports",
+      "trigger": "auto",
+      "feature_number": 10
+    },
+    {
+      "id": "knowledge_graph",
+      "name": "Knowledge Graph Engine",
+      "description": "Entity relationship graph with link analysis, community detection, and closed-loop identification",
+      "trigger": "auto",
+      "feature_number": 11
+    },
+    {
+      "id": "pattern_of_life",
+      "name": "Pattern of Life Analyzer",
+      "description": "Behavioral baselines with zone violation, ghost detection, and schedule anomaly alerting",
+      "trigger": "auto",
+      "feature_number": 12
+    },
+    {
+      "id": "geofence_tripwire",
+      "name": "Geofence Tripwire System",
+      "description": "Virtual boundaries with enter/exit/loiter alerting across 12 pre-built critical zones",
+      "trigger": "auto",
+      "feature_number": 13
+    },
+    {
+      "id": "kill_chain",
+      "name": "Kill Chain Tracker",
+      "description": "MITRE ATT&CK-inspired geopolitical kill chain phase tracking with auto-classification",
+      "trigger": "auto",
+      "feature_number": 14
+    },
+    {
+      "id": "timeline_reconstructor",
+      "name": "Timeline Reconstructor",
+      "description": "Chronological event sequencing with incident clustering, gap detection, and narrative generation",
+      "trigger": "auto",
+      "feature_number": 15
+    },
+    {
+      "id": "wargaming_simulator",
+      "name": "Wargaming / What-If Simulator",
+      "description": "Multi-order consequence modeling for geopolitical scenarios with 6 pre-built templates",
+      "trigger": "on_demand",
+      "feature_number": 16
+    },
+    {
+      "id": "counter_surveillance",
+      "name": "Counter-Surveillance Detector",
+      "description": "Detects transponder manipulation, dark periods, shadow tracking, rendezvous, and route obfuscation",
+      "trigger": "auto",
+      "feature_number": 17
+    },
+    {
+      "id": "narrative_warfare",
+      "name": "Narrative Warfare Monitor",
+      "description": "Tracks coordinated information operations, state media divergence, and sentiment manipulation",
+      "trigger": "auto",
+      "feature_number": 18
+    },
+    {
+      "id": "sigint_ew",
+      "name": "SIGINT/EW Pattern Analyzer",
+      "description": "GPS jamming zone analysis, EW campaign detection, military correlation, and civilian aviation impact assessment",
+      "trigger": "auto",
+      "feature_number": 19
+    },
+    {
+      "id": "finint_tracker",
+      "name": "Financial Intelligence (FININT) Tracker",
+      "description": "Sanctions evasion detection, dark fleet vessel tracking, economic warfare indicators, and prediction market signals",
+      "trigger": "auto",
+      "feature_number": 20
+    },
+    {
+      "id": "nuclear_monitor",
+      "name": "Nuclear Proliferation Monitor",
+      "description": "Nuclear facility status tracking, seismic-test correlation, enrichment activity indicators, and military proximity alerts",
+      "trigger": "auto",
+      "feature_number": 21
+    },
+    {
+      "id": "space_domain",
+      "name": "Space Domain Awareness",
+      "description": "Satellite catalog management, orbital maneuver detection, ASAT proximity alerts, and space-ground correlation",
+      "trigger": "auto",
+      "feature_number": 22
+    },
+    {
+      "id": "infrastructure_resilience",
+      "name": "Infrastructure Resilience Monitor",
+      "description": "Internet outage cascade detection, ransomware campaign tracking, APT attribution, and multi-vector attack correlation",
+      "trigger": "auto",
+      "feature_number": 23
+    },
+    {
+      "id": "environmental_threat",
+      "name": "Environmental Threat Intelligence",
+      "description": "Scorched-earth campaign detection, conflict-zone fire analysis, seismic disaster assessment, and climate-conflict nexus",
+      "trigger": "auto",
+      "feature_number": 24
+    },
+    {
+      "id": "force_projection",
+      "name": "Force Projection Tracker",
+      "description": "Carrier strike group tracking, strategic area monitoring, surge deployment detection, and multi-national force buildup alerts",
+      "trigger": "auto",
+      "feature_number": 25
+    },
+    {
+      "id": "threat_fusion",
+      "name": "Threat Fusion Dashboard",
+      "description": "Unified DEFCON-style threat picture aggregating all 25 intelligence modules with cross-domain correlation and early warning",
+      "trigger": "auto",
+      "feature_number": 26
+    },
+    {
+      "id": "remote_control",
+      "name": "Dashboard Remote Control",
+      "description": "Full UI control via WebSocket/REST command channel: camera navigation (flyTo), entity selection/tracking, layer/style toggling, highlight markers, toast notifications, and batch command sequences",
+      "trigger": "command",
+      "feature_number": 27
+    },
+    {
+      "id": "intel_broadcaster",
+      "name": "Intelligence Broadcaster",
+      "description": "Autonomous OSINT-to-social-media pipeline: consumes live data across 14+ domains, identifies noteworthy patterns and cross-domain correlations, takes cinematic dashboard screenshots (NVG/FLIR/THERMAL), and composes analyst-style posts. Integrates with X autoposter for organic intelligence showcasing.",
+      "trigger": "auto",
+      "feature_number": 28
+    },
+    {
+      "id": "camera_pilot",
+      "name": "Autonomous Camera Pilot",
+      "description": "Sable autonomously drives the dashboard map during analysis: flies to alert locations, changes zoom based on domain (facility/theater/global), switches visual styles per context (NVG for military, THERMAL for nuclear/fires, CRT for cyber, RADAR for maritime), highlights findings with attention rings, narrates investigation via toast notifications. Supports patrol mode, reactive snap-to-alert, dwell zoom, and cinematic transitions.",
+      "trigger": "auto",
+      "feature_number": 29
+    }
+  ],
+  "config_schema": {
+    "zunvra_base_url": {
+      "type": "string",
+      "default": "http://localhost:8000",
+      "description": "Base URL of the Zunvra/Central Intelligence backend API"
+    },
+    "poll_interval_seconds": {
+      "type": "integer",
+      "default": 30,
+      "description": "How often to fetch new data from Zunvra (seconds)"
+    },
+    "enable_llm_enrichment": {
+      "type": "boolean",
+      "default": true,
+      "description": "Use LLM for deeper analysis when available"
+    },
+    "data_dir": {
+      "type": "string",
+      "default": "data/zunvra_intel",
+      "description": "Directory for persistent state files"
+    },
+    "osint_sources_enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "Enable autonomous external OSINT source scanning"
+    }
+  },
+  "tags": ["osint", "intelligence", "geospatial", "threat-assessment", "autonomous", "multi-agent", "knowledge-graph", "wargaming", "counter-surveillance", "narrative-warfare", "kill-chain", "geofence", "sigint", "electronic-warfare", "finint", "sanctions", "nuclear", "space-domain", "infrastructure", "ransomware", "environmental", "force-projection", "carrier-tracking", "threat-fusion", "defcon", "remote-control", "websocket", "command-channel", "social-media", "intel-broadcasting", "screenshot", "autonomous-posting", "camera-pilot", "autonomous-camera", "map-navigation", "visual-styles"],
+  "category": "intelligence"
+}

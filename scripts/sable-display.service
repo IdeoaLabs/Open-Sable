@@ -1,0 +1,25 @@
+[Unit]
+Description=OpenSable Pi — 3.5" Display Log Viewer
+After=network.target syslog.target
+# Starts after the main OpenSable agent service (if available)
+After=opensable-pi.service
+PartOf=opensable-pi.service
+
+[Service]
+Type=simple
+User=PLACEHOLDER_USER
+WorkingDirectory=PLACEHOLDER_DIR
+Environment="FB_DEV=/dev/fb1"
+Environment="SABLE_LOG=/home/PLACEHOLDER_USER/sable-agent.log"
+Environment="DISPLAY_INTERVAL=0.25"
+ExecStart=PLACEHOLDER_VENV/bin/python3 PLACEHOLDER_DIR/scripts/display_hud.py
+Restart=on-failure
+RestartSec=5s
+StandardOutput=journal
+StandardError=journal
+
+# Allow access to framebuffer
+SupplementaryGroups=video
+
+[Install]
+WantedBy=multi-user.target

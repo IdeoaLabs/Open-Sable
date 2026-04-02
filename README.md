@@ -19,7 +19,36 @@
 Open-Sable is a next-generation autonomous AI agent framework with Agentic AI cognitive subsystems. It runs 24/7 on your local machine, integrates with your favorite messengers, executes real-world tasks, and continuously improves itself, all while keeping your data private.
 
 ## ✅ What works right now
-Run locally, chat via Telegram, create goals, store memory, run tools safely, audit logs, SkillFactory, RAG pipeline, workflow engine, self-modification, 21+ community skills, document creation (Word/Excel/PDF/PowerPoint), real email (SMTP/IMAP), Google Calendar, clipboard, OCR, autonomous self-healing, **multi-exchange trading bot** (crypto, stocks, prediction markets), **token/cost tracking**, **encrypted memory at rest**, **CrewAI-style multi-agent orchestration**, **cognitive memory with decay & consolidation**, **self-reflection engine**, **evolutionary skill management**, **git-backed episodic memory**, **System 1 inner life processing**, **institutional pattern learning**, **proactive reasoning engine**, **ReAct executor (multi-step tool-chaining)**, **full GitHub integration (issues, PRs, branches, code search, releases)**, **connectome neural colony (FlyWire brain-inspired cognitive wiring with Hebbian learning)**, **deep multi-step planner (10+ step DAG planning with replanning)**, **inter-agent learning bridge (shared knowledge vault between agents)**, **ultra-long-term memory (weeks/months pattern consolidation)**, **quantified self-benchmarking (8-suite autonomy scoring)**, **meta-learner (learning-to-learn)**, **causal reasoning engine**, **autonomous goal synthesis**, **compound skill composer**, **predictive world model**, **cognitive architecture optimizer**, **adversarial self-tester**, **resource governor**, **theory of mind (user modeling)**, **ethical reasoner**, **dream engine (REM-like creative replay)**, **cognitive immunity (antibody-based failure defense)**, **temporal consciousness (biological clock)**, **cognitive fusion (cross-domain pollination)**, **memory palace (spatial Method of Loci)**, **narrative identity (autobiographical self)**, **curiosity drive (intrinsic motivation)**, **collective unconscious (shared archetypes)**, **cognitive metabolism (energy budgeting)**, **synthetic intuition (gut-feel patterns)**, **phantom limb (missing capability detection)**, **cognitive scar (permanent failure markers)**, **time crystal memory (temporal patterns)**, **holographic context (fragment-to-whole)**, **swarm cortex (parallel mini-agents)**, **cognitive archaeology (decision excavation)**, **emotional contagion (cascading emotions)**, **predictive empathy (frustration prediction)**, **autonomous researcher (scientific method)**, **empathy synthesizer (user simulation)**, **cognitive teleportation (instant domain transfer)**, **ontological engine (reality model)**, **cognitive gravity (idea mass & attraction)**, **temporal paradox resolver (time contradictions)**, **synaesthetic processor (cross-modal perception)**, **cognitive mitosis (thought splitting)**, **entropic sentinel (fights entropy)**, **quantum cognition (superposition reasoning)**, **cognitive placebo (confidence boosts)**, **noospheric interface (collective thought)**, **akashic records (immutable thought ledger)**, **déjà vu engine (gestalt matching)**, **morphogenetic field (capability templates)**, **liminal processor (ambiguity handling)**, **prescient executor (pre-execution)**, **cognitive dark matter (hidden variables)**, **ego membrane (self-boundary)**, **hyperstition engine (self-fulfilling ideas)**, **cognitive chrysalis (metamorphosis)**, **existential compass (purpose finding)**, **autonomous web agent (browsing + API discovery)**, **self healer (auto-restart + watchdog + hot-reload)**, **dynamic skill factory (runtime skill creation)**, **multi-modal engine (image/audio/video perception)**, **internet monitor (24/7 web surveillance)**, **financial autonomy (invoicing + budgets)**, **social presence builder (audience growth)**, **self replicator (clone + horizontal scaling)**, **continuous learner (permanent evolution)**.
+
+### Core platform
+- Local-first runtime with persistent background process management (`start.sh`), logs, health checks, and profile-based agents.
+- Multi-agent architecture with isolated identity, config, tool permissions, sockets, data, and memory per profile.
+- Safe tool execution, workflow engine, goal system, auditability, and autonomous recovery (watchdog/restart/hot-reload).
+
+### LLM and cognition
+- Ollama-first local inference with cloud-provider fallback.
+- Low-VRAM mode with robust fallback routing and startup auto-pull support (defaulting to `qwen3.5:0.8b`).
+- Cognitive memory stack (working/episodic/long-term), decay + consolidation, reflection, and proactive reasoning loops.
+- ReAct-style multi-step tool chaining, deep DAG planning with re-planning, and benchmark-driven self-improvement.
+
+### Skills and integrations
+- Telegram interface, SkillFactory pipeline, RAG/document workflows, clipboard/OCR, and 21+ community skills.
+- Productivity stack: SMTP/IMAP email + Google Calendar.
+- Developer stack: full GitHub integration (issues, PRs, branches, code search, releases).
+- Trading stack: multi-exchange trading support (crypto, stocks, prediction markets) with risk controls.
+
+### Recently verified (Mar 2026)
+- Stable Zunvra registration/login with persisted credentials and restart-safe reconnect behavior.
+- Correct profile sync path (avatar/bio/banner), with gateway path normalization fixes.
+- Autonomous Zunvra social loop is active (posting/replies/engagement), including output cleanup safeguards.
+- Image posting pipeline works end-to-end via compatibility payload mapping (`imageUrls` + `media_urls`).
+- Better profile isolation for Zunvra intel/social flags and profile-scoped intel data directories.
+- **Vision / image flow fixed end-to-end.** Tool results carrying an `image_base64` payload are now automatically forwarded to multimodal LLMs as `image_url` content blocks (OpenAI vision format). Screenshot and capture tools are seen by vision models with zero extra configuration.
+- **OpenWebUI backend verified.** Point `OPENWEBUI_API_URL` in `profile.env` to any self-hosted OpenWebUI instance to use it as the LLM backend. Tested against a live deployment at `sofia.zunvra.com`.
+- **Raspberry Pi installer (`install-pi.sh`) added** with self-repair modes (`--repair` / `--verify`), torch-free core package set, interactive config wizard, and optional 3.5" SPI display setup using the correct `tft35a` driver.
+
+### Supported autonomous modules
+Open-Sable includes the full autonomy/cognitive module set from v1.1.0 through v1.7.0 (memory, reflection, evolutionary skill systems, world modeling, self-testing, ethical constraints, and advanced "Godlike/God Supreme" cognitive extensions listed below in the release sections).
 
 ## 🧪 What's experimental
 Tool synthesis, multi-device sync.
@@ -195,7 +224,7 @@ cp .env.example .env
 
 # 5. Install Ollama (local LLM - recommended)
 curl -fsSL https://ollama.com/install.sh | sh
-ollama pull llama3.1:8b
+ollama pull qwen3.5:0.8b
 
 # 6. Run Open-Sable
 python -m opensable
@@ -268,6 +297,134 @@ The recommended way to run Open-Sable in production. Manages the process in the 
 | `./start.sh status [--profile <name>]` | Show PID, uptime, memory usage |
 | `./start.sh logs [--profile <name>]` | Tail live log output |
 | `./start.sh profiles` | List all agents, their config, and running status |
+
+---
+
+## 🍓 Raspberry Pi Deployment
+
+Open-Sable runs natively on Raspberry Pi (ARM64, Pi 3B+ and newer). The `install-pi.sh` script handles the full deployment lifecycle: Python venv setup, core package installation with 3-attempt retry/fallback, interactive config wizard, systemd service registration, and optional 3.5" SPI display configuration.
+
+> **Minimum hardware:** Raspberry Pi 3B+ (ARM64) · 1 GB RAM · 8 GB SD card · Internet connection
+
+### Install on Pi
+
+```bash
+git clone https://github.com/IdeoaLabs/Open-Sable.git
+cd Open-Sable
+chmod +x install-pi.sh
+./install-pi.sh
+```
+
+The installer will:
+1. Verify the architecture (ARM64 required — ARMv6/ARMv7 are rejected with a clear error)
+2. Install system packages (`python3-venv`, `build-essential`, `git`, `libopenblas-dev`, etc.)
+3. Create a Python venv and install all core packages
+4. Run a post-install import verification for every package, auto-repairing any that fail
+5. Launch an interactive wizard to generate `agents/sable/profile.env`
+6. Register the `opensable-pi.service` systemd unit (auto-start on boot)
+7. Write a `start-pi.sh` convenience shortcut
+
+### Self-Repair Mode
+
+The installer doubles as a diagnostic and repair tool:
+
+```bash
+./install-pi.sh --verify    # Check all packages and directories; exit with pass/fail status
+./install-pi.sh --repair    # Re-run all checks and auto-fix anything broken
+./install-pi.sh --display   # Configure the 3.5" SPI display only (skip Python setup)
+```
+
+`--repair` re-runs the full verification loop and reinstalls any package whose `import` fails — useful after SD card corruption, partial writes, or package version conflicts.
+
+### Torch-Free Core
+
+The Pi installer only installs the **torch-free** core stack. The agent loop, LLM routing, all 69+ autonomous modules, and every tool executor are pure Python (`aiohttp`, `asyncio`, `requests`, standard library). No PyTorch or CUDA runtime is required.
+
+| Dependency | ARM64 status |
+|---|---|
+| `aiohttp` / `asyncio` | Native wheel ✅ |
+| `chromadb` (uses `onnxruntime`) | ARM64 wheel ✅ |
+| `sentence-transformers` | Lazy import — only loaded if the RAG skill is invoked |
+| `torch` | **Not required** for core — optional voice/vision extras only |
+
+### 3.5" SPI Display (MPI3501 / XPT2046 / ILI9486)
+
+For generic 3.5" 480×320 SPI TFT displays sold under the MPI3501 / XPT2046 form factor (ILI9486 driver chip, resistive touch):
+
+```bash
+./install-pi.sh --display
+```
+
+This will:
+1. Auto-detect the boot config path (`/boot/firmware/config.txt` on newer Pi OS, `/boot/config.txt` on older releases)
+2. Download `tft35a.dtbo` from the [goodtft/LCD-show](https://github.com/goodtft/LCD-show) driver repository — the canonical driver for this display family — with a `git clone` fallback if the direct download fails
+3. Append the correct overlay block to `config.txt`:
+   ```ini
+   dtparam=spi=on
+   dtoverlay=tft35a:rotate=90,penirq=17
+   # note: tft35a already includes the ADS7846 touch controller internally;
+   # do NOT add a separate ads7846 overlay — it will conflict on GPIO17/SPI0.1
+   ```
+4. Install `sable-display.service` — a systemd unit that runs the live HUD on `/dev/fb1`
+5. Prompt to reboot
+
+**Pin mapping (confirmed against MPI3501 datasheet via lcdwiki.com):**
+
+| Signal | GPIO | Pi Pin |
+|--------|------|--------|
+| LCD_CS | GPIO8 (SPI CE0) | 24 |
+| TP_CS | GPIO7 (SPI CE1) | 26 |
+| TP_IRQ | GPIO17 | 11 |
+| LCD_RS | GPIO24 | 18 |
+| RST | GPIO25 | 22 |
+
+After reboot:
+
+```bash
+sudo systemctl start sable-display   # start the HUD display
+./test-display.sh                     # run in foreground for testing
+sudo systemctl status sable-display   # check service health
+ls -la /dev/fb*                       # confirm /dev/fb1 was created by the driver
+```
+
+#### HUD Dashboard (`scripts/display_hud.py`)
+
+The live dashboard renders directly to `/dev/fb1` using PIL TrueType fonts and NumPy-accelerated RGB565 conversion — no X11 or display server required. It shows:
+
+- **Header bar** — agent name, blinking LIVE indicator, real-time clock
+- **Status cards** — agent online/offline, uptime counter, active model + API host, Telegram bot status
+- **System stats** — CPU and RAM progress bars (via `psutil`)
+- **Recent activity** — last N log lines, color-coded: green=OK, red=error, yellow=warning, cyan=tool calls, gray=debug
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│ ◈ SABLE AI  ● LIVE                      Thu 26 Mar   02:26:18    │
+├──────────────┬─────────────────────────────┬────────────────────┤
+│ AGENT        │ MODEL                       │ TELEGRAM           │
+│ ● ONLINE     │ qwen2.5-coder               │ ✈ BOT              │
+│ UPTIME       │ 18:7b                       │ @Sablethebot       │
+│ 00:04:12     │ sofia.zunvra.com            │ ● polling          │
+├──────────────┴─────────────────────────────┴────────────────────┤
+│ CPU [████░░░░░░░░░░]  12%     RAM [████████░░░░]  58%           │
+├──────────────────────────────────────────────────────────────────┤
+│ RECENT ACTIVITY                                                  │
+│ [02:25] ✅ Run polling for bot @Sablethebot id=...              │
+│ [02:25] 💓 Starting heartbeat (interval: 300s)                  │
+│ [02:24]    AgentMon skill disabled (AGENTMON_ENABLED=false)      │
+│  ...                                                             │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+No fonts need to be installed separately — the script finds DejaVu, Liberation, or Noto Mono automatically. If none are found it falls back to PIL's built-in bitmap font.
+
+Configurable via environment variables:
+
+| Variable | Default | Description |
+|---|---|---|
+| `FB_DEV` | `/dev/fb1` | Framebuffer device |
+| `FB_WIDTH` / `FB_HEIGHT` | `480` / `320` | Display resolution |
+| `SABLE_LOG` | `~/sable-agent.log` | Log file to tail (also checks `logs/opensable.log`) |
+| `DISPLAY_INTERVAL` | `2.0` | Refresh rate in seconds (2s recommended for Pi 3 to keep CPU ~10%) |
 
 ---
 
@@ -3120,6 +3277,25 @@ DEFAULT_MODEL=anthropic/claude-sonnet-4-20250514
 # Example: use Groq for fast inference
 GROQ_API_KEY=gsk_...
 ```
+
+### Self-Hosted: OpenWebUI
+
+[OpenWebUI](https://github.com/open-webui/open-webui) is a self-hosted web interface for Ollama and other local models. Open-Sable can use any OpenWebUI instance as its LLM backend via its built-in OpenAI-compatible `/chat/completions` endpoint.
+
+**Configuration** — add these three variables to `agents/<name>/profile.env`:
+
+```bash
+# URL of your OpenWebUI instance (no trailing slash)
+OPENWEBUI_API_URL=https://your-openwebui-instance.com
+
+# API key (leave blank if your instance has no authentication)
+OPENWEBUI_API_KEY=
+
+# Model name as it appears in your OpenWebUI instance
+OPENWEBUI_MODEL=llama3.2:latest
+```
+
+When `OPENWEBUI_API_URL` is set, the agent routes all LLM requests to `{OPENWEBUI_API_URL}/api/chat/completions` using the standard OpenAI message format. Vision/multimodal requests (when tool results include `image_base64` payloads) are automatically forwarded as `image_url` content blocks, so any multimodal model hosted on OpenWebUI receives images natively.
 
 ---
 

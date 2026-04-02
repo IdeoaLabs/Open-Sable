@@ -256,6 +256,27 @@ def check_system_deps() -> bool:
             warn("Xcode CLT not found,  installing...")
             run(["xcode-select", "--install"])
 
+    # WiFi hunting tools (Linux only — used by wifi_survival_skill)
+    if IS_LINUX:
+        wifi_tools = {
+            "aircrack-ng": "aircrack-ng",
+            "airodump-ng": "aircrack-ng",
+            "aireplay-ng": "aircrack-ng",
+            "airmon-ng":   "aircrack-ng",
+            "iw":          "iw",
+            "nmcli":       "network-manager",
+        }
+        missing_pkgs: set[str] = set()
+        for binary, pkg in wifi_tools.items():
+            if cmd_exists(binary):
+                ok(f"{binary} (WiFi tools)")
+            else:
+                warn(f"{binary} not found")
+                missing_pkgs.add(pkg)
+        if missing_pkgs:
+            info(f"Fix: sudo apt install {' '.join(sorted(missing_pkgs))}")
+            _try_install_wifi_tools(missing_pkgs)
+
     return all_ok
 
 
@@ -267,6 +288,20 @@ def _try_install_build_tools():
         run(["apt-get", "install", "-y", "build-essential", "python3-dev"], capture=True)
     else:
         info("Run: sudo apt install build-essential python3-dev")
+
+
+def _try_install_wifi_tools(pkgs: set[str]) -> None:
+    """Attempt to install WiFi hunting tools on Linux."""
+    if not IS_LINUX or not pkgs:
+        return
+    if os.geteuid() == 0:
+        result = run(["apt-get", "install", "-y", *sorted(pkgs)], capture=True)
+        if result.returncode == 0:
+            ok("WiFi tools installed")
+        else:
+            warn("WiFi tools install failed — run manually")
+    else:
+        info(f"Run: sudo apt install {' '.join(sorted(pkgs))}")
 
 
 # ─────────────────────────────────────────────────────────────────────

@@ -36,8 +36,11 @@ class OpenSableConfig(BaseModel):
 
     # LLM Settings
     ollama_base_url: str = "http://localhost:11434"
-    default_model: str = "llama3.1:8b"
+    default_model: str = "qwen3.5:0.8b"
     auto_select_model: bool = True
+    low_vram_mode: bool = False
+    low_vram_preferred_model: str = "qwen3.5:0.8b"
+    low_vram_max_model_b: float = 3.0
     openai_api_key: Optional[str] = None
     anthropic_api_key: Optional[str] = None
     deepseek_api_key: Optional[str] = None
@@ -65,6 +68,13 @@ class OpenSableConfig(BaseModel):
     telegram_phone_number: Optional[str] = None
     telegram_session_name: str = "opensable_session"
     userbot_auto_respond: bool = True
+
+    # Telegram Group Mode
+    telegram_group_only: bool = False
+    telegram_allowed_groups: List[str] = Field(default_factory=list)
+    telegram_group_engagement: str = "medium"
+    telegram_group_context_size: int = 30
+    telegram_anti_poison: bool = True
 
     discord_bot_token: Optional[str] = None
     discord_guild_id: Optional[str] = None
@@ -157,6 +167,12 @@ class OpenSableConfig(BaseModel):
     elevenlabs_voice_id: Optional[str] = None
     elevenlabs_model: str = "eleven_multilingual_v2"
     whisper_model_size: str = "base"
+    # Piper TTS (local, fast, works on Raspberry Pi)
+    piper_binary: str = "piper"
+    piper_voice: str = "en_US-lessac-medium"
+    piper_model_dir: str = str(Path.home() / ".local" / "share" / "piper" / "voices")
+    piper_aplay_device: str = "plug:dmix"
+    piper_auto_play: bool = True
 
     @property
     def tts_engine(self) -> str:
@@ -383,8 +399,11 @@ def load_config() -> OpenSableConfig:
 
     config_data = {
         "ollama_base_url": os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
-        "default_model": os.getenv("DEFAULT_MODEL", "llama3.1:8b"),
+        "default_model": os.getenv("DEFAULT_MODEL", "qwen3.5:0.8b"),
         "auto_select_model": os.getenv("AUTO_SELECT_MODEL", "true").lower() == "true",
+        "low_vram_mode": os.getenv("LOW_VRAM_MODE", "false").lower() == "true",
+        "low_vram_preferred_model": os.getenv("LOW_VRAM_PREFERRED_MODEL", "qwen3.5:0.8b"),
+        "low_vram_max_model_b": float(os.getenv("LOW_VRAM_MAX_MODEL_B", "3.0")),
         "openai_api_key": os.getenv("OPENAI_API_KEY"),
         "anthropic_api_key": os.getenv("ANTHROPIC_API_KEY"),
         "deepseek_api_key": os.getenv("DEEPSEEK_API_KEY"),
@@ -413,6 +432,13 @@ def load_config() -> OpenSableConfig:
         "telegram_phone_number": os.getenv("TELEGRAM_PHONE_NUMBER"),
         "telegram_session_name": os.getenv("TELEGRAM_SESSION_NAME", "opensable_session"),
         "userbot_auto_respond": os.getenv("USERBOT_AUTO_RESPOND", "true").lower() == "true",
+        "telegram_group_only": os.getenv("TELEGRAM_GROUP_ONLY", "false").lower() == "true",
+        "telegram_allowed_groups": [
+            g.strip() for g in os.getenv("TELEGRAM_ALLOWED_GROUPS", "").split(",") if g.strip()
+        ],
+        "telegram_group_engagement": os.getenv("TELEGRAM_GROUP_ENGAGEMENT", "medium"),
+        "telegram_group_context_size": int(os.getenv("TELEGRAM_GROUP_CONTEXT_SIZE", "30")),
+        "telegram_anti_poison": os.getenv("TELEGRAM_ANTI_POISON", "true").lower() == "true",
         "discord_bot_token": os.getenv("DISCORD_BOT_TOKEN"),
         "discord_guild_id": os.getenv("DISCORD_GUILD_ID"),
         "whatsapp_enabled": os.getenv("WHATSAPP_ENABLED", "false").lower() == "true",
@@ -510,6 +536,12 @@ def load_config() -> OpenSableConfig:
         "elevenlabs_voice_id": os.getenv("ELEVENLABS_VOICE_ID"),
         "elevenlabs_model": os.getenv("ELEVENLABS_MODEL", "eleven_multilingual_v2"),
         "whisper_model_size": os.getenv("WHISPER_MODEL_SIZE", "base"),
+        # Piper TTS
+        "piper_binary": os.getenv("PIPER_BINARY", "piper"),
+        "piper_voice": os.getenv("PIPER_VOICE", "en_US-lessac-medium"),
+        "piper_model_dir": os.getenv("PIPER_MODEL_DIR", str(Path.home() / ".local" / "share" / "piper" / "voices")),
+        "piper_aplay_device": os.getenv("PIPER_APLAY_DEVICE", "plug:dmix"),
+        "piper_auto_play": os.getenv("PIPER_AUTO_PLAY", "true").lower() == "true",
         # ── Trading Bot ──────────────────────────────────────────
         "trading_enabled": os.getenv("TRADING_ENABLED", "false").lower() == "true",
         "trading_paper_mode": os.getenv("TRADING_PAPER_MODE", "true").lower() == "true",

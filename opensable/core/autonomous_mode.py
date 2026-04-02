@@ -2578,6 +2578,11 @@ class AutonomousMode:
                 except Exception as e:
                     logger.debug(f"Arena auto-queue tick: {e}")
 
+            # ── 29c. AgentMon League — Pokémon Red ──
+            # Gameplay runs in its own dedicated background loop inside
+            # AgentMonSkill._play_loop() — no tick-based queuing needed.
+            # The LLM callback is wired by ToolRegistry at init time.
+
             # ── 30. Cognitive metabolism,  energy regeneration ──
             if self.cognitive_metabolism:
                 try:

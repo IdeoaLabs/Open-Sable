@@ -15,6 +15,7 @@ Architecture:
   Schema→tool dispatch  → _dispatch.py
 """
 
+import asyncio
 import logging
 import json
 from typing import Dict, Any, Callable, List
@@ -60,6 +61,8 @@ from ._github import GitHubToolsMixin
 from ._google_workspace import GoogleWorkspaceToolsMixin
 from ._business import BusinessToolsMixin
 from ._arena import ArenaToolsMixin
+from ._zunvra import ZunvraToolsMixin
+from ._agentmon import AgentMonToolsMixin
 from ._agent_manager import AgentManagerToolsMixin
 
 from ._permissions import TOOL_PERMISSIONS
@@ -80,6 +83,8 @@ class ToolRegistry(
     GoogleWorkspaceToolsMixin,
     BusinessToolsMixin,
     ArenaToolsMixin,
+    ZunvraToolsMixin,
+    AgentMonToolsMixin,
     AgentManagerToolsMixin,
 ):
     """Registry of all available tools/actions.
@@ -95,6 +100,8 @@ class ToolRegistry(
     - GitHubToolsMixin: issues, PRs, repos, branches, code search, releases
     - GoogleWorkspaceToolsMixin: Gmail, Drive, Calendar, Sheets, Docs, Chat (via gws CLI)
     - ArenaToolsMixin: fighting-game arena (SAGP auth + WebSocket combat)
+    - ZunvraToolsMixin: Zunvra social network (posts, DMs, feed, trending)
+    - AgentMonToolsMixin: AgentMon League — Pokémon Red on a Game Boy emulator
     - AgentManagerToolsMixin: sub-agent lifecycle (create, stop, destroy, message)
     """
 
@@ -210,6 +217,22 @@ class ToolRegistry(
             self.arena_skill = ArenaFighterSkill(config)
         except Exception as e:
             logger.debug(f"Arena skill not available: {e}")
+
+        # Zunvra social network skill (conditional)
+        self.zunvra_skill = None
+        try:
+            from ...skills.social.zunvra_skill import ZunvraSkill
+            self.zunvra_skill = ZunvraSkill(config)
+        except Exception as e:
+            logger.warning(f"Zunvra skill not available: {e}")
+
+        # AgentMon League (Pokémon Red) skill (conditional)
+        self.agentmon_skill = None
+        try:
+            from ...skills.gaming.agentmon_skill import AgentMonSkill
+            self.agentmon_skill = AgentMonSkill(config)
+        except Exception as e:
+            logger.debug(f"AgentMon skill not available: {e}")
 
         # Business automation skills (CRM, Pipeline, Templates, Follow-ups)
         self.crm_skill = None
@@ -395,6 +418,35 @@ class ToolRegistry(
         self.register("arena_history", self._arena_history_tool)
         self.register("arena_disconnect", self._arena_disconnect_tool)
 
+        # ── Zunvra Social ─────────────────────────────────────────────────────
+        self.register("zunvra_post", self._zunvra_post_tool)
+        self.register("zunvra_reply", self._zunvra_reply_tool)
+        self.register("zunvra_like", self._zunvra_like_tool)
+        self.register("zunvra_repost", self._zunvra_repost_tool)
+        self.register("zunvra_follow", self._zunvra_follow_tool)
+        self.register("zunvra_unfollow", self._zunvra_unfollow_tool)
+        self.register("zunvra_feed", self._zunvra_feed_tool)
+        self.register("zunvra_trending", self._zunvra_trending_tool)
+        self.register("zunvra_get_user", self._zunvra_get_user_tool)
+        self.register("zunvra_get_post", self._zunvra_get_post_tool)
+        self.register("zunvra_send_dm", self._zunvra_send_dm_tool)
+        self.register("zunvra_conversations", self._zunvra_conversations_tool)
+        self.register("zunvra_notifications", self._zunvra_notifications_tool)
+        self.register("zunvra_whoami", self._zunvra_whoami_tool)
+        self.register("zunvra_update_profile", self._zunvra_update_profile_tool)
+
+        # ── AgentMon League (Pokémon Red) ─────────────────────────────────
+        self.register("agentmon_start", self._agentmon_start_tool)
+        self.register("agentmon_stop", self._agentmon_stop_tool)
+        self.register("agentmon_step", self._agentmon_step_tool)
+        self.register("agentmon_actions", self._agentmon_actions_tool)
+        self.register("agentmon_state", self._agentmon_state_tool)
+        self.register("agentmon_frame", self._agentmon_frame_tool)
+        self.register("agentmon_save", self._agentmon_save_tool)
+        self.register("agentmon_saves", self._agentmon_saves_tool)
+        self.register("agentmon_delete_save", self._agentmon_delete_save_tool)
+        self.register("agentmon_leaderboard", self._agentmon_leaderboard_tool)
+
         # ── Agent Manager (sub-agent lifecycle) ───────────────────────────────
         self.register("agent_create", self._agent_create_tool)
         self.register("agent_stop", self._agent_stop_tool)
@@ -409,6 +461,21 @@ class ToolRegistry(
                 await self.arena_skill.initialize()
             except Exception as e:
                 logger.debug(f"Arena skill init failed: {e}")
+
+        # Initialize AgentMon League skill (Pokémon Red)
+        if self.agentmon_skill:
+            try:
+                ok = await self.agentmon_skill.initialize()
+                if not ok:
+                    # API might be down — schedule background retry
+                    logger.warning(
+                        "🎮 AgentMon: init failed (API may be down), "
+                        "will retry in background every 60s"
+                    )
+                    asyncio.create_task(self._agentmon_retry_init())
+            except Exception as e:
+                logger.warning(f"🎮 AgentMon skill init failed: {e} — will retry in background")
+                asyncio.create_task(self._agentmon_retry_init())
 
         # ── Business Automation (CRM, Pipeline, Templates, Follow-ups) ────────
         self.register("crm_add_contact", self._crm_add_contact_tool)
@@ -564,6 +631,10 @@ class ToolRegistry(
             ("LinkedIn", self.linkedin_skill),
             ("TikTok", self.tiktok_skill),
             ("YouTube", self.youtube_skill),
+            ("Zunvra", self.zunvra_skill),
+            # AgentMon intentionally excluded — already initialized earlier
+            # with retry logic (line ~467). Duplicate init here caused
+            # double sessions and competing play loops.
         ]
         for name, skill in _optional_skills:
             if skill:
@@ -630,6 +701,29 @@ class ToolRegistry(
             logger.debug(f"Profile tool filter error: {exc}")
 
         logger.info(f"Initialized {len(self.tools)} tools")
+
+    # ── AgentMon background retry (API may be down on first boot) ─────────
+
+    async def _agentmon_retry_init(self):
+        """Retry AgentMon skill initialization every 60s until it succeeds."""
+        delay = 60
+        max_delay = 600  # cap at 10 min
+        attempts = 0
+        while self.agentmon_skill and not self.agentmon_skill.is_available():
+            attempts += 1
+            await asyncio.sleep(delay)
+            try:
+                ok = await self.agentmon_skill.initialize()
+                if ok:
+                    logger.info(
+                        f"🎮 AgentMon: retry #{attempts} succeeded — "
+                        f"skill is now active!"
+                    )
+                    return
+                logger.debug(f"🎮 AgentMon: retry #{attempts} failed, next in {delay}s")
+            except Exception as e:
+                logger.debug(f"🎮 AgentMon: retry #{attempts} error: {e}")
+            delay = min(delay * 1.5, max_delay)  # exponential backoff
 
     # ── Tool registry API ─────────────────────────────────────────────────────
 
