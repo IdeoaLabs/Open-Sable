@@ -7,6 +7,7 @@ import * as os from 'os';
 import * as net from 'net';
 import { randomUUID } from 'crypto';
 import { getTemplate, DEFAULT_TEMPLATE, type TemplateId, type ProjectTemplate } from '../templates';
+import { saveProjectFile, saveProjectSnapshot } from '../../project-store';
 
 // Global Vite error buffer,  accessible by API routes
 declare global {
@@ -103,6 +104,9 @@ export class LocalProcessProvider extends SandboxProvider {
     await fs.writeFile(fullPath, content, 'utf-8');
     
     this.existingFiles.add(normalizedPath);
+
+    // Persist to project store for crash recovery and restore
+    saveProjectFile(this._sandboxId, normalizedPath, content);
   }
 
   async readFile(filePath: string): Promise<string> {
@@ -262,6 +266,20 @@ export class LocalProcessProvider extends SandboxProvider {
     // Wait for the server to be ready
     await this.waitForDevServer();
     console.log(`[LocalProcessProvider] ✓ Dev server ready at http://localhost:${this.devServerPort}`);
+
+    // Save initial project snapshot to persistent store
+    try {
+      const allFiles = await this.listFiles();
+      const fileContents: Record<string, string> = {};
+      for (const f of allFiles) {
+        try {
+          fileContents[f] = await this.readFile(f);
+        } catch { /* skip binary/unreadable */ }
+      }
+      saveProjectSnapshot(this._sandboxId, template.id, fileContents);
+    } catch (e) {
+      console.warn('[LocalProcessProvider] Could not save initial snapshot:', e);
+    }
   }
 
   async restartViteServer(): Promise<void> {

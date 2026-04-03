@@ -194,6 +194,8 @@ function AISandboxPage() {
     files: Array<{ path: string; content: string; type: string; completed: boolean; edited?: boolean }>;
     lastProcessedPosition: number;
     isEdit?: boolean;
+    toolCalls?: Array<{ name: string; args: any; index: number }>;
+    toolResults?: Array<{ name: string; output: string; index: number }>;
   }>({
     isGenerating: false,
     status: '',
@@ -230,6 +232,19 @@ function AISandboxPage() {
   const [agentPanelOpen, setAgentPanelOpen] = useState(false);
   const agentPollRef = useRef<NodeJS.Timeout | null>(null);
   const autoFixRetryRef = useRef<number>(0); // max retries for auto-error-fix loop
+  
+  // File diffs from code application
+  const [fileDiffs, setFileDiffs] = useState<Array<{
+    path: string;
+    type: 'added' | 'modified' | 'deleted';
+    hunks: Array<{
+      oldStart: number; oldLines: number; newStart: number; newLines: number;
+      lines: Array<{ type: 'add' | 'remove' | 'context'; content: string; oldLineNumber?: number; newLineNumber?: number }>;
+    }>;
+    additions: number;
+    deletions: number;
+  }>>([]);
+  const [showDiffPanel, setShowDiffPanel] = useState(false);
 
   // Fetch dynamic models from Ollama & OpenWebUI on mount
   useEffect(() => {
@@ -433,13 +448,43 @@ function AISandboxPage() {
 
       // Check if sandbox ID is in URL
       const sandboxIdParam = searchParams.get('sandbox');
+      const restoreSandboxId = sessionStorage.getItem('restoreSandboxId');
+      sessionStorage.removeItem('restoreSandboxId');
       
       setLoading(true);
       try {
-        if (sandboxIdParam) {
-          console.log('[home] Attempting to restore sandbox:', sandboxIdParam);
+        if (sandboxIdParam || restoreSandboxId) {
+          const targetSandbox = restoreSandboxId || sandboxIdParam || '';
+          console.log('[home] Attempting to restore sandbox:', targetSandbox);
           sandboxCreated = true;
-          await createSandbox(true, storedTemplate);
+          
+          // Try to restore from persistent project store first
+          try {
+            const restoreRes = await fetch('/api/restore-project', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ sandboxId: targetSandbox }),
+            });
+            const restoreData = await restoreRes.json();
+            
+            if (restoreData.success && isMounted) {
+              console.log(`[home] Restored project with ${restoreData.restoredFiles} files`);
+              setSandboxData({
+                sandboxId: restoreData.sandboxId,
+                url: restoreData.url,
+                provider: 'local',
+              });
+              setStructureContent(`Project restored: ${restoreData.restoredFiles} files`);
+              addChatMessage(`Project restored with ${restoreData.restoredFiles} files from your previous session.`, 'system');
+            } else {
+              // Restore failed — fall back to creating a new sandbox
+              console.log('[home] Project restore not available, creating fresh sandbox');
+              await createSandbox(true, storedTemplate);
+            }
+          } catch (e) {
+            console.log('[home] Project restore error, creating fresh sandbox:', e);
+            await createSandbox(true, storedTemplate);
+          }
         } else {
           console.log('[home] No sandbox in URL, creating new sandbox automatically...');
           sandboxCreated = true;
@@ -1091,7 +1136,10 @@ Tip: I automatically detect and install npm packages from your code imports (lik
                   break;
                   
                 case 'file-complete':
-                  // Could add individual file completion messages if desired
+                  // Store diff information for updated files
+                  if (data.action === 'updated' && data.diff) {
+                    setFileDiffs(prev => [...prev, data.diff]);
+                  }
                   break;
                   
                 case 'command-progress':
@@ -1280,7 +1328,16 @@ Tip: I automatically detect and install npm packages from your code imports (lik
           // Update the chat message to show success
           // Only show file list if not in edit mode
           if (isEdit) {
-            addChatMessage(`Edit applied successfully!`, 'system');
+            const diffCount = fileDiffs.length;
+            addChatMessage(
+              diffCount > 0
+                ? `Edit applied successfully! (${diffCount} file${diffCount > 1 ? 's' : ''} changed)`
+                : `Edit applied successfully!`,
+              'system'
+            );
+            if (diffCount > 0) {
+              setShowDiffPanel(true);
+            }
           } else {
             // Check if this is part of a generation flow (has recent AI recreation message)
             const recentMessages = chatMessages.slice(-5);
@@ -1749,6 +1806,28 @@ Tip: I automatically detect and install npm packages from your code imports (lik
                         </div>
                         <h3 className="text-xl font-medium text-white mb-2">AI is analyzing your request</h3>
                         <p className="text-gray-400 text-sm">{generationProgress.status || 'Preparing to generate code...'}</p>
+                        {/* Tool call progress */}
+                        {generationProgress.toolCalls && generationProgress.toolCalls.length > 0 && (
+                          <div className="mt-4 text-left max-w-md mx-auto">
+                            <div className="text-xs text-gray-500 uppercase tracking-wide mb-2">Tool Activity</div>
+                            <div className="space-y-1 max-h-32 overflow-y-auto">
+                              {generationProgress.toolCalls.map((tc, i) => {
+                                const hasResult = generationProgress.toolResults?.some(tr => tr.index === tc.index);
+                                return (
+                                  <div key={i} className="flex items-center gap-2 text-xs">
+                                    {hasResult ? (
+                                      <span className="text-green-400">✓</span>
+                                    ) : (
+                                      <span className="text-yellow-400 animate-pulse">●</span>
+                                    )}
+                                    <span className="text-gray-400 font-mono">{tc.name}</span>
+                                    <span className="text-gray-600 truncate">{tc.args?.path || tc.args?.pattern || tc.args?.command?.substring(0, 30) || ''}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ) : (
@@ -2511,6 +2590,28 @@ Tip: I automatically detect and install npm packages from your code imports (lik
                   setGenerationProgress(prev => ({
                     ...prev,
                     status: data.message || `Installing ${data.name}`
+                  }));
+                } else if (data.type === 'tool-call') {
+                  // AI is calling a tool to explore/modify the project
+                  const toolLabel = data.name === 'file_read' ? `Reading ${data.args?.path || 'file'}` :
+                                    data.name === 'file_edit' ? `Editing ${data.args?.path || 'file'}` :
+                                    data.name === 'file_write' ? `Writing ${data.args?.path || 'file'}` :
+                                    data.name === 'grep' ? `Searching for "${(data.args?.pattern || '').substring(0, 30)}"` :
+                                    data.name === 'glob' ? `Finding files: ${data.args?.pattern || ''}` :
+                                    data.name === 'list_files' ? `Listing ${data.args?.path || 'files'}` :
+                                    data.name === 'bash' ? `Running: ${(data.args?.command || '').substring(0, 40)}` :
+                                    `Tool: ${data.name}`;
+                  setGenerationProgress(prev => ({
+                    ...prev,
+                    status: toolLabel,
+                    toolCalls: [...(prev.toolCalls || []), { name: data.name, args: data.args, index: data.index }],
+                  }));
+                } else if (data.type === 'tool-result') {
+                  // Tool call completed
+                  setGenerationProgress(prev => ({
+                    ...prev,
+                    status: `Tool ${data.name} completed`,
+                    toolResults: [...(prev.toolResults || []), { name: data.name, output: data.output, index: data.index }],
                   }));
                 } else if (data.type === 'complete') {
                   generatedCode = data.generatedCode;
@@ -3973,6 +4074,17 @@ Focus on the key sections and content, making it clean and modern.`;
                     ...prev,
                     lastGeneratedCode: generatedCode
                   }));
+                } else if (data.type === 'tool-call') {
+                  setGenerationProgress(prev => ({
+                    ...prev,
+                    status: `Tool: ${data.name} ${data.args?.path || ''}`.trim(),
+                    toolCalls: [...(prev.toolCalls || []), { name: data.name, args: data.args, index: data.index }],
+                  }));
+                } else if (data.type === 'tool-result') {
+                  setGenerationProgress(prev => ({
+                    ...prev,
+                    toolResults: [...(prev.toolResults || []), { name: data.name, output: data.output, index: data.index }],
+                  }));
                 }
               } catch (e) {
                 console.error('Failed to parse SSE data:', e);
@@ -4273,10 +4385,29 @@ Focus on the key sections and content, making it clean and modern.`;
                     <div
                       key={proj.id}
                       className="p-3 border-b border-[#1a1a2e] hover:bg-[#12122a] cursor-pointer transition-colors group"
-                      onClick={() => {
+                      onClick={async () => {
                         setShowProjectHistory(false);
-                        // For now just show info,  full restore would need sandbox recreation
-                        alert(`Project: ${proj.name}\nTemplate: ${proj.template}\nModel: ${proj.model}\nFiles: ${proj.fileCount}\nCreated: ${new Date(proj.createdAt).toLocaleString()}`);
+                        addChatMessage(`Restoring project...`, 'system');
+                        setLoading(true);
+                        try {
+                          const res = await fetch('/api/restore-project', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ sandboxId: proj.id }),
+                          });
+                          const data = await res.json();
+                          if (data.success) {
+                            setSandboxData({ sandboxId: data.sandboxId, url: data.url, provider: 'local' });
+                            setAiModel(proj.model);
+                            addChatMessage(`Project restored with ${data.restoredFiles} files.`, 'system');
+                          } else {
+                            addChatMessage(`Could not restore: ${data.error}`, 'error');
+                          }
+                        } catch (e) {
+                          addChatMessage(`Restore failed: ${(e as Error).message}`, 'error');
+                        } finally {
+                          setLoading(false);
+                        }
                       }}
                     >
                       <div className="flex items-center justify-between">
@@ -5086,6 +5217,60 @@ Focus on the key sections and content, making it clean and modern.`;
       </div>
 
       {/* Modals */}
+      {/* Diff Panel — shows file changes after edits */}
+      {showDiffPanel && fileDiffs.length > 0 && (
+        <div className="fixed inset-y-0 right-0 w-[480px] bg-[#0d0d1a] border-l border-[#2a2a4a] z-50 flex flex-col shadow-2xl">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-[#2a2a4a] bg-[#12122a]">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-white">Changes</span>
+              <span className="text-xs text-gray-500">
+                {fileDiffs.reduce((a, d) => a + d.additions, 0)} additions, {fileDiffs.reduce((a, d) => a + d.deletions, 0)} deletions
+              </span>
+            </div>
+            <button
+              onClick={() => { setShowDiffPanel(false); setFileDiffs([]); }}
+              className="text-gray-400 hover:text-white text-lg"
+            >×</button>
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            {fileDiffs.map((diff, di) => (
+              <div key={di} className="border-b border-[#1a1a3a]">
+                <div className="px-4 py-2 bg-[#0a0a18] flex items-center gap-2 text-xs">
+                  <span className={diff.type === 'added' ? 'text-green-400' : diff.type === 'deleted' ? 'text-red-400' : 'text-yellow-400'}>
+                    {diff.type === 'added' ? '+' : diff.type === 'deleted' ? '-' : '~'}
+                  </span>
+                  <span className="text-gray-300 font-mono">{diff.path}</span>
+                  <span className="ml-auto text-green-400">+{diff.additions}</span>
+                  <span className="text-red-400">-{diff.deletions}</span>
+                </div>
+                {diff.hunks.map((hunk, hi) => (
+                  <div key={hi} className="font-mono text-[11px] leading-5">
+                    <div className="px-4 py-0.5 bg-[#1a1a3a] text-gray-500">
+                      @@ -{hunk.oldStart},{hunk.oldLines} +{hunk.newStart},{hunk.newLines} @@
+                    </div>
+                    {hunk.lines.map((line, li) => (
+                      <div
+                        key={li}
+                        className={`px-4 ${
+                          line.type === 'add' ? 'bg-green-900/20 text-green-300' :
+                          line.type === 'remove' ? 'bg-red-900/20 text-red-300' :
+                          'text-gray-500'
+                        }`}
+                      >
+                        <span className="inline-block w-4 text-center select-none opacity-50">
+                          {line.type === 'add' ? '+' : line.type === 'remove' ? '-' : ' '}
+                        </span>
+                        {line.content}
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <VersionTimeline
         isOpen={showVersionHistory}
         onClose={() => setShowVersionHistory(false)}

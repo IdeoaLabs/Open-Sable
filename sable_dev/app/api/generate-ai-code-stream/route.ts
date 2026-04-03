@@ -12,6 +12,11 @@ import type { ConversationState, ConversationMessage, ConversationEdit } from '@
 import { appConfig } from '@/config/app.config';
 import { getTemplate, DEFAULT_TEMPLATE } from '@/lib/sandbox/templates';
 import { saveSession } from '@/lib/persistence';
+import { buildAISDKTools, buildToolContext, getToolSummaryForPrompt } from '@/lib/tools/ai-sdk-tools';
+import { selectToolsForIntent } from '@/lib/tools/intent-selector';
+import { buildSystemPrompt, createDefaultPromptLayer, createErrorFixLayer, createToolAppendLayer, type PromptContext, type PromptLayer } from '@/lib/prompt-composer';
+import { classifyError, withRetry, detectInterruption, buildRecoveryMessage, isToolError, formatErrorForModel } from '@/lib/error-recovery';
+import { runContextPipeline, formatContextForPrompt } from '@/lib/context-pipeline';
 
 // Force dynamic route to enable streaming
 export const dynamic = 'force-dynamic';
@@ -1178,6 +1183,61 @@ Common fixes:
           ? (modelProvider as any).chat(actualModel)
           : modelProvider(actualModel);
         
+        // Build tool context from active sandbox for agentic editing
+        const toolContext = buildToolContext(global.activeSandboxProvider);
+        
+        // Filter tools by user intent (reduces prompt size for small models)
+        let aiTools: Record<string, any> | undefined;
+        if (toolContext && isEdit) {
+          const intentTools = selectToolsForIntent(fullPrompt);
+          // Build AI SDK tools from full set (intent info is logged for debugging)
+          aiTools = buildAISDKTools(toolContext);
+          console.log(`[generate-ai-code-stream] Intent filter: ${intentTools.map(t => t.name).join(', ')}`);
+        }
+        const useTools = isEdit && aiTools && Object.keys(aiTools).length > 0;
+        
+        // Gather context pipeline data (git, recent edits, deps) for edit mode
+        let pipelineContextStr = '';
+        if (isEdit && toolContext) {
+          try {
+            const pipelineCtx = await runContextPipeline({
+              readFile: toolContext.readFile,
+              runCommand: toolContext.runCommand,
+            });
+            pipelineContextStr = formatContextForPrompt(pipelineCtx);
+            if (pipelineContextStr) {
+              console.log(`[generate-ai-code-stream] Context pipeline: ${pipelineContextStr.substring(0, 100)}...`);
+            }
+          } catch (e) {
+            console.warn('[generate-ai-code-stream] Context pipeline failed (non-fatal):', e);
+          }
+        }
+        
+        if (useTools) {
+          console.log(`[generate-ai-code-stream] Agentic mode: ${Object.keys(aiTools!).length} tools available`);
+          // Add tool descriptions to system prompt for edit mode
+          systemPrompt += `\n\n${getToolSummaryForPrompt()}`;
+        }
+        
+        // Add context pipeline data to system prompt
+        if (pipelineContextStr) {
+          systemPrompt += `\n\n${pipelineContextStr}`;
+        }
+        
+        // Conversation recovery: detect if we're resuming from an interruption
+        let recoveryPrefix = '';
+        if (global.conversationState?.context?.messages && global.conversationState.context.messages.length > 0) {
+          const interruptState = detectInterruption(
+            global.conversationState.context.messages.map((m: any) => ({ role: m.role, content: m.content })),
+            false // wasStreaming — we don't know from server side, assume clean
+          );
+          const recovery = buildRecoveryMessage(interruptState);
+          if (recovery) {
+            recoveryPrefix = recovery + '\n\n';
+            console.log(`[generate-ai-code-stream] Conversation recovery: ${interruptState.type}`);
+          }
+        }
+        
         const streamOptions: any = {
           model: modelInstance,
           messages: [
@@ -1187,11 +1247,15 @@ Common fixes:
             },
             { 
               role: 'user', 
-              content: fullPrompt + `\n\nREMINDER: Output ONLY <file path="...">...complete code...</file> tags. NO explanations. NO markdown. NO conversational text. Start your response immediately with <file.`
+              content: recoveryPrefix + (useTools
+                ? fullPrompt + `\n\nYou may use tools to read and understand the codebase before making changes. After exploring, output your changes as <file path="...">...complete code...</file> tags. If making small edits, prefer the file_edit tool over full file rewrites.`
+                : fullPrompt + `\n\nREMINDER: Output ONLY <file path="...">...complete code...</file> tags. NO explanations. NO markdown. NO conversational text. Start your response immediately with <file.`)
             }
           ],
           maxTokens: 16384,
-          stopSequences: []
+          stopSequences: [],
+          // Enable multi-step tool calling for edit mode (up to 8 tool rounds)
+          ...(useTools ? { tools: aiTools, maxSteps: 8 } : {}),
         };
         
         // Add temperature for non-reasoning models
@@ -1219,24 +1283,51 @@ Common fixes:
           } catch (streamError: any) {
             console.error(`[generate-ai-code-stream] Error calling streamText (attempt ${retryCount + 1}/${maxRetries + 1}):`, streamError);
             
+            // Use error-recovery classifier for smarter retry decisions
+            const errorCategory = classifyError(streamError);
+            console.log(`[generate-ai-code-stream] Error classified as: ${errorCategory}`);
+            
+            // Permanent errors — don't retry
+            if (errorCategory === 'permanent') {
+              await sendProgress({ 
+                type: 'error', 
+                message: `Model error: ${streamError.message}` 
+              });
+              throw streamError;
+            }
+            
+            // Context overflow — don't retry (need to reduce context)
+            if (errorCategory === 'context_overflow') {
+              await sendProgress({ 
+                type: 'error', 
+                message: `Context too large for model. Try a shorter prompt or fewer files.` 
+              });
+              throw streamError;
+            }
+            
             // Check if this is a Groq service unavailable error
             const isGroqServiceError = isKimiGroq && streamError.message?.includes('Service unavailable');
-            const isRetryableError = streamError.message?.includes('Service unavailable') || 
-                                    streamError.message?.includes('rate limit') ||
-                                    streamError.message?.includes('timeout');
             
-            if (retryCount < maxRetries && isRetryableError) {
+            if (retryCount < maxRetries && (errorCategory === 'retryable' || errorCategory === 'rate_limit')) {
               retryCount++;
-              console.log(`[generate-ai-code-stream] Retrying in ${retryCount * 2} seconds...`);
+              
+              // Rate limit: respect retry-after header
+              let delay = retryCount * 2000;
+              if (errorCategory === 'rate_limit' && streamError?.headers?.['retry-after']) {
+                const retryAfter = parseInt(streamError.headers['retry-after'], 10);
+                if (!isNaN(retryAfter)) delay = retryAfter * 1000;
+              }
+              
+              console.log(`[generate-ai-code-stream] Retrying in ${delay}ms (${errorCategory})...`);
               
               // Send progress update about retry
               await sendProgress({ 
                 type: 'info', 
-                message: `Service temporarily unavailable, retrying (attempt ${retryCount + 1}/${maxRetries + 1})...` 
+                message: `${errorCategory === 'rate_limit' ? 'Rate limited' : 'Service temporarily unavailable'}, retrying (attempt ${retryCount + 1}/${maxRetries + 1})...` 
               });
               
               // Wait before retry with exponential backoff
-              await new Promise(resolve => setTimeout(resolve, retryCount * 2000));
+              await new Promise(resolve => setTimeout(resolve, delay));
               
               // If Groq fails, try switching to a fallback model
               if (isGroqServiceError && retryCount === maxRetries) {
@@ -1276,6 +1367,81 @@ Common fixes:
         // Buffer for incomplete tags
         let tagBuffer = '';
         
+        // Track tool calls for UI feedback
+        let toolCallCount = 0;
+        
+        // Use fullStream when tools are enabled to capture tool events,
+        // otherwise fall back to textStream for simpler parsing
+        if (useTools) {
+          for await (const part of (result as any)?.fullStream || []) {
+            if (part.type === 'text-delta') {
+              const text = part.textDelta || '';
+              generatedCode += text;
+              currentFile += text;
+              
+              const searchText = tagBuffer + text;
+              process.stdout.write(text);
+              
+              const hasOpenTag = /<(file|package|packages|explanation|command|structure|template)\b/.test(text);
+              const hasCloseTag = /<\/(file|package|packages|explanation|command|structure|template)>/.test(text);
+              
+              if (hasOpenTag) {
+                if (conversationalBuffer.trim() && !isInTag) {
+                  await sendProgress({ type: 'conversation', text: conversationalBuffer.trim() });
+                  conversationalBuffer = '';
+                }
+                isInTag = true;
+              }
+              if (hasCloseTag) isInTag = false;
+              if (!isInTag && !hasOpenTag) conversationalBuffer += text;
+              
+              await sendProgress({ type: 'stream', text, raw: true });
+              
+              if (text.includes('<file path="')) {
+                const pathMatch = text.match(/<file path="([^"]+)"/);
+                if (pathMatch) {
+                  currentFilePath = pathMatch[1];
+                  isInFile = true;
+                  currentFile = text;
+                }
+              }
+              
+              if (isInFile && currentFile.includes('</file>')) {
+                isInFile = false;
+                if (currentFilePath.includes('components/')) {
+                  componentCount++;
+                  const componentName = currentFilePath.split('/').pop()?.replace('.jsx', '') || 'Component';
+                  await sendProgress({ type: 'component', name: componentName, path: currentFilePath, index: componentCount });
+                } else if (currentFilePath.includes('App.jsx')) {
+                  await sendProgress({ type: 'app', message: 'Generated main App.jsx', path: currentFilePath });
+                }
+                currentFile = '';
+                currentFilePath = '';
+              }
+              
+              tagBuffer = searchText.substring(Math.max(0, searchText.length - 50));
+            } else if (part.type === 'tool-call') {
+              toolCallCount++;
+              console.log(`[generate-ai-code-stream] Tool call #${toolCallCount}: ${part.toolName}(${JSON.stringify(part.args).substring(0, 100)})`);
+              await sendProgress({
+                type: 'tool-call',
+                name: part.toolName,
+                args: part.args,
+                index: toolCallCount,
+              });
+            } else if (part.type === 'tool-result') {
+              const output = typeof part.result === 'string' ? part.result : JSON.stringify(part.result);
+              const truncated = output.length > 500 ? output.substring(0, 500) + '...' : output;
+              console.log(`[generate-ai-code-stream] Tool result for ${part.toolName}: ${truncated.substring(0, 100)}`);
+              await sendProgress({
+                type: 'tool-result',
+                name: part.toolName,
+                output: truncated,
+                index: toolCallCount,
+              });
+            }
+          }
+        } else {
         // Stream the response and parse for packages in real-time
         for await (const textPart of result?.textStream || []) {
           const text = textPart || '';
@@ -1384,6 +1550,12 @@ Common fixes:
             currentFile = '';
             currentFilePath = '';
           }
+        }
+        } // end else (non-tool mode)
+        
+        if (toolCallCount > 0) {
+          console.log(`[generate-ai-code-stream] Agentic mode completed: ${toolCallCount} tool calls`);
+          await sendProgress({ type: 'info', message: `Used ${toolCallCount} tool calls to analyze and edit the project` });
         }
         
         console.log('\n\n[generate-ai-code-stream] Streaming complete.');

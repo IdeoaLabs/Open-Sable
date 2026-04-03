@@ -4,6 +4,7 @@ import { parseMorphEdits, applyMorphEditToFile } from '@/lib/morph-fast-apply';
 import type { SandboxState } from '@/types/sandbox';
 import type { ConversationState } from '@/types/conversation';
 import { sandboxManager } from '@/lib/sandbox/sandbox-manager';
+import { generateFileDiff, type FileDiff } from '@/lib/diff-utils';
 
 declare global {
   var conversationState: ConversationState | null;
@@ -636,6 +637,14 @@ export async function POST(request: NextRequest) {
 
             const isUpdate = global.existingFiles.has(normalizedPath);
 
+            // Read old content for diff computation (only for updates)
+            let oldContent: string | null = null;
+            if (isUpdate) {
+              try {
+                oldContent = await providerInstance.readFile(normalizedPath);
+              } catch { /* file may not exist yet */ }
+            }
+
             // Remove any CSS imports from JSX/JS files (we're using Tailwind)
             let fileContent = file.content;
             if (file.path.endsWith('.jsx') || file.path.endsWith('.js') || file.path.endsWith('.tsx') || file.path.endsWith('.ts')) {
@@ -678,7 +687,10 @@ export async function POST(request: NextRequest) {
             await sendProgress({
               type: 'file-complete',
               fileName: normalizedPath,
-              action: isUpdate ? 'updated' : 'created'
+              action: isUpdate ? 'updated' : 'created',
+              ...(isUpdate && oldContent !== null ? {
+                diff: generateFileDiff(normalizedPath, oldContent, fileContent)
+              } : {}),
             });
           } catch (error) {
             if (results.errors) {
