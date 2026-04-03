@@ -283,30 +283,50 @@ function AISandboxPage() {
       // Prevent double execution in React StrictMode
       if (sandboxCreated) return;
       
-      // Try to restore persisted chat history on load
-      try {
-        const persistRes = await fetch('/api/persistence?type=chat-history');
-        const persistData = await persistRes.json();
-        if (persistData.hasData && persistData.messages?.length > 0 && isMounted) {
-          const restored = persistData.messages.map((m: any) => ({
-            ...m,
-            timestamp: new Date(m.timestamp),
-          }));
-          setChatMessages(prev => {
-            // Only restore if we still have the default welcome message
-            if (prev.length === 1 && prev[0].type === 'system') {
-              // Filter out any duplicate welcome messages from restored data
-              const filtered = restored.filter((m: any) =>
-                !(m.type === 'system' && typeof m.content === 'string' && m.content.startsWith('Welcome! I can help'))
-              );
-              return [...prev, ...filtered];
-            }
-            return prev;
+      // Detect if this is a brand-new project (prompt from home page)
+      const isNewProject = !!(searchParams.get('prompt') || sessionStorage.getItem('creationPrompt'));
+      
+      // If starting a new project, clear chat completely and persist the wipe
+      if (isNewProject) {
+        console.log('[initializePage] New project detected — clearing chat history');
+        setChatMessages([{
+          content: 'Welcome! I can help you generate code with full context of your sandbox files and structure. Just start chatting!\n\nTip: If you see package errors, just type "npm install" to fix them.',
+          type: 'system',
+          timestamp: new Date()
+        }]);
+        try {
+          await fetch('/api/persistence', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'clear' }),
           });
-          console.log('[initializePage] Restored', restored.length, 'persisted chat messages');
+        } catch (_) { /* best effort */ }
+      } else {
+        // Only restore persisted chat for existing/resumed sessions
+        try {
+          const persistRes = await fetch('/api/persistence?type=chat-history');
+          const persistData = await persistRes.json();
+          if (persistData.hasData && persistData.messages?.length > 0 && isMounted) {
+            const restored = persistData.messages.map((m: any) => ({
+              ...m,
+              timestamp: new Date(m.timestamp),
+            }));
+            setChatMessages(prev => {
+              // Only restore if we still have the default welcome message
+              if (prev.length === 1 && prev[0].type === 'system') {
+                // Filter out any duplicate welcome messages from restored data
+                const filtered = restored.filter((m: any) =>
+                  !(m.type === 'system' && typeof m.content === 'string' && m.content.startsWith('Welcome! I can help'))
+                );
+                return [...prev, ...filtered];
+              }
+              return prev;
+            });
+            console.log('[initializePage] Restored', restored.length, 'persisted chat messages');
+          }
+        } catch (e) {
+          console.log('[initializePage] No persisted chat history:', e);
         }
-      } catch (e) {
-        console.log('[initializePage] No persisted chat history:', e);
       }
       
       // Also try to restore server-side session
@@ -738,6 +758,15 @@ function AISandboxPage() {
     } catch (e) {
       console.error('[resetProject] Failed to clear persisted chat:', e);
     }
+
+    // Clear server-side conversation state
+    try {
+      await fetch('/api/conversation-state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'clear-old' }),
+      });
+    } catch (_) { /* best effort */ }
 
     // Reset all client state
     setSandboxData(null);

@@ -33,6 +33,18 @@
 
         /* Activity sparkline */
         .spark { stroke: #a78bfa; fill: none; stroke-width: 2; }
+
+        /* Avatar states */
+        .avatar-idle      { color: #6b7280; text-shadow: none; }
+        .avatar-thinking   { color: #a78bfa; text-shadow: 0 0 12px rgba(167,139,250,0.5); animation: avatar-pulse 1.5s ease-in-out infinite; }
+        .avatar-executing  { color: #34d399; text-shadow: 0 0 12px rgba(52,211,153,0.5); animation: avatar-spin 2s linear infinite; }
+        .avatar-typing     { color: #60a5fa; text-shadow: 0 0 12px rgba(96,165,250,0.5); animation: avatar-bounce 0.6s ease-in-out infinite; }
+        .avatar-responding { color: #f472b6; text-shadow: 0 0 12px rgba(244,114,182,0.5); animation: avatar-pulse 1s ease-in-out infinite; }
+        .avatar-grateful   { color: #fbbf24; text-shadow: 0 0 16px rgba(251,191,36,0.6); animation: avatar-glow 1s ease-in-out 2; }
+        @keyframes avatar-pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.1); } }
+        @keyframes avatar-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes avatar-bounce { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+        @keyframes avatar-glow { 0%,100% { filter: drop-shadow(0 0 8px rgba(251,191,36,0.3)); } 50% { filter: drop-shadow(0 0 20px rgba(251,191,36,0.8)); } }
     </style>
 </head>
 <body>
@@ -118,6 +130,21 @@
         <!-- Right Panel -->
         <div class="flex flex-col gap-4">
 
+            <!-- Avatar Status -->
+            <div class="glass rounded-xl p-4">
+                <h3 class="text-sm font-semibold mb-3 flex items-center gap-2">🧬 Avatar</h3>
+                <div id="avatarPanel" class="flex flex-col items-center gap-2">
+                    <div id="avatarSprite" class="text-4xl transition-transform duration-300" style="filter: drop-shadow(0 0 8px rgba(139,92,246,0.3));">🤖</div>
+                    <div id="avatarStateLabel" class="text-xs font-semibold uppercase tracking-wider text-gray-500">offline</div>
+                    <div id="avatarText" class="text-[10px] text-gray-600 text-center truncate w-full"></div>
+                    <div id="avatarTool" class="text-[10px] text-emerald-400/60 mono hidden"></div>
+                    <div class="w-full grid grid-cols-2 gap-1 mt-1" id="avatarMeta">
+                        <div class="text-[9px] text-gray-600 text-center">words: <span id="avatarWords" class="text-gray-400 mono">0</span></div>
+                        <div class="text-[9px] text-gray-600 text-center">since: <span id="avatarAge" class="text-gray-400 mono">--</span></div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Active Tools -->
             <div class="glass rounded-xl p-4">
                 <h3 class="text-sm font-semibold mb-3 flex items-center gap-2">🔧 Tools</h3>
@@ -200,6 +227,7 @@ function connect() {
         let msg;
         try { msg = JSON.parse(evt.data); } catch { return; }
         handleMessage(msg);
+        handleAvatarFromWS(msg);
     };
 }
 
@@ -526,6 +554,80 @@ setInterval(() => {
         ws.send(JSON.stringify({ type: 'monitor.snapshot' }));
     }
 }, 5000);
+
+// ── Avatar State Polling ─────────────────────────────────────────────────
+const AVATAR_STATE_COLORS = {
+    idle: '#6b7280', thinking: '#a78bfa', executing: '#34d399',
+    typing: '#60a5fa', responding: '#f472b6', grateful: '#fbbf24'
+};
+const AVATAR_STATE_LABELS = {
+    idle: 'idle', thinking: 'thinking...', executing: 'executing',
+    typing: 'typing...', responding: 'responding', grateful: 'grateful ✨'
+};
+let lastAvatarState = '';
+
+function updateAvatarPanel(data) {
+    const sprite = el('avatarSprite');
+    const label = el('avatarStateLabel');
+    const text = el('avatarText');
+    const toolEl = el('avatarTool');
+    const wordsEl = el('avatarWords');
+    const ageEl = el('avatarAge');
+
+    const s = data.state || 'idle';
+    label.textContent = AVATAR_STATE_LABELS[s] || s;
+    label.style.color = AVATAR_STATE_COLORS[s] || '#6b7280';
+
+    // Update sprite animation class
+    sprite.className = 'text-4xl transition-transform duration-300 avatar-' + s;
+
+    // Context text
+    if (data.text) {
+        text.textContent = data.text;
+        text.classList.remove('hidden');
+    } else {
+        text.classList.add('hidden');
+    }
+
+    // Tool indicator
+    if (data.tool) {
+        toolEl.textContent = '🔧 ' + data.tool;
+        toolEl.classList.remove('hidden');
+    } else {
+        toolEl.classList.add('hidden');
+    }
+
+    // Words count
+    wordsEl.textContent = data.words || 0;
+
+    // Time since last update
+    if (data.ts) {
+        const ago = Math.round((Date.now() / 1000) - data.ts);
+        if (ago < 5) ageEl.textContent = 'now';
+        else if (ago < 60) ageEl.textContent = ago + 's';
+        else ageEl.textContent = Math.floor(ago / 60) + 'm';
+    }
+
+    lastAvatarState = s;
+}
+
+function pollAvatarState() {
+    fetch('/api/avatar-state')
+        .then(r => r.ok ? r.json() : null)
+        .then(data => { if (data) updateAvatarPanel(data); })
+        .catch(() => {});
+}
+
+// Poll avatar state every 2 seconds
+setInterval(pollAvatarState, 2000);
+pollAvatarState();
+
+// Also handle avatar state from WebSocket monitor events
+function handleAvatarFromWS(msg) {
+    if (msg.type === 'monitor.event' && msg.event === 'avatar.state') {
+        updateAvatarPanel(msg.data || {});
+    }
+}
 
 // ── Init ─────────────────────────────────────────────────────────────────
 connect();

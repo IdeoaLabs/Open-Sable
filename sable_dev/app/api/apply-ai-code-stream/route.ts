@@ -597,12 +597,14 @@ export async function POST(request: NextRequest) {
         }
 
         // Avoid overwriting Morph-updated files in the file write loop
+        const isStaticSite = (global as any).activeTemplateId === 'static-site';
         if (morphUpdatedPaths.size > 0) {
           filteredFiles = filteredFiles.filter(file => {
             if (!file?.path) return true;
             let normalizedPath = file.path.startsWith('/') ? file.path.slice(1) : file.path;
             const fileName = normalizedPath.split('/').pop() || '';
-            if (!normalizedPath.startsWith('src/') &&
+            if (!isStaticSite &&
+                !normalizedPath.startsWith('src/') &&
                 !normalizedPath.startsWith('public/') &&
                 normalizedPath !== 'index.html' &&
                 !configFiles.includes(fileName)) {
@@ -628,7 +630,9 @@ export async function POST(request: NextRequest) {
             if (normalizedPath.startsWith('/')) {
               normalizedPath = normalizedPath.substring(1);
             }
-            if (!normalizedPath.startsWith('src/') &&
+            // Static-site template: keep paths as-is (no src/ prefix)
+            if (!isStaticSite &&
+              !normalizedPath.startsWith('src/') &&
               !normalizedPath.startsWith('public/') &&
               normalizedPath !== 'index.html' &&
               !configFiles.includes(normalizedPath.split('/').pop() || '')) {

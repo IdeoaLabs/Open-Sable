@@ -309,6 +309,9 @@ class Gateway:
         app.router.add_get("/api/display/status", self._display_status_handler)
         app.router.add_post("/api/display/page", self._display_set_page_handler)
 
+        # Avatar state (read from /tmp/sable-avatar-state.json)
+        app.router.add_get("/api/avatar-state", self._avatar_state_handler)
+
         # Agent environment editor
         app.router.add_get("/api/env", self._env_get_handler)
         app.router.add_post("/api/env", self._env_post_handler)
@@ -550,6 +553,22 @@ class Gateway:
                                 text=json.dumps({"error": str(exc)}))
         return web.Response(content_type="application/json",
                             text=json.dumps({"ok": True, "page": page}))
+
+    async def _avatar_state_handler(self, request: web.Request) -> web.Response:
+        """Return current avatar state from /tmp/sable-avatar-state.json."""
+        state_path = "/tmp/sable-avatar-state.json"
+        try:
+            with open(state_path) as fh:
+                data = fh.read()
+            return web.Response(body=data.encode(), content_type="application/json",
+                                headers={"Cache-Control": "no-store"})
+        except FileNotFoundError:
+            return web.Response(content_type="application/json",
+                                headers={"Cache-Control": "no-store"},
+                                text='{"state":"idle","text":"","tool":"","words":0,"ts":0}')
+        except Exception:
+            return web.Response(status=500, content_type="application/json",
+                                text='{"error":"failed to read avatar state"}')
 
     async def _display_stream_handler(self, request: web.Request) -> web.StreamResponse:
         """MJPEG stream of the Pi HUD — suitable for <img src=...>."""

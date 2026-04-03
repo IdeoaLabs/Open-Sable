@@ -833,7 +833,7 @@ export default function HomePage() {
               {recentProjects.slice(0, 6).map((proj) => (
                 <div
                   key={proj.id}
-                  className="group p-4 rounded-xl bg-[#12122a] border border-[#2a2a4a] hover:border-orange-500/40 hover:bg-[#1a1a3a] cursor-pointer transition-all duration-200"
+                  className="group relative p-4 rounded-xl bg-[#12122a] border border-[#2a2a4a] hover:border-orange-500/40 hover:bg-[#1a1a3a] cursor-pointer transition-all duration-200"
                   onClick={() => {
                     sessionStorage.setItem('selectedModel', proj.model);
                     sessionStorage.setItem('selectedTemplate', proj.template);
@@ -841,6 +841,27 @@ export default function HomePage() {
                     router.push(`/generation?sandbox=${encodeURIComponent(proj.sandboxId || proj.id)}`);
                   }}
                 >
+                  {/* Delete button */}
+                  <button
+                    className="absolute top-2 right-2 w-6 h-6 rounded-md flex items-center justify-center opacity-0 group-hover:opacity-100 bg-red-500/10 hover:bg-red-500/30 text-red-400 hover:text-red-300 transition-all z-10"
+                    title="Delete project"
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      if (!confirm('Delete this project?')) return;
+                      try {
+                        await fetch('/api/project-history', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ action: 'delete', project: { id: proj.id } }),
+                        });
+                        setRecentProjects(prev => prev.filter(p => p.id !== proj.id));
+                      } catch { /* silent */ }
+                    }}
+                  >
+                    <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <span className="text-xs font-medium text-gray-200 truncate flex-1">
                       {proj.name === '[object Object]' ? 'Untitled Project' : proj.name}
