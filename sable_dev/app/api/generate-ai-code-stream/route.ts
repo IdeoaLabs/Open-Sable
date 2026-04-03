@@ -18,11 +18,11 @@ import { buildSystemPrompt, createDefaultPromptLayer, createErrorFixLayer, creat
 import { classifyError, withRetry, detectInterruption, buildRecoveryMessage, isToolError, formatErrorForModel } from '@/lib/error-recovery';
 import { runContextPipeline, formatContextForPrompt } from '@/lib/context-pipeline';
 import { isSlashCommand, routeSlashCommand, type CommandContext } from '@/lib/slash-commands';
-import { createBudgetTracker, checkTokenBudget, estimateTotalTokens, getTokenWarningLevel } from '@/lib/token-budget';
+import { createBudgetTracker, checkTokenBudget, estimateTotalTokens } from '@/lib/token-budget';
 import { shouldAutoCompact, compactConversation, microCompact, createAutoCompactState, advanceTurn, type AutoCompactState } from '@/lib/compact';
-import { shouldSuggestPlan, parsePlanFromText, getPlanModePrompt, type Plan } from '@/lib/plan-mode';
+import { shouldSuggestPlan, getPlanModePrompt, type Plan } from '@/lib/plan-mode';
 import { createCostState, trackUsage, formatCostReport, getCompactCostSummary, type SessionCostState } from '@/lib/cost-tracker';
-import { getEffortConfig, resolveEffortFromPrompt, applyEffortToParams, type EffortLevel } from '@/lib/effort-modes';
+import { getEffortConfig, resolveEffortFromPrompt, type EffortLevel } from '@/lib/effort-modes';
 import { createSessionMemoryState, shouldExtractMemory, recordToolCall as recordMemoryToolCall, extractSessionMemory, formatMemoryForPrompt, type SessionMemoryState } from '@/lib/session-memory';
 import { isFastModeEnabled, getFastModeModel, toggleFastMode, createFastModeState, type FastModeState } from '@/lib/fast-mode';
 import { createFileTrackingState, snapshotFile, detectFileChange, formatChangesForPrompt, advanceTurnWithChanges, type FileTrackingState } from '@/lib/file-change-detection';
@@ -186,11 +186,26 @@ export async function POST(request: NextRequest) {
       
       const cmdResult = await routeSlashCommand(prompt, cmdCtx);
       if (cmdResult?.handled) {
+        // Inject cost report for /cost command
+        let displayMessage = cmdResult.message;
+        if (cmdResult.data?.action === 'cost' && global.sableCostState) {
+          displayMessage = formatCostReport(global.sableCostState);
+        }
+        // Inject fast mode toggle
+        if (cmdResult.data?.action === 'fast' && global.sableFastModeState) {
+          const enabled = cmdResult.data.enabled as boolean;
+          const result = toggleFastMode(global.sableFastModeState, enabled);
+          global.sableFastModeState = result.state;
+          displayMessage = result.toggled
+            ? (enabled ? `Fast mode enabled. Using ${getFastModeModel(result.state)}.` : 'Fast mode disabled. Using default model.')
+            : (result.reason || displayMessage);
+        }
+        
         // Return command result as a quick SSE response
         const encoder = new TextEncoder();
         const stream = new TransformStream();
         const writer = stream.writable.getWriter();
-        await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'conversation', text: cmdResult.message })}\n\n`));
+        await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'conversation', text: displayMessage })}\n\n`));
         if (cmdResult.data) {
           await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'command', ...cmdResult.data })}\n\n`));
         }
@@ -1198,13 +1213,20 @@ Common fixes:
         // Track packages that need to be installed
         const packagesToInstall: string[] = [];
         
+        // ─── Fast Mode: override model if enabled ──────────
+        let effectiveModel = model;
+        if (global.sableFastModeState && isFastModeEnabled(global.sableFastModeState)) {
+          effectiveModel = getFastModeModel(global.sableFastModeState);
+          console.log(`[generate-ai-code-stream] Fast mode active: ${model} → ${effectiveModel}`);
+        }
+        
         // Determine which provider to use based on model
-        const isAnthropic = model.startsWith('anthropic/');
-        const isGoogle = model.startsWith('google/');
-        const isOpenAI = model.startsWith('openai/');
-        const isOllama = model.startsWith('ollama/');
-        const isOpenWebUI = model.startsWith('openwebui/');
-        const isKimiGroq = model === 'moonshotai/kimi-k2-instruct-0905';
+        const isAnthropic = effectiveModel.startsWith('anthropic/');
+        const isGoogle = effectiveModel.startsWith('google/');
+        const isOpenAI = effectiveModel.startsWith('openai/');
+        const isOllama = effectiveModel.startsWith('ollama/');
+        const isOpenWebUI = effectiveModel.startsWith('openwebui/');
+        const isKimiGroq = effectiveModel === 'moonshotai/kimi-k2-instruct-0905';
         const modelProvider = isOllama ? ollamaProvider :
                               (isOpenWebUI ? openWebUIProvider :
                               (isAnthropic ? anthropic : 
@@ -1215,27 +1237,27 @@ Common fixes:
         // Fix model name transformation for different providers
         let actualModel: string;
         if (isOllama) {
-          actualModel = model.replace('ollama/', '');
+          actualModel = effectiveModel.replace('ollama/', '');
         } else if (isOpenWebUI) {
-          actualModel = model.replace('openwebui/', '');
+          actualModel = effectiveModel.replace('openwebui/', '');
         } else if (isAnthropic) {
-          actualModel = model.replace('anthropic/', '');
+          actualModel = effectiveModel.replace('anthropic/', '');
         } else if (isOpenAI) {
-          actualModel = model.replace('openai/', '');
+          actualModel = effectiveModel.replace('openai/', '');
         } else if (isKimiGroq) {
           // Kimi on Groq - use full model string
           actualModel = 'moonshotai/kimi-k2-instruct-0905';
         } else if (isGoogle) {
           // Google uses specific model names - convert our naming to theirs  
-          actualModel = model.replace('google/', '');
+          actualModel = effectiveModel.replace('google/', '');
         } else {
-          actualModel = model;
+          actualModel = effectiveModel;
         }
 
         const providerName = isOllama ? 'Ollama' : isOpenWebUI ? 'OpenWebUI' : isAnthropic ? 'Anthropic' : isGoogle ? 'Google' : isOpenAI ? 'OpenAI' : 'Groq';
         console.log(`[generate-ai-code-stream] Using provider: ${providerName}, model: ${actualModel}`);
         console.log(`[generate-ai-code-stream] AI Gateway enabled: ${isUsingAIGateway}`);
-        console.log(`[generate-ai-code-stream] Model string: ${model}`);
+        console.log(`[generate-ai-code-stream] Model string: ${effectiveModel}`);
 
         // Make streaming API call with appropriate provider
         // AI SDK v5: default provider() uses Responses API (/v1/responses)
@@ -1292,7 +1314,8 @@ Common fixes:
         }
         
         // ─── Effort Mode: resolve and apply ───────────────────
-        const effortLevel = global.sableEffortLevel || 'medium';
+        const autoEffort = resolveEffortFromPrompt(prompt);
+        const effortLevel = autoEffort || global.sableEffortLevel || 'medium';
         const effortConfig = getEffortConfig(effortLevel);
         if (effortConfig.systemPromptSuffix) {
           systemPrompt += `\n\n${effortConfig.systemPromptSuffix}`;
@@ -1332,6 +1355,53 @@ Common fixes:
         // ─── Micro-compact old tool outputs ──────────────────
         const turnNumber = global.sableAutoCompactState?.turnCounter || 0;
         global.sableAutoCompactState = advanceTurn(global.sableAutoCompactState!);
+        
+        // Apply micro-compact to trim old tool results from conversation
+        const microCompactResult = microCompact(
+          (global.conversationState?.context?.messages || []).map((m: any) => ({
+            role: m.role,
+            content: m.content,
+            turnIndex: undefined,
+          })),
+          turnNumber,
+        );
+        // Update conversation messages with micro-compacted versions
+        if (global.conversationState && microCompactResult.messages.length > 0) {
+          for (let i = 0; i < Math.min(microCompactResult.messages.length, global.conversationState.context.messages.length); i++) {
+            global.conversationState.context.messages[i].content = microCompactResult.messages[i].content;
+          }
+          if (microCompactResult.tokensFreed > 0) {
+            console.log(`[generate-ai-code-stream] Micro-compact freed ~${microCompactResult.tokensFreed} tokens`);
+          }
+        }
+        
+        // ─── Plan Mode: suggest plan for complex tasks ───────
+        if (isEdit && shouldSuggestPlan(prompt) && !global.sableActivePlan) {
+          const planPromptSuffix = getPlanModePrompt();
+          systemPrompt += `\n\n${planPromptSuffix}`;
+          console.log('[generate-ai-code-stream] Plan mode suggested for complex task');
+        }
+        
+        // ─── File Change Detection: check for external edits ─
+        if (global.sableFileTrackingState && context?.currentFiles) {
+          const currentFileEntries = Object.entries(context.currentFiles)
+            .map(([path, content]) => ({ path, content: typeof content === 'string' ? content : (content as any)?.content || null }));
+          const changes = currentFileEntries
+            .map(f => detectFileChange(global.sableFileTrackingState!, f.path, f.content))
+            .filter((c): c is NonNullable<typeof c> => c !== null);
+          if (changes.length > 0) {
+            const changePrompt = formatChangesForPrompt(changes);
+            systemPrompt += `\n\n${changePrompt}`;
+            global.sableFileTrackingState = advanceTurnWithChanges(global.sableFileTrackingState, changes);
+            console.log(`[generate-ai-code-stream] Detected ${changes.length} file changes since last turn`);
+          }
+          // Snapshot current files for next comparison
+          for (const f of currentFileEntries) {
+            if (f.content) {
+              global.sableFileTrackingState = snapshotFile(global.sableFileTrackingState, f.path, f.content);
+            }
+          }
+        }
         
         // Track generation start time for cost tracking
         const generationStartTime = Date.now();
@@ -1551,6 +1621,17 @@ Common fixes:
                 output: truncated,
                 index: toolCallCount,
               });
+              
+              // File change detection: snapshot files modified by tools
+              if (part.toolName === 'file_write' || part.toolName === 'file_edit') {
+                const filePath = (part as any).args?.path || (part as any).args?.filePath;
+                if (filePath && global.sableFileTrackingState && global.activeSandboxProvider) {
+                  try {
+                    const content = await global.activeSandboxProvider.readFile(filePath);
+                    global.sableFileTrackingState = snapshotFile(global.sableFileTrackingState, filePath, content);
+                  } catch { /* file read failed, skip snapshot */ }
+                }
+              }
             }
           }
         } else {

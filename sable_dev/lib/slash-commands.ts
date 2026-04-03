@@ -134,8 +134,8 @@ function getBuiltinCommands(): SlashCommand[] {
       usage: '/cost',
       handler: () => {
         return {
-          handled: false,
-          message: '',
+          handled: true,
+          message: '', // Cost report is injected by the route handler
           data: { action: 'cost' },
         };
       },
