@@ -39,6 +39,7 @@ export interface CommandResult {
 
 // ─── Command Registry ─────────────────────────────────────
 
+// Cache cleared on module reload (new commands added dynamically)
 let cachedCommands: Map<string, SlashCommand> | null = null;
 
 function getBuiltinCommands(): SlashCommand[] {
@@ -187,6 +188,85 @@ function getBuiltinCommands(): SlashCommand[] {
           handled: true,
           message: `Effort level set to: ${level}`,
           data: { action: 'effort', level },
+        };
+      },
+    },
+    {
+      name: 'dream',
+      aliases: ['d'],
+      description: 'Show dream mode status or trigger consolidation',
+      usage: '/dream [status|run|abort]',
+      handler: (args) => {
+        const sub = args.trim().toLowerCase() || 'status';
+        return {
+          handled: true,
+          message: '', // Filled by route handler
+          data: { action: 'dream', subcommand: sub },
+        };
+      },
+    },
+    {
+      name: 'avatar',
+      aliases: ['av'],
+      description: 'Show your avatar companion or rename it',
+      usage: '/avatar [rename <name>]',
+      handler: (args) => {
+        const trimmed = args.trim();
+        if (trimmed.startsWith('rename ')) {
+          const newName = trimmed.slice(7).trim();
+          return {
+            handled: true,
+            message: '', // Filled by route handler
+            data: { action: 'avatar', subcommand: 'rename', name: newName },
+          };
+        }
+        return {
+          handled: true,
+          message: '', // Filled by route handler
+          data: { action: 'avatar', subcommand: 'show' },
+        };
+      },
+    },
+    {
+      name: 'teleport',
+      aliases: ['tp'],
+      description: 'Export or import session context',
+      usage: '/teleport <export|import|list> [path]',
+      handler: (args) => {
+        const parts = args.trim().split(/\s+/);
+        const sub = parts[0]?.toLowerCase() || 'list';
+        const target = parts.slice(1).join(' ');
+        return {
+          handled: true,
+          message: '', // Filled by route handler
+          data: { action: 'teleport', subcommand: sub, target },
+        };
+      },
+    },
+    {
+      name: 'coordinator',
+      aliases: ['coord'],
+      description: 'Toggle coordinator (multi-agent) mode',
+      usage: '/coordinator [on|off|status]',
+      handler: (args) => {
+        const sub = args.trim().toLowerCase() || 'status';
+        return {
+          handled: true,
+          message: '', // Filled by route handler
+          data: { action: 'coordinator', subcommand: sub },
+        };
+      },
+    },
+    {
+      name: 'screenshot',
+      aliases: ['ss'],
+      description: 'Take a screenshot of the desktop',
+      usage: '/screenshot',
+      handler: () => {
+        return {
+          handled: true,
+          message: '', // Filled by route handler
+          data: { action: 'screenshot' },
         };
       },
     },

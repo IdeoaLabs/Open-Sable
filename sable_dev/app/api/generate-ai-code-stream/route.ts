@@ -26,6 +26,11 @@ import { getEffortConfig, resolveEffortFromPrompt, type EffortLevel } from '@/li
 import { createSessionMemoryState, shouldExtractMemory, recordToolCall as recordMemoryToolCall, extractSessionMemory, formatMemoryForPrompt, type SessionMemoryState } from '@/lib/session-memory';
 import { isFastModeEnabled, getFastModeModel, toggleFastMode, createFastModeState, type FastModeState } from '@/lib/fast-mode';
 import { createFileTrackingState, snapshotFile, detectFileChange, formatChangesForPrompt, advanceTurnWithChanges, type FileTrackingState } from '@/lib/file-change-detection';
+import { createDreamState, shouldDream, markGateChecked, runDream, abortDream, formatDreamMemoriesForPrompt, getDreamStatus, type DreamState } from '@/lib/dream-mode';
+import { createCoordinatorState, shouldUseCoordinator, parseCoordinatorPlan, spawnWorkersParallel, formatWorkerResultsForSynthesis, completeSynthesis, getCoordinatorStatus, getCoordinatorPrompt, type CoordinatorState } from '@/lib/coordinator';
+import { detectCapabilities, takeScreenshot, getComputerUseStatus } from '@/lib/computer-use';
+import { getAvatar, awardXP, awardAchievement, renameAvatar, getAvatarCard, getAvatarGreeting, getAvatarReaction, reportPiState, type Avatar } from '@/lib/avatar';
+import { createTeleportState, exportContext, importContext, listTeleports, getTeleportStatus, formatTeleportContextForPrompt, type TeleportState } from '@/lib/teleport';
 
 // Force dynamic route to enable streaming
 export const dynamic = 'force-dynamic';
@@ -122,6 +127,10 @@ declare global {
   var sableFileTrackingState: FileTrackingState | null;
   var sableEffortLevel: EffortLevel | null;
   var sableActivePlan: Plan | null;
+  var sableDreamState: DreamState | null;
+  var sableCoordinatorState: CoordinatorState | null;
+  var sableAvatar: Avatar | null;
+  var sableTeleportState: TeleportState | null;
 }
 
 export async function POST(request: NextRequest) {
@@ -164,6 +173,10 @@ export async function POST(request: NextRequest) {
     if (!global.sableFastModeState) global.sableFastModeState = createFastModeState();
     if (!global.sableFileTrackingState) global.sableFileTrackingState = createFileTrackingState();
     if (!global.sableEffortLevel) global.sableEffortLevel = 'medium';
+    if (!global.sableDreamState) global.sableDreamState = createDreamState();
+    if (!global.sableCoordinatorState) global.sableCoordinatorState = createCoordinatorState();
+    if (!global.sableAvatar) global.sableAvatar = getAvatar();
+    if (!global.sableTeleportState) global.sableTeleportState = createTeleportState();
     
     // ─── Slash Command Handling ───────────────────────────
     if (isSlashCommand(prompt)) {
@@ -199,6 +212,100 @@ export async function POST(request: NextRequest) {
           displayMessage = result.toggled
             ? (enabled ? `Fast mode enabled. Using ${getFastModeModel(result.state)}.` : 'Fast mode disabled. Using default model.')
             : (result.reason || displayMessage);
+        }
+        
+        // ─── Dream Mode command handler ────────────────────
+        if (cmdResult.data?.action === 'dream' && global.sableDreamState) {
+          const sub = cmdResult.data.subcommand as string;
+          if (sub === 'run') {
+            const gateResult = shouldDream(global.sableDreamState);
+            if (gateResult.shouldRun) {
+              // Fire and forget — background dream
+              runDream(global.sableDreamState).then(newState => {
+                global.sableDreamState = newState;
+                console.log('[dream-mode] Dream cycle completed');
+              }).catch(e => console.warn('[dream-mode] Dream failed:', e));
+              displayMessage = 'Dream consolidation started in background...';
+            } else {
+              displayMessage = `Dream not triggered: ${gateResult.reason}`;
+            }
+          } else if (sub === 'abort') {
+            global.sableDreamState = abortDream(global.sableDreamState);
+            displayMessage = 'Dream aborted.';
+          } else {
+            displayMessage = getDreamStatus(global.sableDreamState);
+          }
+        }
+        
+        // ─── Avatar command handler ─────────────────────────
+        if (cmdResult.data?.action === 'avatar' && global.sableAvatar) {
+          const sub = cmdResult.data.subcommand as string;
+          if (sub === 'rename' && cmdResult.data.name) {
+            global.sableAvatar = renameAvatar(global.sableAvatar, cmdResult.data.name as string);
+            displayMessage = `Avatar renamed to "${global.sableAvatar.displayName}"!`;
+          } else {
+            displayMessage = getAvatarCard(global.sableAvatar);
+          }
+        }
+        
+        // ─── Teleport command handler ──────────────────────
+        if (cmdResult.data?.action === 'teleport' && global.sableTeleportState) {
+          const sub = cmdResult.data.subcommand as string;
+          const target = cmdResult.data.target as string;
+          if (sub === 'export') {
+            try {
+              const summary = (global.conversationState?.context?.messages || [])
+                .slice(-5)
+                .map((m: any) => `${m.role}: ${(m.content || '').substring(0, 100)}`)
+                .join('\n');
+              const { state: newState } = exportContext(global.sableTeleportState, {
+                conversationSummary: summary,
+                modelOverride: model,
+              });
+              global.sableTeleportState = newState;
+              displayMessage = `Session exported. Total teleports: ${newState.teleportCount}`;
+            } catch (e: any) {
+              displayMessage = `Export failed: ${e.message}`;
+            }
+          } else if (sub === 'import' && target) {
+            try {
+              const { state: newState, applied } = importContext(global.sableTeleportState, target);
+              global.sableTeleportState = newState;
+              displayMessage = `Imported: ${applied.join(', ')}`;
+            } catch (e: any) {
+              displayMessage = `Import failed: ${e.message}`;
+            }
+          } else {
+            const status = getTeleportStatus(global.sableTeleportState);
+            const available = listTeleports();
+            displayMessage = status + (available.length > 0
+              ? '\n\nSnapshots:\n' + available.slice(0, 5).map(t => `  ${t.id} (${new Date(t.exportedAt).toLocaleString()})`).join('\n')
+              : '');
+          }
+        }
+        
+        // ─── Coordinator command handler ───────────────────
+        if (cmdResult.data?.action === 'coordinator' && global.sableCoordinatorState) {
+          const sub = cmdResult.data.subcommand as string;
+          if (sub === 'on') {
+            global.sableCoordinatorState = { ...global.sableCoordinatorState, isActive: true };
+            displayMessage = 'Coordinator mode enabled. Complex tasks will be split across worker agents.';
+          } else if (sub === 'off') {
+            global.sableCoordinatorState = { ...global.sableCoordinatorState, isActive: false };
+            displayMessage = 'Coordinator mode disabled.';
+          } else {
+            displayMessage = getCoordinatorStatus(global.sableCoordinatorState);
+          }
+        }
+        
+        // ─── Screenshot command handler ────────────────────
+        if (cmdResult.data?.action === 'screenshot') {
+          try {
+            const result = await takeScreenshot();
+            displayMessage = `Screenshot captured: ${result.width}x${result.height}\nSaved to: ${result.path}`;
+          } catch (e: any) {
+            displayMessage = `Screenshot failed: ${e.message}\n${getComputerUseStatus()}`;
+          }
         }
         
         // Return command result as a quick SSE response
@@ -1313,6 +1420,62 @@ Common fixes:
           systemPrompt += `\n\n${memoryPrompt}`;
         }
         
+        // ─── Dream Mode: inject consolidated memories ─────────
+        if (global.sableDreamState) {
+          const dreamPrompt = formatDreamMemoriesForPrompt(global.sableDreamState);
+          if (dreamPrompt) {
+            systemPrompt += `\n\n${dreamPrompt}`;
+          }
+          // Background gate check (fire and forget if conditions met)
+          global.sableDreamState = markGateChecked(global.sableDreamState);
+          const dreamCheck = shouldDream(global.sableDreamState);
+          if (dreamCheck.shouldRun) {
+            runDream(global.sableDreamState).then(newState => {
+              global.sableDreamState = newState;
+              console.log('[dream-mode] Background dream completed');
+            }).catch(e => console.warn('[dream-mode] Background dream failed:', e));
+          }
+        }
+        
+        // ─── Coordinator Mode: inject orchestration prompt ────
+        if (global.sableCoordinatorState?.isActive) {
+          const coordPrompt = getCoordinatorPrompt(global.sableCoordinatorState);
+          if (coordPrompt) {
+            systemPrompt += `\n\n${coordPrompt}`;
+          }
+          
+          // Auto-detect if task needs coordination
+          if (shouldUseCoordinator(prompt) && !global.sableCoordinatorState.needsSynthesis) {
+            const plan = parseCoordinatorPlan(prompt);
+            if (plan.tasks.length > 1) {
+              console.log(`[coordinator] Spawning ${plan.tasks.length} workers for complex task`);
+              // Run workers in background
+              spawnWorkersParallel(global.sableCoordinatorState, plan.tasks)
+                .then(newState => {
+                  global.sableCoordinatorState = newState;
+                  console.log(`[coordinator] Workers completed, awaiting synthesis`);
+                })
+                .catch(e => console.warn('[coordinator] Worker spawn failed:', e));
+            }
+          }
+          
+          // If synthesis is pending, add results to prompt
+          if (global.sableCoordinatorState.needsSynthesis) {
+            const synthPrompt = formatWorkerResultsForSynthesis(global.sableCoordinatorState);
+            if (synthPrompt) {
+              systemPrompt += `\n\n${synthPrompt}`;
+            }
+            // Clear synthesis flag after injecting
+            global.sableCoordinatorState = completeSynthesis(global.sableCoordinatorState);
+          }
+        }
+        
+        // ─── Avatar: inject greeting for first turn ────────────
+        if (global.sableAvatar && (global.sableAutoCompactState?.turnCounter || 0) === 0) {
+          const greeting = getAvatarGreeting(global.sableAvatar);
+          systemPrompt += `\n\n## Companion\n${greeting}`;
+        }
+        
         // ─── Effort Mode: resolve and apply ───────────────────
         const autoEffort = resolveEffortFromPrompt(prompt);
         const effortLevel = autoEffort || global.sableEffortLevel || 'medium';
@@ -1458,6 +1621,9 @@ Common fixes:
         let retryCount = 0;
         const maxRetries = 2;
         
+        // Report thinking state to Pi avatar display
+        reportPiState('thinking', prompt.substring(0, 80));
+        
         while (retryCount <= maxRetries) {
           try {
             result = await streamText(streamOptions);
@@ -1554,6 +1720,7 @@ Common fixes:
         
         // Use fullStream when tools are enabled to capture tool events,
         // otherwise fall back to textStream for simpler parsing
+        reportPiState('responding');
         if (useTools) {
           for await (const part of (result as any)?.fullStream || []) {
             if (part.type === 'text-delta') {
@@ -1604,6 +1771,7 @@ Common fixes:
               tagBuffer = searchText.substring(Math.max(0, searchText.length - 50));
             } else if (part.type === 'tool-call') {
               toolCallCount++;
+              reportPiState('executing', '', part.toolName);
               console.log(`[generate-ai-code-stream] Tool call #${toolCallCount}: ${part.toolName}(${JSON.stringify(part.args).substring(0, 100)})`);
               await sendProgress({
                 type: 'tool-call',
@@ -1771,7 +1939,7 @@ Common fixes:
           // Try to extract code from markdown fences
           const fenceRegex = /```(?:jsx?|tsx?|css|html|json)?\n([\s\S]*?)```/g;
           let fenceMatch;
-          let recoveredFiles: Array<{ path: string; content: string }> = [];
+          const recoveredFiles: Array<{ path: string; content: string }> = [];
           let fenceIdx = 0;
           
           while ((fenceMatch = fenceRegex.exec(generatedCode)) !== null) {
@@ -2208,7 +2376,19 @@ Provide the complete file content without any truncation. Include all necessary 
             }
           }
           
+          // ─── Avatar: award XP for successful generation ──────
+          if (global.sableAvatar && files.length > 0) {
+            global.sableAvatar = awardXP(global.sableAvatar, files.length * 5 + toolCallCount * 2);
+            if (toolCallCount > 10) {
+              global.sableAvatar = awardAchievement(global.sableAvatar, 'tool-master');
+            }
+            if (files.length > 5) {
+              global.sableAvatar = awardAchievement(global.sableAvatar, 'prolific-coder');
+            }
+          }
+          
           // Persist session to disk for restart resilience
+          reportPiState('idle');
           saveSession();
           
           console.log('[generate-ai-code-stream] Updated conversation history with edit:', editRecord);
@@ -2216,6 +2396,12 @@ Provide the complete file content without any truncation. Include all necessary 
         
       } catch (error) {
         console.error('[generate-ai-code-stream] Stream processing error:', error);
+        
+        // ─── Avatar: react to errors ──────
+        if (global.sableAvatar) {
+          const reaction = getAvatarReaction(global.sableAvatar, 'error');
+          await sendProgress({ type: 'avatar-reaction', text: reaction });
+        }
         
         // Check if it's a tool validation error
         if ((error as any).message?.includes('tool call validation failed')) {
