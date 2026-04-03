@@ -1,0 +1,18 @@
+{
+  "accounts": [
+    {
+      "id": "bffdb25ce4",
+      "name": "Operating",
+      "account_type": "operating",
+      "balance": 0.0,
+      "currency": "USD",
+      "created_at": "2026-03-16T01:41:50.170828+00:00"
+    }
+  ],
+  "transactions": [],
+  "invoices": [],
+  "budgets": [],
+  "total_revenue": 0.0,
+  "total_expenses": 0.0,
+  "total_transactions": 0
+}
