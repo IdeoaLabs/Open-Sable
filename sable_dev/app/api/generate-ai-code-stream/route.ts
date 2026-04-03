@@ -17,6 +17,15 @@ import { selectToolsForIntent } from '@/lib/tools/intent-selector';
 import { buildSystemPrompt, createDefaultPromptLayer, createErrorFixLayer, createToolAppendLayer, type PromptContext, type PromptLayer } from '@/lib/prompt-composer';
 import { classifyError, withRetry, detectInterruption, buildRecoveryMessage, isToolError, formatErrorForModel } from '@/lib/error-recovery';
 import { runContextPipeline, formatContextForPrompt } from '@/lib/context-pipeline';
+import { isSlashCommand, routeSlashCommand, type CommandContext } from '@/lib/slash-commands';
+import { createBudgetTracker, checkTokenBudget, estimateTotalTokens, getTokenWarningLevel } from '@/lib/token-budget';
+import { shouldAutoCompact, compactConversation, microCompact, createAutoCompactState, advanceTurn, type AutoCompactState } from '@/lib/compact';
+import { shouldSuggestPlan, parsePlanFromText, getPlanModePrompt, type Plan } from '@/lib/plan-mode';
+import { createCostState, trackUsage, formatCostReport, getCompactCostSummary, type SessionCostState } from '@/lib/cost-tracker';
+import { getEffortConfig, resolveEffortFromPrompt, applyEffortToParams, type EffortLevel } from '@/lib/effort-modes';
+import { createSessionMemoryState, shouldExtractMemory, recordToolCall as recordMemoryToolCall, extractSessionMemory, formatMemoryForPrompt, type SessionMemoryState } from '@/lib/session-memory';
+import { isFastModeEnabled, getFastModeModel, toggleFastMode, createFastModeState, type FastModeState } from '@/lib/fast-mode';
+import { createFileTrackingState, snapshotFile, detectFileChange, formatChangesForPrompt, advanceTurnWithChanges, type FileTrackingState } from '@/lib/file-change-detection';
 
 // Force dynamic route to enable streaming
 export const dynamic = 'force-dynamic';
@@ -106,6 +115,13 @@ declare global {
   var sandboxState: SandboxState;
   var conversationState: ConversationState | null;
   var activeTemplateId: string | null;
+  var sableCostState: SessionCostState | null;
+  var sableAutoCompactState: AutoCompactState | null;
+  var sableSessionMemoryState: SessionMemoryState | null;
+  var sableFastModeState: FastModeState | null;
+  var sableFileTrackingState: FileTrackingState | null;
+  var sableEffortLevel: EffortLevel | null;
+  var sableActivePlan: Plan | null;
 }
 
 export async function POST(request: NextRequest) {
@@ -139,6 +155,51 @@ export async function POST(request: NextRequest) {
           userPreferences: {}
         }
       };
+    }
+    
+    // Initialize new subsystem states
+    if (!global.sableCostState) global.sableCostState = createCostState();
+    if (!global.sableAutoCompactState) global.sableAutoCompactState = createAutoCompactState();
+    if (!global.sableSessionMemoryState) global.sableSessionMemoryState = createSessionMemoryState();
+    if (!global.sableFastModeState) global.sableFastModeState = createFastModeState();
+    if (!global.sableFileTrackingState) global.sableFileTrackingState = createFileTrackingState();
+    if (!global.sableEffortLevel) global.sableEffortLevel = 'medium';
+    
+    // ─── Slash Command Handling ───────────────────────────
+    if (isSlashCommand(prompt)) {
+      const cmdCtx: CommandContext = {
+        model,
+        tokenCount: estimateTotalTokens(
+          (global.conversationState?.context?.messages || []).map((m: any) => ({ role: m.role, content: m.content }))
+        ),
+        turnCount: global.conversationState?.context?.messages?.length || 0,
+        setModel: (m: string) => { /* Model switching handled by frontend */ },
+        setEffort: (level: string) => { global.sableEffortLevel = level as EffortLevel; },
+        triggerCompact: () => { /* Handled via data.action below */ },
+        triggerClear: () => { 
+          if (global.conversationState) {
+            global.conversationState.context.messages = [];
+            global.conversationState.context.edits = [];
+          }
+        },
+      };
+      
+      const cmdResult = await routeSlashCommand(prompt, cmdCtx);
+      if (cmdResult?.handled) {
+        // Return command result as a quick SSE response
+        const encoder = new TextEncoder();
+        const stream = new TransformStream();
+        const writer = stream.writable.getWriter();
+        await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'conversation', text: cmdResult.message })}\n\n`));
+        if (cmdResult.data) {
+          await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'command', ...cmdResult.data })}\n\n`));
+        }
+        await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'done' })}\n\n`));
+        await writer.close();
+        return new Response(stream.readable, {
+          headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' },
+        });
+      }
     }
     
     // Add user message to conversation history
@@ -1224,6 +1285,57 @@ Common fixes:
           systemPrompt += `\n\n${pipelineContextStr}`;
         }
         
+        // ─── Session Memory: inject remembered context ────────
+        const memoryPrompt = formatMemoryForPrompt(global.sableSessionMemoryState!);
+        if (memoryPrompt) {
+          systemPrompt += `\n\n${memoryPrompt}`;
+        }
+        
+        // ─── Effort Mode: resolve and apply ───────────────────
+        const effortLevel = global.sableEffortLevel || 'medium';
+        const effortConfig = getEffortConfig(effortLevel);
+        if (effortConfig.systemPromptSuffix) {
+          systemPrompt += `\n\n${effortConfig.systemPromptSuffix}`;
+        }
+        
+        // ─── Token Budget: check before sending ──────────────
+        const conversationMessages = (global.conversationState?.context?.messages || [])
+          .map((m: any) => ({ role: m.role, content: m.content }));
+        const currentTokens = estimateTotalTokens(conversationMessages);
+        const budgetTracker = createBudgetTracker(model);
+        const budgetDecision = checkTokenBudget(budgetTracker, currentTokens);
+        
+        if (budgetDecision.action === 'compact') {
+          console.log(`[generate-ai-code-stream] Token budget recommends compaction (${currentTokens} tokens)`);
+          // Auto-compact if threshold is hit
+          if (shouldAutoCompact(conversationMessages, model, global.sableAutoCompactState!)) {
+            try {
+              const compactResult = await compactConversation(conversationMessages, model);
+              // Replace conversation messages with compacted version
+              if (global.conversationState) {
+                global.conversationState.context.messages = compactResult.messages.map((m: any, i: number) => ({
+                  id: `msg-compact-${i}`,
+                  role: m.role,
+                  content: m.content,
+                  timestamp: Date.now(),
+                  metadata: {}
+                }));
+              }
+              console.log(`[generate-ai-code-stream] Auto-compacted: ${conversationMessages.length} → ${compactResult.messages.length} messages`);
+              await sendProgress({ type: 'status', message: 'Context compacted to save tokens.' });
+            } catch (e) {
+              console.warn('[generate-ai-code-stream] Auto-compact failed (non-fatal):', e);
+            }
+          }
+        }
+        
+        // ─── Micro-compact old tool outputs ──────────────────
+        const turnNumber = global.sableAutoCompactState?.turnCounter || 0;
+        global.sableAutoCompactState = advanceTurn(global.sableAutoCompactState!);
+        
+        // Track generation start time for cost tracking
+        const generationStartTime = Date.now();
+        
         // Conversation recovery: detect if we're resuming from an interruption
         let recoveryPrefix = '';
         if (global.conversationState?.context?.messages && global.conversationState.context.messages.length > 0) {
@@ -1252,15 +1364,15 @@ Common fixes:
                 : fullPrompt + `\n\nREMINDER: Output ONLY <file path="...">...complete code...</file> tags. NO explanations. NO markdown. NO conversational text. Start your response immediately with <file.`)
             }
           ],
-          maxTokens: 16384,
+          maxTokens: effortConfig.maxTokens,
           stopSequences: [],
-          // Enable multi-step tool calling for edit mode (up to 8 tool rounds)
-          ...(useTools ? { tools: aiTools, maxSteps: 8 } : {}),
+          // Enable multi-step tool calling for edit mode
+          ...(useTools ? { tools: aiTools, maxSteps: effortConfig.maxSteps } : {}),
         };
         
-        // Add temperature for non-reasoning models
+        // Add temperature from effort mode for non-reasoning models
         if (!model.startsWith('openai/gpt-5')) {
-          streamOptions.temperature = 0.7;
+          streamOptions.temperature = effortConfig.temperature;
         }
         
         // Add reasoning effort for GPT-5 models
@@ -1977,6 +2089,43 @@ Provide the complete file content without any truncation. Include all necessary 
           
           // Update last updated timestamp
           global.conversationState.lastUpdated = Date.now();
+          
+          // ─── Cost Tracking: record this turn's usage ─────────
+          const generationDuration = Date.now() - generationStartTime;
+          const estimatedPromptTokens = estimateTotalTokens([{ role: 'system', content: systemPrompt }, { role: 'user', content: fullPrompt }]);
+          const estimatedCompletionTokens = Math.round(generatedCode.length / 3.5);
+          global.sableCostState = trackUsage(
+            global.sableCostState!,
+            model,
+            { promptTokens: estimatedPromptTokens, completionTokens: estimatedCompletionTokens },
+            toolCallCount,
+            generationDuration,
+          );
+          console.log(`[generate-ai-code-stream] Cost: ${getCompactCostSummary(global.sableCostState!)}`);
+          
+          // ─── Session Memory: trigger extraction if threshold met ─
+          const totalTokensNow = estimateTotalTokens(
+            (global.conversationState?.context?.messages || []).map((m: any) => ({ role: m.role, content: m.content }))
+          );
+          if (shouldExtractMemory(global.sableSessionMemoryState!, totalTokensNow)) {
+            // Fire and forget — non-blocking background extraction
+            extractSessionMemory(
+              (global.conversationState?.context?.messages || []).map((m: any) => ({ role: m.role, content: m.content })),
+              global.sableSessionMemoryState!,
+            ).then(newState => {
+              global.sableSessionMemoryState = newState;
+              console.log(`[generate-ai-code-stream] Session memory extracted (${newState.entries.length} entries)`);
+            }).catch(e => {
+              console.warn('[generate-ai-code-stream] Session memory extraction failed:', e);
+            });
+          }
+          
+          // Record tool calls for session memory threshold
+          if (toolCallCount > 0 && global.sableSessionMemoryState) {
+            for (let i = 0; i < toolCallCount; i++) {
+              global.sableSessionMemoryState = recordMemoryToolCall(global.sableSessionMemoryState);
+            }
+          }
           
           // Persist session to disk for restart resilience
           saveSession();

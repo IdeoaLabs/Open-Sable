@@ -75,6 +75,7 @@ export function getToolSummaryForPrompt(): string {
 - **list_files**: List directory contents in a tree structure.
 - **web_fetch**: Fetch content from a URL (documentation, API responses, reference pages).
 - **agent_spawn**: Delegate a focused sub-task to a secondary AI agent (code review, architecture planning, error fixing, testing, etc).
+- **tool_search**: Search for available tools by keyword. Use when you need to find the right tool for a task.
 
 TOOL USAGE STRATEGY:
 1. When editing an existing project, FIRST use file_read/grep/list_files to understand the codebase
@@ -82,7 +83,8 @@ TOOL USAGE STRATEGY:
 3. Use bash for package installation or build commands
 4. Use web_fetch to look up documentation or API examples
 5. Use agent_spawn for specialized tasks like code review or test generation
-6. After making changes, you can use file_read to verify your edits
+6. Use tool_search to discover tools when you're not sure which tool to use
+7. After making changes, you can use file_read to verify your edits
 
 You can call multiple read-only tools in parallel. File modifications should be done one at a time.
 After all tool calls are complete, output any remaining <file> tags for new files or full rewrites.`;

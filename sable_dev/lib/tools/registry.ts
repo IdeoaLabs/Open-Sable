@@ -16,6 +16,7 @@ import { GlobTool } from './glob';
 import { ListFilesTool } from './list-files';
 import { WebFetchTool } from './web-fetch';
 import { AgentSpawnTool } from './agent-spawn';
+import { ToolSearchTool } from './tool-search';
 
 /**
  * All registered tools
@@ -30,6 +31,7 @@ export const ALL_TOOLS: ToolDefinition[] = [
   ListFilesTool,
   WebFetchTool,
   AgentSpawnTool,
+  ToolSearchTool,
 ];
 
 /**
