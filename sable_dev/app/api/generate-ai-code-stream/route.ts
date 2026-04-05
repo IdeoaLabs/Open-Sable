@@ -23,7 +23,9 @@ import { shouldAutoCompact, compactConversation, microCompact, createAutoCompact
 import { shouldSuggestPlan, getPlanModePrompt, type Plan } from '@/lib/plan-mode';
 import { createCostState, trackUsage, formatCostReport, getCompactCostSummary, type SessionCostState } from '@/lib/cost-tracker';
 import { getEffortConfig, resolveEffortFromPrompt, type EffortLevel } from '@/lib/effort-modes';
-import { createSessionMemoryState, shouldExtractMemory, recordToolCall as recordMemoryToolCall, extractSessionMemory, formatMemoryForPrompt, type SessionMemoryState } from '@/lib/session-memory';
+import { createSessionMemoryState, shouldExtractMemory, recordToolCall as recordMemoryToolCall, extractSessionMemory, formatMemoryForPrompt, tickMemoryDecay, accessMemory, type SessionMemoryState } from '@/lib/session-memory';
+import { createToolFitnessState, recordToolOutcome, tickFitnessCycle, getToolFitnessWarnings, persistToolFitness, type ToolFitnessState } from '@/lib/tool-fitness';
+import { createPromptEvolutionState, recordOutcome, recordSessionEnd, getEvolvedPromptFragments, runEvolutionCycle, persistPromptEvolution, type PromptEvolutionState } from '@/lib/prompt-evolution';
 import { isFastModeEnabled, getFastModeModel, toggleFastMode, createFastModeState, type FastModeState } from '@/lib/fast-mode';
 import { createFileTrackingState, snapshotFile, detectFileChange, formatChangesForPrompt, advanceTurnWithChanges, type FileTrackingState } from '@/lib/file-change-detection';
 import { createDreamState, shouldDream, markGateChecked, runDream, abortDream, formatDreamMemoriesForPrompt, getDreamStatus, type DreamState } from '@/lib/dream-mode';
@@ -131,6 +133,8 @@ declare global {
   var sableCoordinatorState: CoordinatorState | null;
   var sableAvatar: Avatar | null;
   var sableTeleportState: TeleportState | null;
+  var sableToolFitnessState: ToolFitnessState | null;
+  var sablePromptEvolutionState: PromptEvolutionState | null;
 }
 
 export async function POST(request: NextRequest) {
@@ -177,6 +181,36 @@ export async function POST(request: NextRequest) {
     if (!global.sableCoordinatorState) global.sableCoordinatorState = createCoordinatorState();
     if (!global.sableAvatar) global.sableAvatar = getAvatar();
     if (!global.sableTeleportState) global.sableTeleportState = createTeleportState();
+    if (!global.sableToolFitnessState) global.sableToolFitnessState = createToolFitnessState();
+    if (!global.sablePromptEvolutionState) global.sablePromptEvolutionState = createPromptEvolutionState();
+    
+    // Tick memory decay and fitness cycles each request
+    global.sableSessionMemoryState = tickMemoryDecay(global.sableSessionMemoryState!);
+    global.sableToolFitnessState = tickFitnessCycle(global.sableToolFitnessState);
+    
+    // Boost memory relevance based on current prompt
+    if (prompt) {
+      global.sableSessionMemoryState = accessMemory(global.sableSessionMemoryState!, prompt.substring(0, 100));
+    }
+    
+    // ─── Prompt Evolution: detect redo/error signals ──────
+    if (global.sablePromptEvolutionState) {
+      const lowerPrompt = prompt.toLowerCase();
+      const isRedo = isErrorFix || /\b(try again|redo|undo|revert|that's wrong|not what i asked|start over)\b/.test(lowerPrompt);
+      if (isRedo && global.sablePromptEvolutionState.totalSessions > 0) {
+        global.sablePromptEvolutionState = recordOutcome(
+          global.sablePromptEvolutionState,
+          isErrorFix ? 'error' : 'redo',
+          {
+            template: template || 'default',
+            effortLevel: global.sableEffortLevel || 'medium',
+            usedTools: false,
+            toolCallCount: 0,
+            promptPreview: prompt.substring(0, 100),
+          },
+        );
+      }
+    }
     
     // ─── Slash Command Handling ───────────────────────────
     if (isSlashCommand(prompt)) {
@@ -1430,10 +1464,36 @@ Common fixes:
           global.sableDreamState = markGateChecked(global.sableDreamState);
           const dreamCheck = shouldDream(global.sableDreamState);
           if (dreamCheck.shouldRun) {
-            runDream(global.sableDreamState).then(newState => {
+            runDream(global.sableDreamState).then(async newState => {
               global.sableDreamState = newState;
               console.log('[dream-mode] Background dream completed');
+              // Run prompt evolution during dream cycle
+              if (global.sablePromptEvolutionState) {
+                const ollamaHost = process.env.OLLAMA_HOST || 'http://localhost:11434';
+                const dreamModel = process.env.DREAM_MODEL || 'qwen2.5:14b';
+                global.sablePromptEvolutionState = await runEvolutionCycle(
+                  global.sablePromptEvolutionState, ollamaHost, dreamModel
+                );
+                persistPromptEvolution(global.sablePromptEvolutionState);
+                console.log('[prompt-evolution] Evolution cycle completed');
+              }
             }).catch(e => console.warn('[dream-mode] Background dream failed:', e));
+          }
+        }
+        
+        // ─── Tool Fitness: inject warnings for low-fitness tools ─
+        if (global.sableToolFitnessState) {
+          const fitnessWarnings = getToolFitnessWarnings(global.sableToolFitnessState);
+          if (fitnessWarnings) {
+            systemPrompt += `\n\n${fitnessWarnings}`;
+          }
+        }
+        
+        // ─── Prompt Evolution: inject learned strategies ──────
+        if (global.sablePromptEvolutionState) {
+          const evolvedFragments = getEvolvedPromptFragments(global.sablePromptEvolutionState, template);
+          if (evolvedFragments) {
+            systemPrompt += `\n\n${evolvedFragments}`;
           }
         }
         
@@ -1773,22 +1833,39 @@ Common fixes:
               toolCallCount++;
               reportPiState('executing', '', part.toolName);
               console.log(`[generate-ai-code-stream] Tool call #${toolCallCount}: ${part.toolName}(${JSON.stringify(part.args).substring(0, 100)})`);
-              await sendProgress({
-                type: 'tool-call',
-                name: part.toolName,
-                args: part.args,
-                index: toolCallCount,
-              });
+              // Track tool call start time for fitness duration
+              (part as any)._startTime = Date.now();
+              
+              if (part.toolName === 'think') {
+                // Send reasoning event instead of generic tool-call
+                await sendProgress({
+                  type: 'reasoning',
+                  thought: part.args?.thought || '',
+                  next_step: part.args?.next_step || '',
+                  index: toolCallCount,
+                });
+              } else {
+                await sendProgress({
+                  type: 'tool-call',
+                  name: part.toolName,
+                  args: part.args,
+                  index: toolCallCount,
+                });
+              }
             } else if (part.type === 'tool-result') {
               const output = typeof part.result === 'string' ? part.result : JSON.stringify(part.result);
               const truncated = output.length > 500 ? output.substring(0, 500) + '...' : output;
               console.log(`[generate-ai-code-stream] Tool result for ${part.toolName}: ${truncated.substring(0, 100)}`);
-              await sendProgress({
-                type: 'tool-result',
-                name: part.toolName,
-                output: truncated,
-                index: toolCallCount,
-              });
+              
+              // Skip sending tool-result for think tool (reasoning already shown)
+              if (part.toolName !== 'think') {
+                await sendProgress({
+                  type: 'tool-result',
+                  name: part.toolName,
+                  output: truncated,
+                  index: toolCallCount,
+                });
+              }
               
               // File change detection: snapshot files modified by tools
               if (part.toolName === 'file_write' || part.toolName === 'file_edit') {
@@ -1799,6 +1876,15 @@ Common fixes:
                     global.sableFileTrackingState = snapshotFile(global.sableFileTrackingState, filePath, content);
                   } catch { /* file read failed, skip snapshot */ }
                 }
+              }
+              
+              // Tool fitness: record outcome
+              if (global.sableToolFitnessState && part.toolName !== 'think') {
+                const isSuccess = !output.startsWith('ERROR:');
+                const durationMs = Date.now() - ((part as any)._startTime || Date.now());
+                global.sableToolFitnessState = recordToolOutcome(
+                  global.sableToolFitnessState, part.toolName, isSuccess, durationMs
+                );
               }
             }
           }
@@ -2391,11 +2477,48 @@ Provide the complete file content without any truncation. Include all necessary 
           reportPiState('idle');
           saveSession();
           
+          // ─── Prompt Evolution: record accept signal ──────────
+          if (global.sablePromptEvolutionState && files.length > 0) {
+            global.sablePromptEvolutionState = recordOutcome(
+              global.sablePromptEvolutionState,
+              'accept',
+              {
+                template: template || 'default',
+                effortLevel: global.sableEffortLevel || 'medium',
+                usedTools: toolCallCount > 0,
+                toolCallCount,
+                promptPreview: prompt.substring(0, 100),
+              },
+            );
+            global.sablePromptEvolutionState = recordSessionEnd(global.sablePromptEvolutionState);
+            persistPromptEvolution(global.sablePromptEvolutionState);
+          }
+          
+          // ─── Tool Fitness: persist after generation ──────────
+          if (global.sableToolFitnessState) {
+            persistToolFitness(global.sableToolFitnessState);
+          }
+          
           console.log('[generate-ai-code-stream] Updated conversation history with edit:', editRecord);
         }
         
       } catch (error) {
         console.error('[generate-ai-code-stream] Stream processing error:', error);
+        
+        // ─── Prompt Evolution: record error signal ─────────
+        if (global.sablePromptEvolutionState) {
+          global.sablePromptEvolutionState = recordOutcome(
+            global.sablePromptEvolutionState,
+            'error',
+            {
+              template: template || 'default',
+              effortLevel: global.sableEffortLevel || 'medium',
+              usedTools: false,
+              toolCallCount: 0,
+              promptPreview: prompt.substring(0, 100),
+            },
+          );
+        }
         
         // ─── Avatar: react to errors ──────
         if (global.sableAvatar) {

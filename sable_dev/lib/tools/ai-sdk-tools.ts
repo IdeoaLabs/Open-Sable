@@ -66,6 +66,7 @@ export function buildToolContext(sandboxProvider: any): ToolContext | null {
 export function getToolSummaryForPrompt(): string {
   return `You have access to the following tools to explore and modify the project:
 
+- **think**: Record your reasoning before taking action. Use this to plan, analyze, and decide your next step.
 - **file_read**: Read file contents with line numbers. Use to inspect existing code.
 - **file_edit**: Edit a file by replacing a specific string with new content. Use for targeted changes.
 - **file_write**: Create or overwrite a file with complete content.
@@ -77,14 +78,24 @@ export function getToolSummaryForPrompt(): string {
 - **agent_spawn**: Delegate a focused sub-task to a secondary AI agent (code review, architecture planning, error fixing, testing, etc).
 - **tool_search**: Search for available tools by keyword. Use when you need to find the right tool for a task.
 
+REASONING STRATEGY (Thought → Action → Observation):
+You MUST use the think tool before making any changes. Follow this loop:
+1. THINK: Call the think tool to reason about the problem — what you know, what's missing, and your plan.
+2. ACT: Execute your planned action (read files, edit code, run commands).
+3. OBSERVE: Examine the result. If more work is needed, go back to step 1.
+
+Always think before you act. Never edit files without first reading and reasoning about them.
+
 TOOL USAGE STRATEGY:
-1. When editing an existing project, FIRST use file_read/grep/list_files to understand the codebase
-2. Then use file_edit for targeted changes or file_write for new files
-3. Use bash for package installation or build commands
-4. Use web_fetch to look up documentation or API examples
-5. Use agent_spawn for specialized tasks like code review or test generation
-6. Use tool_search to discover tools when you're not sure which tool to use
-7. After making changes, you can use file_read to verify your edits
+1. When editing an existing project, FIRST use think to plan your approach
+2. Then use file_read/grep/list_files to understand the codebase
+3. Think again to plan your changes based on what you found
+4. Use file_edit for targeted changes or file_write for new files
+5. Use bash for package installation or build commands
+6. Use web_fetch to look up documentation or API examples
+7. Use agent_spawn for specialized tasks like code review or test generation
+8. Use tool_search to discover tools when you're not sure which tool to use
+9. After making changes, you can use file_read to verify your edits
 
 You can call multiple read-only tools in parallel. File modifications should be done one at a time.
 After all tool calls are complete, output any remaining <file> tags for new files or full rewrites.`;

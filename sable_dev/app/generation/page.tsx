@@ -196,6 +196,7 @@ function AISandboxPage() {
     isEdit?: boolean;
     toolCalls?: Array<{ name: string; args: any; index: number }>;
     toolResults?: Array<{ name: string; output: string; index: number }>;
+    reasoningSteps?: Array<{ thought: string; next_step?: string; index: number }>;
   }>({
     isGenerating: false,
     status: '',
@@ -1854,6 +1855,22 @@ Tip: I automatically detect and install npm packages from your code imports (lik
                                   </div>
                                 );
                               })}
+                            </div>
+                          </div>
+                        )}
+                        {/* ReAct Reasoning Steps */}
+                        {generationProgress.reasoningSteps && generationProgress.reasoningSteps.length > 0 && (
+                          <div className="mt-4 text-left max-w-md mx-auto">
+                            <div className="text-xs text-purple-400 uppercase tracking-wide mb-2">Reasoning</div>
+                            <div className="space-y-2 max-h-48 overflow-y-auto">
+                              {generationProgress.reasoningSteps.map((rs, i) => (
+                                <div key={i} className="bg-purple-950/50 border border-purple-800/40 rounded-md p-2">
+                                  <p className="text-xs text-purple-300 italic">{rs.thought}</p>
+                                  {rs.next_step && (
+                                    <p className="text-xs text-purple-400 mt-1 font-medium">Next: {rs.next_step}</p>
+                                  )}
+                                </div>
+                              ))}
                             </div>
                           </div>
                         )}
@@ -4113,6 +4130,12 @@ Focus on the key sections and content, making it clean and modern.`;
                   setGenerationProgress(prev => ({
                     ...prev,
                     toolResults: [...(prev.toolResults || []), { name: data.name, output: data.output, index: data.index }],
+                  }));
+                } else if (data.type === 'reasoning') {
+                  setGenerationProgress(prev => ({
+                    ...prev,
+                    status: `Reasoning: ${(data.thought as string)?.substring(0, 60) || 'thinking...'}`,
+                    reasoningSteps: [...(prev.reasoningSteps || []), { thought: data.thought, next_step: data.next_step, index: data.index }],
                   }));
                 }
               } catch (e) {

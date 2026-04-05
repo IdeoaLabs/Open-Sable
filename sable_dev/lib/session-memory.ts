@@ -30,6 +30,19 @@ const DEFAULT_CONFIG: SessionMemoryConfig = {
   toolCallsBetweenUpdates: 3,
 };
 
+// ─── Decay Constants ──────────────────────────────────────
+
+/** STM half-life in request cycles (decays fast) */
+const STM_HALF_LIFE = 10;
+/** LTM half-life in request cycles (decays slowly) */
+const LTM_HALF_LIFE = 100;
+/** Minimum importance to promote STM → LTM */
+const PROMOTION_THRESHOLD = 0.7;
+/** Below this effective importance, memory is forgotten */
+const FORGET_THRESHOLD = 0.1;
+/** Boost given when memory is accessed */
+const ACCESS_BOOST = 0.15;
+
 // ─── State ────────────────────────────────────────────────
 
 export interface SessionMemoryState {
@@ -45,12 +58,24 @@ export interface SessionMemoryState {
   extractionCount: number;
   /** Accumulated memory entries */
   entries: MemoryEntry[];
+  /** Monotonic request counter (drives decay) */
+  requestCycle: number;
 }
+
+export type MemoryTier = 'stm' | 'ltm';
 
 export interface MemoryEntry {
   timestamp: number;
   type: 'preference' | 'pattern' | 'decision' | 'error' | 'file_context';
   content: string;
+  /** Importance score 0.0–1.0 (set at creation, boosted on access) */
+  importance: number;
+  /** Current memory tier */
+  tier: MemoryTier;
+  /** Number of times this memory was accessed/relevant */
+  accessCount: number;
+  /** Last time this memory was accessed */
+  lastAccessedAt: number;
 }
 
 /**
@@ -64,7 +89,65 @@ export function createSessionMemoryState(): SessionMemoryState {
     isExtracting: false,
     extractionCount: 0,
     entries: [],
+    requestCycle: 0,
   };
+}
+
+// ─── Decay & Promotion Engine ─────────────────────────────
+
+/**
+ * Compute effective importance with exponential decay.
+ * decay_factor = 0.5^(age / half_life)
+ */
+function computeEffectiveImportance(entry: MemoryEntry, currentCycle: number): number {
+  const halfLife = entry.tier === 'stm' ? STM_HALF_LIFE : LTM_HALF_LIFE;
+  const ageCycles = Math.max(0, currentCycle - (entry.lastAccessedAt || entry.timestamp));
+  const decayFactor = Math.pow(0.5, ageCycles / halfLife);
+  return entry.importance * decayFactor;
+}
+
+/**
+ * Run decay, promotion, and forgetting on all memories.
+ * Called each request cycle.
+ */
+export function tickMemoryDecay(state: SessionMemoryState): SessionMemoryState {
+  const cycle = state.requestCycle + 1;
+  const surviving: MemoryEntry[] = [];
+
+  for (const entry of state.entries) {
+    const effective = computeEffectiveImportance(entry, cycle);
+
+    // Forget: drop memories below threshold
+    if (effective < FORGET_THRESHOLD) continue;
+
+    // Promote: STM → LTM when importance is high enough
+    if (entry.tier === 'stm' && entry.importance >= PROMOTION_THRESHOLD) {
+      surviving.push({ ...entry, tier: 'ltm' });
+    } else {
+      surviving.push(entry);
+    }
+  }
+
+  return { ...state, entries: surviving, requestCycle: cycle };
+}
+
+/**
+ * Boost a memory's importance when it's relevant to the current context.
+ */
+export function accessMemory(state: SessionMemoryState, contentSubstring: string): SessionMemoryState {
+  const lower = contentSubstring.toLowerCase();
+  const updated = state.entries.map(entry => {
+    if (entry.content.toLowerCase().includes(lower) || lower.includes(entry.content.toLowerCase().substring(0, 30))) {
+      return {
+        ...entry,
+        importance: Math.min(1.0, entry.importance + ACCESS_BOOST),
+        accessCount: entry.accessCount + 1,
+        lastAccessedAt: state.requestCycle,
+      };
+    }
+    return entry;
+  });
+  return { ...state, entries: updated };
 }
 
 // ─── Threshold Checks ─────────────────────────────────────
@@ -184,7 +267,16 @@ ${recentMessages}`;
     if (!content || content.length < 10) continue;
     
     const type = classifyEntry(content);
-    entries.push({ timestamp: Date.now(), type, content });
+    const importance = estimateImportance(content, type);
+    entries.push({
+      timestamp: Date.now(),
+      type,
+      content,
+      importance,
+      tier: 'stm',
+      accessCount: 0,
+      lastAccessedAt: 0,
+    });
   }
   
   return entries;
@@ -209,7 +301,7 @@ function extractWithRules(
       if (files && files.length > 0) {
         const entry = `Files edited: ${files.join(', ')}`;
         if (!seen.has(entry)) {
-          entries.push({ timestamp: Date.now(), type: 'file_context', content: entry });
+          entries.push({ timestamp: Date.now(), type: 'file_context', content: entry, importance: 0.4, tier: 'stm', accessCount: 0, lastAccessedAt: 0 });
           seen.add(entry);
         }
       }
@@ -226,7 +318,7 @@ function extractWithRules(
         if (match) {
           const entry = `Preference: ${match[0].substring(0, 100)}`;
           if (!seen.has(entry)) {
-            entries.push({ timestamp: Date.now(), type: 'preference', content: entry });
+            entries.push({ timestamp: Date.now(), type: 'preference', content: entry, importance: 0.8, tier: 'stm', accessCount: 0, lastAccessedAt: 0 });
             seen.add(entry);
           }
         }
@@ -237,7 +329,7 @@ function extractWithRules(
     if (msg.role === 'assistant' && content.toLowerCase().includes('fixed') && content.toLowerCase().includes('error')) {
       const entry = `Error resolved: ${content.substring(0, 100)}`;
       if (!seen.has(entry)) {
-        entries.push({ timestamp: Date.now(), type: 'error', content: entry });
+        entries.push({ timestamp: Date.now(), type: 'error', content: entry, importance: 0.6, tier: 'stm', accessCount: 0, lastAccessedAt: 0 });
         seen.add(entry);
       }
     }
@@ -256,6 +348,25 @@ function classifyEntry(content: string): MemoryEntry['type'] {
   if (lower.includes('decided') || lower.includes('chose') || lower.includes('approach')) return 'decision';
   if (lower.includes('file') || lower.includes('component') || lower.includes('module')) return 'file_context';
   return 'pattern';
+}
+
+/**
+ * Estimate initial importance based on content and type.
+ */
+function estimateImportance(content: string, type: MemoryEntry['type']): number {
+  const base: Record<MemoryEntry['type'], number> = {
+    preference: 0.8,
+    decision: 0.7,
+    error: 0.6,
+    pattern: 0.5,
+    file_context: 0.4,
+  };
+  let score = base[type] || 0.5;
+  // Boost for strong signal words
+  const lower = content.toLowerCase();
+  if (lower.includes('always') || lower.includes('never') || lower.includes('important')) score += 0.1;
+  if (lower.includes('critical') || lower.includes('must')) score += 0.15;
+  return Math.min(1.0, score);
 }
 
 // ─── Serialization ────────────────────────────────────────
@@ -295,12 +406,39 @@ export function formatMemoryAsMarkdown(state: SessionMemoryState): string {
 
 /**
  * Format memory entries as a compact string for injection into system prompt.
+ * Uses effective importance to select the most relevant memories.
  */
 export function formatMemoryForPrompt(state: SessionMemoryState): string {
   if (state.entries.length === 0) return '';
   
-  const recent = state.entries.slice(-15); // Last 15 entries
-  const lines = recent.map(e => `- [${e.type}] ${e.content}`);
+  // Score and sort by effective importance
+  const scored = state.entries.map(entry => ({
+    entry,
+    effective: computeEffectiveImportance(entry, state.requestCycle),
+  }));
   
-  return `SESSION MEMORY (remembered from this conversation):\n${lines.join('\n')}`;
+  const sorted = scored
+    .filter(s => s.effective >= FORGET_THRESHOLD)
+    .sort((a, b) => b.effective - a.effective)
+    .slice(0, 15);
+  
+  if (sorted.length === 0) return '';
+  
+  const ltmEntries = sorted.filter(s => s.entry.tier === 'ltm');
+  const stmEntries = sorted.filter(s => s.entry.tier === 'stm');
+  
+  let output = 'SESSION MEMORY (remembered from this conversation):\n';
+  
+  if (ltmEntries.length > 0) {
+    output += 'Long-term (proven important):\n';
+    output += ltmEntries.map(s => `- [${s.entry.type}] ${s.entry.content}`).join('\n');
+    output += '\n';
+  }
+  
+  if (stmEntries.length > 0) {
+    output += 'Recent:\n';
+    output += stmEntries.map(s => `- [${s.entry.type}] ${s.entry.content}`).join('\n');
+  }
+  
+  return output;
 }

@@ -17,11 +17,13 @@ import { ListFilesTool } from './list-files';
 import { WebFetchTool } from './web-fetch';
 import { AgentSpawnTool } from './agent-spawn';
 import { ToolSearchTool } from './tool-search';
+import { ThinkTool } from './think';
 
 /**
  * All registered tools
  */
 export const ALL_TOOLS: ToolDefinition[] = [
+  ThinkTool,
   FileReadTool,
   FileEditTool,
   FileWriteTool,
