@@ -2,10 +2,10 @@
 Open-Sable - Autonomous AI Agent Framework
 Agentic AI cognitive subsystems for autonomous agents
 
-Version: 1.1.0
+Version: 1.7.0
 """
 
-__version__ = "1.1.0"
+__version__ = "1.7.0"
 __author__ = "Ideoa Labs"
 __license__ = "MIT"
 

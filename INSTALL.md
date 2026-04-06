@@ -1,6 +1,62 @@
 # Installing Open-Sable
 
-## Automated Install (Recommended,  Any OS)
+## Download Installer (Recommended)
+
+Download the installer for your platform — double-click and follow the wizard. No terminal needed.
+
+| Platform | Download | Size |
+|----------|----------|------|
+| **Windows** | [OpenSable-Setup-1.3.0-x64.exe](https://github.com/IdeoaLabs/Open-Sable/releases/latest/download/OpenSable-Setup-1.3.0-x64.exe) | ~25 MB |
+| **macOS** | [OpenSable-Installer-1.3.0.dmg](https://github.com/IdeoaLabs/Open-Sable/releases/latest/download/OpenSable-Installer-1.3.0.dmg) | ~30 MB |
+| **Linux (Debian/Ubuntu)** | [opensable-installer_1.3.0_amd64.deb](https://github.com/IdeoaLabs/Open-Sable/releases/latest/download/opensable-installer_1.3.0_amd64.deb) | ~25 MB |
+| **Linux (Universal)** | [OpenSable-Installer-x86_64.AppImage](https://github.com/IdeoaLabs/Open-Sable/releases/latest/download/OpenSable-Installer-x86_64.AppImage) | ~30 MB |
+
+> All downloads available at [**GitHub Releases**](https://github.com/IdeoaLabs/Open-Sable/releases/latest)
+
+The installer wizard handles everything automatically:
+- Installs Python 3.11+, Git, Node.js, and Ollama if not present
+- Clones the repository and sets up the environment
+- Downloads your chosen AI model
+- Creates Start Menu / desktop shortcuts
+- Configures everything — ready to use immediately
+
+---
+
+## Terminal Install (Alternative)
+
+If you prefer the command line:
+
+### Linux & macOS
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/IdeoaLabs/Open-Sable/master/get-opensable.sh | bash
+```
+
+### Windows (PowerShell)
+
+```powershell
+irm https://raw.githubusercontent.com/IdeoaLabs/Open-Sable/master/get-opensable.ps1 | iex
+```
+
+### Windows (Batch)
+
+Download and double-click [`get-opensable.bat`](https://raw.githubusercontent.com/IdeoaLabs/Open-Sable/master/get-opensable.bat)
+
+### Custom Options
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OPENSABLE_DIR` | `~/opensable` | Install path |
+| `OPENSABLE_BRANCH` | `master` | Git branch |
+| `OLLAMA_MODEL` | `qwen2.5:7b` | Default model to pull |
+
+```bash
+OPENSABLE_DIR=/opt/sable OLLAMA_MODEL=llama3.1:8b curl -fsSL https://raw.githubusercontent.com/IdeoaLabs/Open-Sable/master/get-opensable.sh | bash
+```
+
+---
+
+## Manual Install (If You Already Cloned)
 
 ```bash
 git clone https://github.com/IdeoaLabs/Open-Sable.git

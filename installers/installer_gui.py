@@ -315,8 +315,8 @@ class UpdateEngine:
             self.log("  Not a git repo — skipping", "warning")
             return
         self._exec(["git", "stash", "--include-untracked"], check=False)
-        self._exec(["git", "fetch", "origin", REPO_BRANCH])
-        self._exec(["git", "reset", "--hard", f"origin/{REPO_BRANCH}"])
+        self._exec(["git", "pull", "--rebase", "origin", REPO_BRANCH], check=False)
+        self._exec(["git", "stash", "pop"], check=False)
         self.log("  ✔ Code updated", "ok")
 
     def _update_deps(self):
@@ -467,8 +467,8 @@ class ReinstallEngine:
             self.log("  Not a git repo — skipping code update", "warning")
             return
         self._exec(["git", "stash", "--include-untracked"], check=False)
-        self._exec(["git", "fetch", "origin", REPO_BRANCH])
-        self._exec(["git", "reset", "--hard", f"origin/{REPO_BRANCH}"])
+        self._exec(["git", "pull", "--rebase", "origin", REPO_BRANCH], check=False)
+        self._exec(["git", "stash", "pop"], check=False)
         backup_dir = os.path.join(self.install_dir, ".reinstall-backup")
         if os.path.isdir(backup_dir):
             for name in self.PROTECTED_PATHS:
@@ -1058,7 +1058,8 @@ class InstallerEngine:
                 f.write(f'cd /d "{self.install_dir}"\n')
                 f.write(f'git fetch origin {REPO_BRANCH}\n')
                 f.write(f'git stash --include-untracked 2>nul\n')
-                f.write(f'git reset --hard origin/{REPO_BRANCH}\n')
+                f.write(f'git pull --rebase origin {REPO_BRANCH}\n')
+                f.write(f'git stash pop 2>nul\n')
                 f.write(f'call venv\\Scripts\\activate.bat\n')
                 f.write(f'pip install -e ".[core]" -q\n')
                 f.write(f'if exist requirements.txt pip install -r requirements.txt -q\n')
@@ -1069,7 +1070,8 @@ class InstallerEngine:
                 f.write(f'cd "{self.install_dir}"\n')
                 f.write(f'git fetch origin {REPO_BRANCH}\n')
                 f.write(f'git stash --include-untracked 2>/dev/null || true\n')
-                f.write(f'git reset --hard origin/{REPO_BRANCH}\n')
+                f.write(f'git pull --rebase origin {REPO_BRANCH} || true\n')
+                f.write(f'git stash pop 2>/dev/null || true\n')
                 f.write(f'source venv/bin/activate\n')
                 f.write(f'pip install -e ".[core]" -q\n')
                 f.write(f'[ -f requirements.txt ] && pip install -r requirements.txt -q\n')

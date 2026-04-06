@@ -101,7 +101,7 @@ async def async_main():
                     subprocess.run(
                         ["kill", "-9", pid], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
                     )
-        await asyncio.sleep(1)
+        await asyncio.sleep(2)
     except Exception:
         pass
 
@@ -327,38 +327,50 @@ async def async_main():
 
         # Telegram (bot and/or userbot)
         if config.telegram_bot_token or getattr(config, "telegram_userbot_enabled", False):
-            from opensable.interfaces.telegram_userbot import HybridTelegramInterface
+            try:
+                from opensable.interfaces.telegram_userbot import HybridTelegramInterface
 
-            telegram = HybridTelegramInterface(agent, config)
-            interfaces.append(telegram)
-            if config.telegram_bot_token:
-                logger.info("Telegram bot enabled")
-            if getattr(config, "telegram_userbot_enabled", False):
-                logger.info("Telegram userbot enabled")
+                telegram = HybridTelegramInterface(agent, config)
+                interfaces.append(telegram)
+                if config.telegram_bot_token:
+                    logger.info("Telegram bot enabled")
+                if getattr(config, "telegram_userbot_enabled", False):
+                    logger.info("Telegram userbot enabled")
+            except ImportError as e:
+                logger.warning(f"Telegram interface unavailable: {e}")
 
         # Discord
         if getattr(config, "discord_bot_token", None):
-            from opensable.interfaces.discord_bot import DiscordInterface
+            try:
+                from opensable.interfaces.discord_bot import DiscordInterface
 
-            discord = DiscordInterface(agent, config)
-            interfaces.append(discord)
-            logger.info("Discord interface enabled")
+                discord = DiscordInterface(agent, config)
+                interfaces.append(discord)
+                logger.info("Discord interface enabled")
+            except ImportError as e:
+                logger.warning(f"Discord interface unavailable: {e}")
 
         # WhatsApp
         if getattr(config, "whatsapp_enabled", False):
-            from opensable.interfaces.whatsapp_bot import WhatsAppBot
+            try:
+                from opensable.interfaces.whatsapp_bot import WhatsAppBot
 
-            whatsapp = WhatsAppBot(config, agent)
-            interfaces.append(whatsapp)
-            logger.info("WhatsApp interface enabled")
+                whatsapp = WhatsAppBot(config, agent)
+                interfaces.append(whatsapp)
+                logger.info("WhatsApp interface enabled")
+            except ImportError as e:
+                logger.warning(f"WhatsApp interface unavailable: {e}")
 
         # Slack
         if getattr(config, "slack_bot_token", None) and getattr(config, "slack_app_token", None):
-            from opensable.interfaces.slack_bot import SlackInterface
+            try:
+                from opensable.interfaces.slack_bot import SlackInterface
 
-            slack = SlackInterface(agent, config)
-            interfaces.append(slack)
-            logger.info("Slack interface enabled")
+                slack = SlackInterface(agent, config)
+                interfaces.append(slack)
+                logger.info("Slack interface enabled")
+            except ImportError as e:
+                logger.warning(f"Slack interface unavailable: {e}")
 
         if not interfaces and not gateway:
             logger.warning("No chat interfaces configured. Check your .env file.")

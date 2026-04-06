@@ -1350,8 +1350,12 @@ class Gateway:
         if ts_ip and ts_ip not in bind_hosts:
             bind_hosts.append(ts_ip)
 
+        # Kill any leftover process holding our port
+        await self._free_port(self._webchat_port)
+
         for host in bind_hosts:
-            tcp_site = web.TCPSite(self._runner, host, self._webchat_port)
+            tcp_site = web.TCPSite(self._runner, host, self._webchat_port,
+                                   reuse_address=True)
             await tcp_site.start()
             self._sites.append(tcp_site)
 
@@ -1391,6 +1395,52 @@ class Gateway:
         if SOCKET_PATH.exists():
             SOCKET_PATH.unlink()
         logger.info("[Gateway] Stopped")
+
+    @staticmethod
+    async def _free_port(port: int) -> None:
+        """Kill any process currently holding *port* so we can rebind."""
+        import signal, subprocess as _sp
+        try:
+            r = _sp.run(["fuser", "-n", "tcp", str(port)],
+                        capture_output=True, text=True, timeout=5)
+            pids = r.stdout.split()
+            my_pid = os.getpid()
+            for raw in pids:
+                pid = int(raw.strip().rstrip("/"))
+                if pid == my_pid:
+                    continue
+                logger.info("[Gateway] Killing stale process %d on port %d", pid, port)
+                os.kill(pid, signal.SIGTERM)
+            if pids:
+                await asyncio.sleep(1)
+                # Force-kill survivors
+                for raw in pids:
+                    pid = int(raw.strip().rstrip("/"))
+                    if pid == my_pid:
+                        continue
+                    try:
+                        os.kill(pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                await asyncio.sleep(0.5)
+        except FileNotFoundError:
+            # fuser not available — try lsof
+            try:
+                r = _sp.run(["lsof", "-ti", f"tcp:{port}"],
+                            capture_output=True, text=True, timeout=5)
+                my_pid = os.getpid()
+                for line in r.stdout.strip().splitlines():
+                    pid = int(line.strip())
+                    if pid == my_pid:
+                        continue
+                    logger.info("[Gateway] Killing stale process %d on port %d", pid, port)
+                    os.kill(pid, signal.SIGTERM)
+                if r.stdout.strip():
+                    await asyncio.sleep(1)
+            except Exception:
+                pass
+        except Exception:
+            pass
 
     @staticmethod
     def _get_tailscale_ip() -> Optional[str]:
