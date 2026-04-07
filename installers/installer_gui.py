@@ -43,6 +43,20 @@ IS_WIN = sys.platform == "win32"
 IS_MAC = sys.platform == "darwin"
 IS_LINUX = sys.platform.startswith("linux")
 
+# On macOS / Linux, bundled .app doesn't inherit the user's shell PATH.
+# Ensure common tool directories are on PATH so git, node, brew, etc. are found.
+if not IS_WIN:
+    _extra_paths = [
+        "/opt/homebrew/bin", "/opt/homebrew/sbin",          # Homebrew (Apple Silicon)
+        "/usr/local/bin", "/usr/local/sbin",                # Homebrew (Intel) & system
+        os.path.expanduser("~/.local/bin"),                 # pip --user, pipx
+        "/usr/bin", "/bin", "/usr/sbin", "/sbin",
+    ]
+    _current = os.environ.get("PATH", "")
+    _missing = [p for p in _extra_paths if p not in _current.split(os.pathsep)]
+    if _missing:
+        os.environ["PATH"] = os.pathsep.join(_missing) + os.pathsep + _current
+
 # Theme
 BG_DARK = "#0d1117"
 BG_CARD = "#161b22"
@@ -111,6 +125,24 @@ INSTALL_SLIDES = [
      "No cloud needed. Ollama runs models on your hardware.\n"
      "Your conversations and data never leave your machine."),
 ]
+
+
+# ════════════════════════════════════════════════════════════════════
+# macOS-safe button (tk.Label-based, colors always work)
+# ════════════════════════════════════════════════════════════════════
+
+def make_button(parent, text, command, bg=BG_INPUT, fg=FG_TEXT,
+                hover_bg=BG_CARD, hover_fg=None, font=("Segoe UI", 10),
+                padx=16, pady=8, cursor="hand2", **kw):
+    """Create a label that looks and acts like a button — colors work on macOS."""
+    if hover_fg is None:
+        hover_fg = fg
+    lbl = tk.Label(parent, text=text, font=font, bg=bg, fg=fg,
+                   padx=padx, pady=pady, cursor=cursor, **kw)
+    lbl.bind("<Enter>", lambda e: lbl.configure(bg=hover_bg, fg=hover_fg))
+    lbl.bind("<Leave>", lambda e: lbl.configure(bg=bg, fg=fg))
+    lbl.bind("<Button-1>", lambda e: command())
+    return lbl
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -1439,48 +1471,47 @@ class InstallerApp(tk.Tk):
             _status_pill(status_row, "Ollama", ollama_ver, ollama_ver is not None)
 
             # ── Primary action: Launch ──
-            tk.Button(content, text="  🚀  Launch Open-Sable  ",
-                      font=("Segoe UI", 13, "bold"),
-                      bg=ACCENT, fg=BG_DARK, activebackground=ACCENT_HOVER,
-                      activeforeground=BG_DARK, bd=0, padx=28, pady=10,
-                      cursor="hand2",
-                      command=self._launch).pack(pady=(2, 8))
+            make_button(content, text="  🚀  Launch Open-Sable  ",
+                        command=self._launch,
+                        bg=ACCENT, fg=BG_DARK, hover_bg=ACCENT_HOVER, hover_fg=BG_DARK,
+                        font=("Segoe UI", 13, "bold"), padx=28, pady=10
+                        ).pack(pady=(2, 8))
 
             # ── Management grid ──
             grid = tk.Frame(content, bg=BG_DARK)
             grid.pack(pady=(0, 6))
 
-            def _mgmt_btn(parent, text, fg, bg_c, cmd, row, col):
-                btn = tk.Button(parent, text=text, font=("Segoe UI", 10, "bold"),
-                                bg=bg_c, fg=fg, activebackground=BG_CARD,
-                                bd=0, padx=16, pady=7, cursor="hand2", command=cmd,
-                                width=16)
+            def _mgmt_btn(parent, text, fg, bg_c, hover_bg, cmd, row, col):
+                btn = make_button(parent, text=text, command=cmd,
+                                  bg=bg_c, fg=fg, hover_bg=hover_bg, hover_fg=fg,
+                                  font=("Segoe UI", 10, "bold"), padx=16, pady=7)
+                btn.configure(width=16, anchor="center")
                 btn.grid(row=row, column=col, padx=4, pady=3)
 
-            _mgmt_btn(grid, "⬆  Update", ACCENT, "#0d3320",
+            _mgmt_btn(grid, "⬆  Update", ACCENT, "#0d3320", "#145530",
                       self._start_update, 0, 0)
-            _mgmt_btn(grid, "↻  Reinstall", WARNING_C, BG_INPUT,
+            _mgmt_btn(grid, "↻  Reinstall", WARNING_C, BG_INPUT, BG_CARD,
                       self._start_reinstall, 0, 1)
-            _mgmt_btn(grid, "📂  Open Folder", FG_TEXT, BG_INPUT,
+            _mgmt_btn(grid, "📂  Open Folder", FG_TEXT, BG_INPUT, BG_CARD,
                       self._open_folder, 1, 0)
-            _mgmt_btn(grid, "🔧  Fresh Install", FG_TEXT, BG_INPUT,
+            _mgmt_btn(grid, "🔧  Fresh Install", FG_TEXT, BG_INPUT, BG_CARD,
                       lambda: self._show_page(1), 1, 1)
 
             # Uninstall — separate, less prominent
-            tk.Button(content, text="🗑  Uninstall...", font=("Segoe UI", 9),
-                      bg="#2d1518", fg=ERROR_C, activebackground="#3b1a1a",
-                      bd=0, padx=12, pady=4, cursor="hand2",
-                      command=self._show_uninstall_page).pack(pady=(6, 0))
+            make_button(content, text="🗑  Uninstall...",
+                        command=self._show_uninstall_page,
+                        bg="#2d1518", fg=ERROR_C, hover_bg="#3b1a1a", hover_fg=ERROR_C,
+                        font=("Segoe UI", 9), padx=12, pady=4
+                        ).pack(pady=(6, 0))
 
         else:
             # Fresh install welcome
             ttk.Label(content, text="v" + APP_VERSION, style="Small.TLabel").pack(pady=(0, 20))
 
-            btn = tk.Button(content, text="  Install Open-Sable  ",
-                           font=("Segoe UI", 14, "bold"),
-                           bg=ACCENT, fg=BG_DARK, activebackground=ACCENT_HOVER,
-                           activeforeground=BG_DARK, bd=0, padx=30, pady=12,
-                           cursor="hand2", command=lambda: self._show_page(1))
+            btn = make_button(content, text="  Install Open-Sable  ",
+                             command=lambda: self._show_page(1),
+                             bg=ACCENT, fg=BG_DARK, hover_bg=ACCENT_HOVER, hover_fg=BG_DARK,
+                             font=("Segoe UI", 14, "bold"), padx=30, pady=12)
             btn.pack(pady=10)
 
             ttk.Label(content, text=(
@@ -1541,9 +1572,10 @@ class InstallerApp(tk.Tk):
         tk.Entry(row, textvariable=self.install_dir_var, font=("Consolas", 10),
                  bg=BG_INPUT, fg=FG_TEXT, insertbackground=FG_TEXT,
                  relief="flat", bd=5).pack(side="left", fill="x", expand=True)
-        tk.Button(row, text="Browse", font=("Segoe UI", 9),
-                  bg=BG_INPUT, fg=FG_TEXT, bd=0, padx=10,
-                  command=self._browse_dir).pack(side="left", padx=(5, 0))
+        make_button(row, text="Browse", command=self._browse_dir,
+                   bg=BG_INPUT, fg=FG_TEXT, hover_bg=BG_CARD,
+                   font=("Segoe UI", 9), padx=10, pady=5
+                   ).pack(side="left", padx=(5, 0))
 
         # ── Dependencies status ──
         dep_frame = tk.Frame(scroll_frame, bg=BG_DARK)
@@ -1587,14 +1619,16 @@ class InstallerApp(tk.Tk):
         btn_frame = tk.Frame(scroll_frame, bg=BG_DARK)
         btn_frame.pack(fill="x", pady=(15, 20))
 
-        tk.Button(btn_frame, text="← Back", font=("Segoe UI", 10),
-                  bg=BG_INPUT, fg=FG_TEXT, bd=0, padx=15, pady=8,
-                  command=lambda: self._show_page(0)).pack(side="left")
+        make_button(btn_frame, text="← Back",
+                   command=lambda: self._show_page(0),
+                   bg=BG_INPUT, fg=FG_TEXT, hover_bg=BG_CARD,
+                   padx=15, pady=8).pack(side="left")
 
-        tk.Button(btn_frame, text="  Install  ", font=("Segoe UI", 12, "bold"),
-                  bg=ACCENT, fg=BG_DARK, activebackground=ACCENT_HOVER,
-                  bd=0, padx=25, pady=8, cursor="hand2",
-                  command=self._start_install).pack(side="right")
+        make_button(btn_frame, text="  Install  ",
+                   command=self._start_install,
+                   bg=ACCENT, fg=BG_DARK, hover_bg=ACCENT_HOVER, hover_fg=BG_DARK,
+                   font=("Segoe UI", 12, "bold"), padx=25, pady=8
+                   ).pack(side="right")
 
         return page
 
@@ -1657,9 +1691,10 @@ class InstallerApp(tk.Tk):
         self._log_text.tag_configure("success", foreground=ACCENT, font=("Consolas", 10, "bold"))
 
         # Cancel button
-        self._cancel_btn = tk.Button(page, text="Cancel", font=("Segoe UI", 10),
-                                      bg=BG_INPUT, fg=ERROR_C, bd=0, padx=15, pady=5,
-                                      command=self._cancel_install)
+        self._cancel_btn = make_button(page, text="Cancel",
+                                       command=self._cancel_install,
+                                       bg=BG_INPUT, fg=ERROR_C, hover_bg=BG_CARD, hover_fg=ERROR_C,
+                                       padx=15, pady=5)
         self._cancel_btn.pack(pady=(0, 15))
 
         return page
@@ -1684,21 +1719,22 @@ class InstallerApp(tk.Tk):
         btn_row = tk.Frame(content, bg=BG_DARK)
         btn_row.pack(pady=10)
 
-        tk.Button(btn_row, text="  🚀 Launch Open-Sable  ",
-                  font=("Segoe UI", 13, "bold"),
-                  bg=ACCENT, fg=BG_DARK, activebackground=ACCENT_HOVER,
-                  bd=0, padx=25, pady=10, cursor="hand2",
-                  command=self._launch).pack(side="left", padx=5)
+        make_button(btn_row, text="  🚀 Launch Open-Sable  ",
+                   command=self._launch,
+                   bg=ACCENT, fg=BG_DARK, hover_bg=ACCENT_HOVER, hover_fg=BG_DARK,
+                   font=("Segoe UI", 13, "bold"), padx=25, pady=10
+                   ).pack(side="left", padx=5)
 
-        tk.Button(btn_row, text=" 📂 Open Folder ",
-                  font=("Segoe UI", 10),
-                  bg=BG_INPUT, fg=FG_TEXT, bd=0, padx=15, pady=8,
-                  command=self._open_folder).pack(side="left", padx=5)
+        make_button(btn_row, text=" 📂 Open Folder ",
+                   command=self._open_folder,
+                   bg=BG_INPUT, fg=FG_TEXT, hover_bg=BG_CARD,
+                   padx=15, pady=8).pack(side="left", padx=5)
 
         # Start Over button
-        tk.Button(content, text="← Start Over", font=("Segoe UI", 10),
-                  bg=BG_INPUT, fg=FG_DIM, bd=0, padx=12, pady=5,
-                  command=self._start_over).pack(pady=(15, 0))
+        make_button(content, text="← Start Over",
+                   command=self._start_over,
+                   bg=BG_INPUT, fg=FG_DIM, hover_bg=BG_CARD,
+                   padx=12, pady=5).pack(pady=(15, 0))
 
         return page
 
@@ -1905,20 +1941,22 @@ class InstallerApp(tk.Tk):
                                            self._install_done)
             self.engine.start()
 
-        tk.Button(btn_frame, text="← Back", font=("Segoe UI", 10),
-                  bg=BG_INPUT, fg=FG_TEXT, bd=0, padx=15, pady=8,
-                  command=_go_back).pack(side="left")
+        make_button(btn_frame, text="← Back",
+                   command=_go_back,
+                   bg=BG_INPUT, fg=FG_TEXT, hover_bg=BG_CARD,
+                   padx=15, pady=8).pack(side="left")
 
-        tk.Button(btn_frame, text="  🗑  Uninstall Selected  ",
-                  font=("Segoe UI", 12, "bold"),
-                  bg="#5c1a1a", fg="#ff6b6b", activebackground="#7a2020",
-                  bd=0, padx=20, pady=8, cursor="hand2",
-                  command=_do_uninstall).pack(side="right")
+        make_button(btn_frame, text="  🗑  Uninstall Selected  ",
+                   command=_do_uninstall,
+                   bg="#5c1a1a", fg="#ff6b6b", hover_bg="#7a2020", hover_fg="#ff6b6b",
+                   font=("Segoe UI", 12, "bold"), padx=20, pady=8
+                   ).pack(side="right")
 
     def _cancel_install(self):
         if self.engine:
             self.engine.cancel()
-        self._cancel_btn.configure(state="disabled", text="Cancelling...")
+        self._cancel_btn.configure(text="Cancelling...", fg=FG_DIM, cursor="")
+        self._cancel_btn.unbind("<Button-1>")
 
     def _clear_log(self):
         self._log_text.configure(state="normal")
@@ -1946,7 +1984,8 @@ class InstallerApp(tk.Tk):
         self.after(0, self._do_done, success, error)
 
     def _do_done(self, success, error):
-        self._cancel_btn.configure(state="normal", text="Cancel")
+        self._cancel_btn.configure(text="Cancel", fg=ERROR_C, cursor="hand2")
+        self._cancel_btn.bind("<Button-1>", lambda e: self._cancel_install())
         if success:
             self._done_icon.configure(text="✔", foreground=ACCENT)
             self._done_title.configure(text="Complete!")
