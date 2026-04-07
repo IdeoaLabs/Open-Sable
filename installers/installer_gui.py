@@ -540,7 +540,7 @@ class ReinstallEngine:
         if not find_node():
             self.log("  ⚠ Node.js not available — skipping", "warning")
             return
-        for project in ["dashboard", "sable_dev"]:
+        for project in ["dashboard", "aggr"]:
             pkg = os.path.join(self.install_dir, project, "package.json")
             if not os.path.isfile(pkg):
                 continue
@@ -549,13 +549,20 @@ class ReinstallEngine:
             nm = os.path.join(proj_dir, "node_modules")
             if os.path.isdir(nm):
                 shutil.rmtree(nm, ignore_errors=True)
-            npm_args = ["npm", "install"]
-            if project == "dashboard":
-                npm_args.append("--legacy-peer-deps")
-            self._exec(npm_args, cwd=proj_dir, check=False)
-            if project == "dashboard":
+            self._exec(["npm", "install", "--legacy-peer-deps"], cwd=proj_dir, check=False)
+            result = self._exec(["npm", "run", "build"], cwd=proj_dir, check=False)
+            # Retry on build failure: wipe node_modules and reinstall
+            dist_check = os.path.join(proj_dir, "dist", "index.html")
+            if not os.path.isfile(dist_check):
+                self.log(f"  ⚠ {project} build failed — retrying...", "warning")
+                if os.path.isdir(nm):
+                    shutil.rmtree(nm, ignore_errors=True)
+                self._exec(["npm", "install", "--legacy-peer-deps"], cwd=proj_dir, check=False)
                 self._exec(["npm", "run", "build"], cwd=proj_dir, check=False)
-            self.log(f"  ✔ {project} rebuilt", "ok")
+            if os.path.isfile(dist_check):
+                self.log(f"  ✔ {project} rebuilt", "ok")
+            else:
+                self.log(f"  ⚠ {project} build incomplete — dist/index.html missing", "warning")
 
     def _check_model(self):
         model = self.config.get("model", "qwen3.5:0.8b")
@@ -604,7 +611,15 @@ class ReinstallEngine:
         if os.path.isfile(dist_index):
             self.log("  ✔ Dashboard built", "ok")
         else:
-            self.log("  ⚠ Dashboard not built", "warning")
+            self.log("  ⚠ Dashboard not built — attempting repair...", "warning")
+            dash = os.path.join(self.install_dir, "dashboard")
+            if os.path.isfile(os.path.join(dash, "package.json")) and find_node():
+                self._exec(["npm", "install", "--legacy-peer-deps"], cwd=dash, check=False)
+                self._exec(["npm", "run", "build"], cwd=dash, check=False)
+                if os.path.isfile(dist_index):
+                    self.log("  ✔ Dashboard repaired", "ok")
+                else:
+                    self.log("  ⚠ Dashboard repair failed — build manually", "warning")
         if ollama_running():
             self.log("  ✔ Ollama API OK", "ok")
         else:
@@ -1063,6 +1078,8 @@ class InstallerEngine:
                 f.write(f'call venv\\Scripts\\activate.bat\n')
                 f.write(f'pip install -e ".[core]" -q\n')
                 f.write(f'if exist requirements.txt pip install -r requirements.txt -q\n')
+                f.write(f'if exist dashboard\\package.json (\n  cd dashboard && npm install --legacy-peer-deps -q && npm run build && cd ..\n)\n')
+                f.write(f'if exist aggr\\package.json (\n  cd aggr && npm install --legacy-peer-deps -q && npm run build && cd ..\n)\n')
                 f.write(f'echo Update complete!\npause\n')
         else:
             with open(updater_path, "w") as f:
@@ -1075,6 +1092,8 @@ class InstallerEngine:
                 f.write(f'source venv/bin/activate\n')
                 f.write(f'pip install -e ".[core]" -q\n')
                 f.write(f'[ -f requirements.txt ] && pip install -r requirements.txt -q\n')
+                f.write(f'[ -f dashboard/package.json ] && (cd dashboard && npm install --legacy-peer-deps -q && npm run build; cd ..)\n')
+                f.write(f'[ -f aggr/package.json ] && (cd aggr && npm install --legacy-peer-deps -q && npm run build; cd ..)\n')
                 f.write(f'echo "Update complete!"\n')
             os.chmod(updater_path, 0o755)
         self.log("  ✔ Update script created", "ok")
