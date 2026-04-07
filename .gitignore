@@ -194,3 +194,6 @@ opensable/skills/zunvra_intel/data/visited_cells.json
 
 validation_framework.json
 .depshield.json
+installers/dist/
+installers/build/
+

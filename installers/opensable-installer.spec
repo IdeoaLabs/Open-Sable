@@ -1,48 +1,51 @@
 # -*- mode: python ; coding: utf-8 -*-
-import sys
-from pathlib import Path
 
-block_cipher = None
-HERE = Path(SPECPATH)
 
 a = Analysis(
-    [str(HERE / 'installer_gui.py')],
-    pathex=[str(HERE)],
+    ['installer_gui.py'],
+    pathex=[],
     binaries=[],
-    datas=[(str(HERE / 'assets'), 'assets')],
-    hiddenimports=['tkinter', 'tkinter.ttk', 'tkinter.messagebox', 'tkinter.filedialog'],
+    datas=[('assets', 'assets')],
+    hiddenimports=[],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['matplotlib', 'numpy', 'pandas', 'scipy', 'pytest'],
-    win_no_prefer_redirects=False,
-    win_private_assemblies=False,
-    cipher=block_cipher,
+    excludes=[],
     noarchive=False,
+    optimize=0,
 )
-
-pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+pyz = PYZ(a.pure)
 
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
     [],
+    exclude_binaries=True,
     name='OpenSable-Installer',
     debug=False,
     bootloader_ignore_signals=False,
-    strip=True,
+    strip=False,
     upx=True,
-    upx_exclude=[],
-    runtime_tmpdir=None,
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=str(HERE / 'assets' / 'icon.ico') if sys.platform == 'win32' else
-         str(HERE / 'assets' / 'icon.icns') if sys.platform == 'darwin' else None,
+    icon=['assets/icon.icns'],
+)
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name='OpenSable-Installer',
+)
+app = BUNDLE(
+    coll,
+    name='OpenSable-Installer.app',
+    icon='assets/icon.icns',
+    bundle_identifier=None,
 )
