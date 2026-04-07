@@ -522,12 +522,12 @@ class ReinstallEngine:
         self.log("  ✔ Python environment rebuilt", "ok")
 
     def _install_deps(self):
-        self._exec([self.venv_pip, "install", "--upgrade", "pip", "setuptools", "wheel", "-q"])
+        self._exec([self.venv_pip, "install", "--upgrade", "pip", "setuptools", "wheel", "-q"], check=False)
         self._exec([self.venv_pip, "install", "-e", ".[core]", "-q"],
                     cwd=self.install_dir, check=False)
         req = os.path.join(self.install_dir, "requirements.txt")
         if os.path.isfile(req):
-            self._exec([self.venv_pip, "install", "-r", req, "-q"], cwd=self.install_dir)
+            self._exec([self.venv_pip, "install", "-r", req, "-q"], cwd=self.install_dir, check=False)
         self.log("  ✔ All Python dependencies installed", "ok")
 
     def _check_ollama(self):
@@ -1004,12 +1004,12 @@ class InstallerEngine:
         self.log("  ✔ Python environment created", "ok")
 
     def _install_deps(self):
-        self._exec([self.venv_pip, "install", "--upgrade", "pip", "setuptools", "wheel", "-q"])
+        self._exec([self.venv_pip, "install", "--upgrade", "pip", "setuptools", "wheel", "-q"], check=False)
         self._exec([self.venv_pip, "install", "-e", ".[core]", "-q"],
                     cwd=self.install_dir, check=False)
         req = os.path.join(self.install_dir, "requirements.txt")
         if os.path.isfile(req):
-            self._exec([self.venv_pip, "install", "-r", req, "-q"])
+            self._exec([self.venv_pip, "install", "-r", req, "-q"], cwd=self.install_dir, check=False)
         self.log("  ✔ Dependencies installed", "ok")
 
     def _install_ollama(self):
