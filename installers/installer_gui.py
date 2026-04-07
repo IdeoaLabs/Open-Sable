@@ -85,6 +85,67 @@ ICON_ICO = os.path.join(ASSETS_DIR, "icon.ico")
 ICON_ICNS = os.path.join(ASSETS_DIR, "icon.icns")
 ICON_PNG = LOGO_PATH
 
+# JavaScript bootstrap for the macOS .app bundle
+ELECTRON_BOOTSTRAP_JS = r"""'use strict';
+
+const { app } = require('electron');
+const path = require('path');
+const fs = require('fs');
+const { spawn } = require('child_process');
+
+const DIR = '__INSTALL_DIR__';
+
+process.env.PATH = [
+  '/opt/homebrew/bin', '/opt/homebrew/sbin', '/usr/local/bin',
+  process.env.PATH,
+].join(':');
+
+const envPath = path.join(DIR, '.env');
+if (fs.existsSync(envPath)) {
+  for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
+    const m = line.match(/^([A-Z_][A-Z0-9_]*)=(.*)$/);
+    if (m && !process.env[m[1]]) process.env[m[1]] = m[2].trim();
+  }
+}
+process.env.WEBCHAT_PORT = process.env.WEBCHAT_PORT || '8789';
+process.env.WEBCHAT_HOST = process.env.WEBCHAT_HOST || 'localhost';
+
+function isBackendRunning() {
+  try {
+    const pidFiles = fs.readdirSync(DIR).filter(f => /^\.sable-.*\.pid$/.test(f));
+    for (const pf of pidFiles) {
+      const pid = parseInt(fs.readFileSync(path.join(DIR, pf), 'utf8').trim(), 10);
+      if (pid) { try { process.kill(pid, 0); return true; } catch (_) {} }
+    }
+  } catch (_) {}
+  return false;
+}
+
+if (!isBackendRunning()) {
+  try {
+    spawn('bash', ['start.sh', 'start'], {
+      cwd: DIR, detached: true, stdio: 'ignore', env: { ...process.env },
+    }).unref();
+  } catch (_) {}
+}
+
+const desktopDir = path.join(DIR, 'desktop');
+const realMain = path.join(desktopDir, 'electron', 'main.cjs');
+module.paths.unshift(path.join(desktopDir, 'node_modules'));
+
+if (fs.existsSync(realMain)) {
+  process.chdir(DIR);
+  require(realMain);
+} else {
+  const { dialog } = require('electron');
+  app.whenReady().then(() => {
+    dialog.showErrorBox('Open-Sable Not Found',
+      'Could not find the desktop app at:\n' + desktopDir + '\n\nPlease run the installer first.');
+    app.quit();
+  });
+}
+"""
+
 
 # ════════════════════════════════════════════════════════════════════
 # Models — only <thinking>-capable
@@ -1503,30 +1564,70 @@ class InstallerEngine:
             pass
 
     def _shortcuts_macos(self):
-        app_dir = os.path.expanduser("~/Applications/Open-Sable.app/Contents/MacOS")
-        res_dir = os.path.expanduser("~/Applications/Open-Sable.app/Contents/Resources")
-        os.makedirs(app_dir, exist_ok=True)
-        os.makedirs(res_dir, exist_ok=True)
-        plist_dir = os.path.dirname(app_dir)
+        app_bundle = os.path.expanduser("~/Applications/Open-Sable.app")
+        electron_app = os.path.join(
+            self.install_dir, "desktop", "node_modules", "electron", "dist", "Electron.app"
+        )
+
+        # Build a proper Electron .app bundle (not a shell wrapper)
+        if os.path.isdir(electron_app):
+            if os.path.isdir(app_bundle):
+                shutil.rmtree(app_bundle)
+            shutil.copytree(electron_app, app_bundle, symlinks=True)
+        else:
+            # Fallback: build minimal .app structure
+            os.makedirs(os.path.join(app_bundle, "Contents", "MacOS"), exist_ok=True)
+            os.makedirs(os.path.join(app_bundle, "Contents", "Resources"), exist_ok=True)
+
+        contents = os.path.join(app_bundle, "Contents")
+        res_dir = os.path.join(contents, "Resources")
+
+        # Copy our icon
+        icon_src = os.path.join(self.install_dir, "installers", "assets", "icon.icns")
+        if not os.path.isfile(icon_src):
+            icon_src = ICON_ICNS
         try:
-            if os.path.isfile(ICON_ICNS):
-                shutil.copy2(ICON_ICNS, os.path.join(res_dir, "opensable.icns"))
+            if os.path.isfile(icon_src):
+                shutil.copy2(icon_src, os.path.join(res_dir, "opensable.icns"))
         except Exception:
             pass
-        with open(os.path.join(plist_dir, "Info.plist"), "w") as f:
-            f.write(f'<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0"><dict>\n')
-            f.write(f'<key>CFBundleName</key><string>Open-Sable</string>\n')
-            f.write(f'<key>CFBundleIdentifier</key><string>com.ideoalabs.opensable</string>\n')
-            f.write(f'<key>CFBundleVersion</key><string>{APP_VERSION}</string>\n')
-            f.write(f'<key>CFBundleExecutable</key><string>run</string>\n')
-            f.write(f'<key>CFBundlePackageType</key><string>APPL</string>\n')
-            f.write(f'<key>CFBundleIconFile</key><string>opensable</string>\n')
-            f.write(f'</dict></plist>\n')
-        launcher = os.path.join(app_dir, "run")
-        with open(launcher, "w") as f:
-            f.write(f'#!/bin/bash\nopen -a Terminal "{self.install_dir}/start.sh"\n')
-        os.chmod(launcher, 0o755)
-        self.log("  ✔ Open-Sable.app created", "ok")
+
+        # Customize Info.plist
+        plist_path = os.path.join(contents, "Info.plist")
+        try:
+            subprocess.run(["plutil", "-replace", "CFBundleName", "-string", "Open-Sable", plist_path], check=False)
+            subprocess.run(["plutil", "-replace", "CFBundleDisplayName", "-string", "Open-Sable", plist_path], check=False)
+            subprocess.run(["plutil", "-replace", "CFBundleIdentifier", "-string", "com.ideoalabs.opensable", plist_path], check=False)
+            subprocess.run(["plutil", "-replace", "CFBundleVersion", "-string", APP_VERSION, plist_path], check=False)
+            subprocess.run(["plutil", "-replace", "CFBundleShortVersionString", "-string", APP_VERSION, plist_path], check=False)
+            subprocess.run(["plutil", "-replace", "CFBundleIconFile", "-string", "opensable", plist_path], check=False)
+        except Exception:
+            pass
+
+        # Remove default_app.asar and create our bootstrap app
+        default_asar = os.path.join(res_dir, "default_app.asar")
+        if os.path.isfile(default_asar):
+            os.remove(default_asar)
+
+        app_code_dir = os.path.join(res_dir, "app")
+        os.makedirs(app_code_dir, exist_ok=True)
+
+        with open(os.path.join(app_code_dir, "package.json"), "w") as f:
+            f.write(f'{{"name":"open-sable","version":"{APP_VERSION}","main":"main.js"}}\n')
+
+        with open(os.path.join(app_code_dir, "main.js"), "w") as f:
+            f.write(ELECTRON_BOOTSTRAP_JS.replace("__INSTALL_DIR__", self.install_dir))
+
+        # Ad-hoc codesign
+        try:
+            codesign = shutil.which("codesign")
+            if codesign:
+                subprocess.run([codesign, "--force", "--deep", "--sign", "-", app_bundle],
+                               capture_output=True, check=False)
+        except Exception:
+            pass
+
+        self.log("  ✔ Open-Sable.app created in ~/Applications", "ok")
 
     def _shortcuts_linux(self):
         apps = os.path.expanduser("~/.local/share/applications")
@@ -2286,6 +2387,8 @@ class InstallerApp(tk.Tk):
     def _launch(self):
         install_dir = self.install_dir_var.get()
         start_sh = os.path.join(install_dir, "start.sh")
+
+        # Start backend
         if IS_WIN:
             bat = os.path.join(install_dir, "opensable.bat")
             if os.path.isfile(bat):
@@ -2300,12 +2403,26 @@ class InstallerApp(tk.Tk):
             subprocess.Popen(["bash", "-c",
                               f"cd '{install_dir}' && source venv/bin/activate && python -m opensable"],
                              cwd=install_dir)
-        # Auto-open browser after delay
-        def _open_browser():
-            time.sleep(4)
-            import webbrowser
-            webbrowser.open("http://127.0.0.1:8789")
-        threading.Thread(target=_open_browser, daemon=True).start()
+
+        # Launch desktop app (Electron) or .app bundle
+        def _open_desktop():
+            time.sleep(4)  # wait for backend to start
+            if IS_MAC:
+                app_bundle = os.path.expanduser("~/Applications/Open-Sable.app")
+                if os.path.isdir(app_bundle):
+                    subprocess.Popen(["open", app_bundle])
+                    return
+            electron = os.path.join(install_dir, "desktop", "node_modules", ".bin", "electron")
+            if os.path.isfile(electron):
+                subprocess.Popen([electron, os.path.join(install_dir, "desktop")],
+                                 cwd=install_dir,
+                                 env={**os.environ,
+                                      "WEBCHAT_PORT": "8789",
+                                      "WEBCHAT_HOST": "localhost"})
+            else:
+                import webbrowser
+                webbrowser.open("http://127.0.0.1:8789")
+        threading.Thread(target=_open_desktop, daemon=True).start()
         self.after(1000, self.destroy)
 
     def _open_folder(self):

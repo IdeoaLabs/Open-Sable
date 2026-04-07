@@ -38,7 +38,9 @@ function createWindow() {
       sandbox: false,
       webviewTag: true,
     },
-    icon: path.join(__dirname, '../public/icon.png'),
+    icon: process.platform === 'darwin'
+      ? path.join(__dirname, '../public/icon.icns')
+      : path.join(__dirname, '../public/icon.png'),
   });
 
   if (IS_DEV) {
