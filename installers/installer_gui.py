@@ -14,6 +14,7 @@ import platform
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 import threading
 import time
@@ -150,7 +151,7 @@ def make_button(parent, text, command, bg=BG_INPUT, fg=FG_TEXT,
 # ════════════════════════════════════════════════════════════════════
 
 def find_python() -> Tuple[Optional[List[str]], Optional[str]]:
-    for cmd in [["python3"], ["python"]]:
+    for cmd in [["python3.13"], ["python3.12"], ["python3"], ["python"]]:
         try:
             r = subprocess.run(cmd + ["--version"], capture_output=True, text=True, timeout=5)
             if r.returncode == 0:
@@ -951,7 +952,8 @@ class InstallerEngine:
     def _run(self):
         try:
             steps = [
-                ("Cloning repository", self._clone),
+                ("Checking system prerequisites", self._bootstrap_system),
+                ("Downloading Open-Sable", self._clone),
                 ("Creating Python environment", self._create_venv),
                 ("Installing dependencies", self._install_deps),
                 ("Installing Ollama", self._install_ollama),
@@ -980,6 +982,237 @@ class InstallerEngine:
             self.log(f"\n✘ Installation error: {e}", "error")
             self.done(False, str(e))
 
+    # ── System prerequisite bootstrap ────────────────────────────────
+
+    def _bootstrap_system(self):
+        """Check and install system-level prerequisites."""
+        if IS_WIN:
+            self._bootstrap_windows()
+        elif IS_MAC:
+            self._bootstrap_macos()
+        elif IS_LINUX:
+            self._bootstrap_linux()
+
+    def _bootstrap_macos(self):
+        """macOS: ensure Homebrew, Python 3.11+, Git, and Node.js are available."""
+        has_brew = shutil.which("brew")
+        py_cmd, _ = find_python()
+        has_python = py_cmd is not None
+        has_git = find_git() is not None
+        has_node = find_node() is not None
+        want_node = self.config.get("install_node", True)
+
+        if has_brew and has_python and has_git and (has_node or not want_node):
+            self.log("  ✔ All prerequisites available", "ok")
+            return
+
+        if not has_brew:
+            # Homebrew installation requires sudo — run in Terminal.app
+            self.log("  Homebrew not found — opening Terminal to install...", "dim")
+            self.log("  ╔═══════════════════════════════════════════════════════╗", "step")
+            self.log("  ║  A Terminal window will open.                        ║", "step")
+            self.log("  ║  Enter your password when prompted, then wait.       ║", "step")
+            self.log("  ║  The installer will continue automatically.          ║", "step")
+            self.log("  ╚═══════════════════════════════════════════════════════╝", "step")
+
+            marker = os.path.join(tempfile.gettempdir(), ".opensable-bootstrap-done")
+            if os.path.exists(marker):
+                os.unlink(marker)
+
+            script_path = os.path.join(tempfile.gettempdir(), "opensable-bootstrap.sh")
+            with open(script_path, "w") as f:
+                f.write("#!/bin/bash\n")
+                f.write("set -e\n")
+                f.write('clear\n')
+                f.write('echo ""\n')
+                f.write('echo "╔═══════════════════════════════════════════════════════╗"\n')
+                f.write('echo "║        Open-Sable — Installing Prerequisites         ║"\n')
+                f.write('echo "╚═══════════════════════════════════════════════════════╝"\n')
+                f.write('echo ""\n')
+                # Homebrew
+                f.write('if ! command -v brew &>/dev/null; then\n')
+                f.write('  echo "▸ Installing Homebrew (macOS package manager)..."\n')
+                f.write('  echo "  You may be asked for your password."\n')
+                f.write('  echo ""\n')
+                f.write('  NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"\n')
+                f.write('  # Add brew to current shell\n')
+                f.write('  if [ -f /opt/homebrew/bin/brew ]; then\n')
+                f.write('    eval "$(/opt/homebrew/bin/brew shellenv)"\n')
+                f.write('  elif [ -f /usr/local/bin/brew ]; then\n')
+                f.write('    eval "$(/usr/local/bin/brew shellenv)"\n')
+                f.write('  fi\n')
+                f.write('  # Add to shell profile for future sessions\n')
+                f.write('  if [ -f /opt/homebrew/bin/brew ] && ! grep -q "brew shellenv" ~/.zprofile 2>/dev/null; then\n')
+                f.write("    echo 'eval \"$(/opt/homebrew/bin/brew shellenv)\"' >> ~/.zprofile\n")
+                f.write('  fi\n')
+                f.write('  echo "✔ Homebrew installed"\n')
+                f.write('else\n')
+                f.write('  echo "✔ Homebrew already installed"\n')
+                f.write('fi\n')
+                f.write('echo ""\n')
+                # Python
+                f.write('if ! python3 --version 2>/dev/null | grep -qE "3\\.(1[1-9]|[2-9][0-9])"; then\n')
+                f.write('  echo "▸ Installing Python 3.13..."\n')
+                f.write('  brew install python@3.13\n')
+                f.write('  echo "✔ Python installed"\n')
+                f.write('else\n')
+                f.write('  echo "✔ Python already installed"\n')
+                f.write('fi\n')
+                f.write('echo ""\n')
+                # Node.js
+                if want_node:
+                    f.write('if ! command -v node &>/dev/null || [ "$(node -e "process.stdout.write(String(+process.version.slice(1).split(\\".\\")[0]>=18))")" != "1" ]; then\n')
+                    f.write('  echo "▸ Installing Node.js..."\n')
+                    f.write('  brew install node\n')
+                    f.write('  echo "✔ Node.js installed"\n')
+                    f.write('else\n')
+                    f.write('  echo "✔ Node.js already installed"\n')
+                    f.write('fi\n')
+                    f.write('echo ""\n')
+                # Git (should come with Xcode CLT installed by Homebrew, but just in case)
+                f.write('if ! command -v git &>/dev/null; then\n')
+                f.write('  echo "▸ Installing Git..."\n')
+                f.write('  brew install git\n')
+                f.write('fi\n')
+                # Done
+                f.write('echo ""\n')
+                f.write('echo "✔ All prerequisites installed!"\n')
+                f.write('echo "  You can close this Terminal window."\n')
+                f.write('echo "  The installer will continue automatically."\n')
+                f.write(f'echo "ok" > "{marker}"\n')
+            os.chmod(script_path, 0o755)
+
+            subprocess.Popen(["open", "-a", "Terminal", script_path])
+
+            # Poll for completion
+            self.log("  Waiting for Terminal to finish...", "dim")
+            timeout, elapsed = 900, 0
+            while not os.path.exists(marker):
+                time.sleep(3)
+                elapsed += 3
+                if elapsed % 60 == 0:
+                    self.log(f"  Still waiting... ({elapsed // 60}m)", "dim")
+                if elapsed > timeout:
+                    raise Exception(
+                        "Prerequisites install timed out.\n"
+                        "Open Terminal and run:\n"
+                        '  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"\n'
+                        "  brew install python@3.13 node"
+                    )
+                if self._cancelled:
+                    raise Exception("Cancelled")
+
+            try:
+                os.unlink(marker)
+                os.unlink(script_path)
+            except OSError:
+                pass
+
+            # Refresh PATH so new tools are found
+            for p in ["/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/bin"]:
+                if p not in os.environ.get("PATH", ""):
+                    os.environ["PATH"] = p + os.pathsep + os.environ.get("PATH", "")
+
+            self.log("  ✔ Prerequisites installed via Terminal", "ok")
+        else:
+            # Homebrew is present — install missing tools directly (no sudo needed)
+            if not has_python:
+                self.log("  Installing Python 3.13 via Homebrew...", "dim")
+                self._exec(["brew", "install", "python@3.13"], check=False)
+                py_cmd, py_ver = find_python()
+                if py_cmd:
+                    self.log(f"  ✔ Python {py_ver} installed", "ok")
+                else:
+                    raise Exception("Failed to install Python.\nRun: brew install python@3.13")
+
+            if not has_git:
+                self.log("  Installing Git via Homebrew...", "dim")
+                self._exec(["brew", "install", "git"], check=False)
+                if find_git():
+                    self.log("  ✔ Git installed", "ok")
+                else:
+                    self.log("  ⚠ Git install failed — install manually", "warning")
+
+            if not has_node and want_node:
+                self.log("  Installing Node.js via Homebrew...", "dim")
+                self._exec(["brew", "install", "node"], check=False)
+                if find_node():
+                    self.log("  ✔ Node.js installed", "ok")
+                else:
+                    self.log("  ⚠ Node.js install failed — install manually", "warning")
+
+            self.log("  ✔ System prerequisites OK", "ok")
+
+    def _bootstrap_linux(self):
+        """Linux: ensure Python 3.11+, Git, and Node.js are available."""
+        py_cmd, _ = find_python()
+        if not py_cmd:
+            self.log("  Python 3.11+ not found — installing...", "dim")
+            if shutil.which("apt-get"):
+                self._exec(["sudo", "apt-get", "update", "-qq"], check=False)
+                self._exec(["sudo", "apt-get", "install", "-y",
+                            "python3", "python3-venv", "python3-pip"], check=False)
+            elif shutil.which("dnf"):
+                self._exec(["sudo", "dnf", "install", "-y",
+                            "python3", "python3-pip"], check=False)
+            elif shutil.which("pacman"):
+                self._exec(["sudo", "pacman", "-S", "--noconfirm",
+                            "python", "python-pip"], check=False)
+            py_cmd, py_ver = find_python()
+            if py_cmd:
+                self.log(f"  ✔ Python {py_ver} installed", "ok")
+            else:
+                raise Exception("Python 3.11+ required. Install via your package manager.")
+
+        if not find_git():
+            self.log("  Git not found — installing...", "dim")
+            if shutil.which("apt-get"):
+                self._exec(["sudo", "apt-get", "install", "-y", "git"], check=False)
+            elif shutil.which("dnf"):
+                self._exec(["sudo", "dnf", "install", "-y", "git"], check=False)
+            elif shutil.which("pacman"):
+                self._exec(["sudo", "pacman", "-S", "--noconfirm", "git"], check=False)
+            if find_git():
+                self.log("  ✔ Git installed", "ok")
+            else:
+                self.log("  ⚠ Install git manually", "warning")
+
+        self.log("  ✔ System prerequisites OK", "ok")
+
+    def _bootstrap_windows(self):
+        """Windows: check for Python, Git — attempt install via winget."""
+        py_cmd, _ = find_python()
+        if not py_cmd:
+            if shutil.which("winget"):
+                self.log("  Installing Python via winget...", "dim")
+                self._exec(["winget", "install", "--id", "Python.Python.3.13",
+                            "--accept-source-agreements", "--accept-package-agreements",
+                            "-e", "--silent"], check=False)
+                py_cmd, py_ver = find_python()
+                if py_cmd:
+                    self.log(f"  ✔ Python {py_ver} installed", "ok")
+                else:
+                    raise Exception("Python 3.11+ required.\nDownload from python.org")
+            else:
+                raise Exception("Python 3.11+ required.\nDownload from python.org")
+
+        if not find_git():
+            if shutil.which("winget"):
+                self.log("  Installing Git via winget...", "dim")
+                self._exec(["winget", "install", "--id", "Git.Git",
+                            "--accept-source-agreements", "--accept-package-agreements",
+                            "-e", "--silent"], check=False)
+                if find_git():
+                    self.log("  ✔ Git installed", "ok")
+                else:
+                    self.log("  ⚠ Install git from git-scm.com", "warning")
+            else:
+                self.log("  ⚠ Install git from git-scm.com", "warning")
+
+        self.log("  ✔ System prerequisites OK", "ok")
+
+    # ── Clone / Download ─────────────────────────────────────────────
+
     def _clone(self):
         if os.path.isdir(os.path.join(self.install_dir, ".git")):
             self.log("  Already a git repo — pulling latest...", "dim")
@@ -987,12 +1220,65 @@ class InstallerEngine:
             self._exec(["git", "reset", "--hard", f"origin/{REPO_BRANCH}"], check=False)
             self.log("  ✔ Repository updated", "ok")
             return
-        if not find_git():
-            raise Exception("Git is required. Install git first.")
-        os.makedirs(os.path.dirname(self.install_dir), exist_ok=True)
-        self._exec(["git", "clone", "--branch", REPO_BRANCH, "--depth", "1",
-                     REPO_URL, self.install_dir], cwd=os.path.dirname(self.install_dir))
-        self.log("  ✔ Repository cloned", "ok")
+
+        if find_git():
+            os.makedirs(os.path.dirname(self.install_dir), exist_ok=True)
+            self._exec(["git", "clone", "--branch", REPO_BRANCH, "--depth", "1",
+                         REPO_URL, self.install_dir],
+                        cwd=os.path.dirname(self.install_dir))
+            self.log("  ✔ Repository cloned", "ok")
+        else:
+            # Fallback: download tarball (no git dependency)
+            self.log("  Git not available — downloading archive...", "dim")
+            url = (f"https://github.com/ideoalabs/opensable/archive/"
+                   f"refs/heads/{REPO_BRANCH}.tar.gz")
+            tarball = os.path.join(tempfile.gettempdir(), "opensable.tar.gz")
+            urllib.request.urlretrieve(url, tarball)
+
+            tmp_extract = tempfile.mkdtemp(prefix="opensable-")
+            try:
+                with tarfile.open(tarball) as tf:
+                    try:
+                        tf.extractall(tmp_extract, filter="data")
+                    except TypeError:
+                        tf.extractall(tmp_extract)
+
+                # GitHub tarballs have a single top-level dir (e.g., Open-Sable-master/)
+                contents = os.listdir(tmp_extract)
+                src = (os.path.join(tmp_extract, contents[0])
+                       if len(contents) == 1 and os.path.isdir(os.path.join(tmp_extract, contents[0]))
+                       else tmp_extract)
+
+                os.makedirs(self.install_dir, exist_ok=True)
+                for item in os.listdir(src):
+                    s, d = os.path.join(src, item), os.path.join(self.install_dir, item)
+                    if os.path.exists(d):
+                        if os.path.isdir(d):
+                            shutil.rmtree(d)
+                        else:
+                            os.remove(d)
+                    shutil.move(s, d)
+            finally:
+                shutil.rmtree(tmp_extract, ignore_errors=True)
+                try:
+                    os.unlink(tarball)
+                except OSError:
+                    pass
+
+            self.log("  ✔ Source code downloaded", "ok")
+
+            # Initialize git for future updates
+            if find_git():
+                try:
+                    self._exec(["git", "init"], check=False)
+                    self._exec(["git", "remote", "add", "origin", REPO_URL], check=False)
+                    self._exec(["git", "fetch", "--depth", "1", "origin", REPO_BRANCH],
+                               check=False)
+                    self._exec(["git", "reset", "--soft", f"origin/{REPO_BRANCH}"],
+                               check=False)
+                    self.log("  ✔ Git initialized for future updates", "ok")
+                except Exception:
+                    self.log("  ⚠ Git init skipped — updates will need manual git setup", "warning")
 
     def _create_venv(self):
         py_cmd, py_ver = find_python()
