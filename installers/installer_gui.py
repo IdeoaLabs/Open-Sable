@@ -513,7 +513,8 @@ class ReinstallEngine:
                 ("Installing Python dependencies", self._install_deps),
                 ("Installing Ollama", self._check_ollama),
                 ("Installing Node.js", self._check_node),
-                ("Rebuilding Dashboard", self._rebuild_node),
+                ("Rebuilding frontends", self._rebuild_node),
+                ("Configuring environment", self._init_environment),
                 ("Checking AI model", self._check_model),
                 ("Verifying installation", self._verify),
             ]
@@ -666,6 +667,53 @@ class ReinstallEngine:
             else:
                 self.log(f"  ⚠ {project} build incomplete — dist/index.html missing", "warning")
 
+    def _init_environment(self):
+        """Ensure .env, agent profile, and directories exist (preserve existing)."""
+        # Required directories
+        for dirname in ["data", "logs", "config", "models", "episodes"]:
+            os.makedirs(os.path.join(self.install_dir, dirname), exist_ok=True)
+        self.log("  ✔ Directories verified", "ok")
+
+        # .env
+        env_file = os.path.join(self.install_dir, ".env")
+        if not os.path.isfile(env_file):
+            env_example = os.path.join(self.install_dir, ".env.example")
+            model = self.config.get("model", "qwen3.5:0.8b")
+            if os.path.isfile(env_example):
+                with open(env_example, "r") as f:
+                    content = f.read()
+                content = content.replace("DEFAULT_MODEL=llama3.1:8b", f"DEFAULT_MODEL={model}")
+                content = content.replace("GATEWAY_ENABLED=false", "GATEWAY_ENABLED=true")
+                with open(env_file, "w") as f:
+                    f.write(content)
+            else:
+                with open(env_file, "w") as f:
+                    f.write(f"DEFAULT_MODEL={model}\nGATEWAY_ENABLED=true\nWEBCHAT_PORT=8789\n")
+            self.log("  ✔ .env created", "ok")
+        else:
+            self.log("  ✔ .env preserved", "ok")
+
+        # Agent profile
+        agents_dir = os.path.join(self.install_dir, "agents", "sable")
+        template_dir = os.path.join(self.install_dir, "agents", "_template")
+        os.makedirs(os.path.join(agents_dir, "data"), exist_ok=True)
+        for fname in ["profile.env", "soul.md", "tools.json"]:
+            dest = os.path.join(agents_dir, fname)
+            if not os.path.isfile(dest):
+                src = os.path.join(template_dir, fname)
+                if os.path.isfile(src):
+                    shutil.copy2(src, dest)
+                    if fname == "profile.env":
+                        model = self.config.get("model", "qwen3.5:0.8b")
+                        with open(dest, "r") as f:
+                            c = f.read()
+                        c = c.replace("DEFAULT_MODEL=qwen3.5:0.8b", f"DEFAULT_MODEL={model}")
+                        c = c.replace("AGENT_NAME=MyAgent", "AGENT_NAME=Sable")
+                        c = c.replace("WEBCHAT_PORT=8792", "WEBCHAT_PORT=8789")
+                        with open(dest, "w") as f:
+                            f.write(c)
+        self.log("  ✔ Agent profile verified (agents/sable/)", "ok")
+
     def _check_model(self):
         model = self.config.get("model", "qwen3.5:0.8b")
         if not ollama_running():
@@ -722,6 +770,20 @@ class ReinstallEngine:
                     self.log("  ✔ Dashboard repaired", "ok")
                 else:
                     self.log("  ⚠ Dashboard repair failed — build manually", "warning")
+        # Desktop (Electron)
+        electron_bin = os.path.join(self.install_dir, "desktop", "node_modules", ".bin", "electron")
+        if os.path.isfile(electron_bin):
+            self.log("  ✔ Desktop app ready (Electron)", "ok")
+        else:
+            self.log("  ⚠ Desktop app not installed", "warning")
+        # .env & agent profile
+        if os.path.isfile(os.path.join(self.install_dir, ".env")):
+            self.log("  ✔ Configuration (.env)", "ok")
+        if os.path.isfile(os.path.join(self.install_dir, "agents", "sable", "profile.env")):
+            self.log("  ✔ Agent profile (agents/sable/)", "ok")
+        # Sandbox
+        if os.path.isfile(os.path.join(self.install_dir, "opensable", "core", "sandbox_runner.py")):
+            self.log("  ✔ Sandbox engine present", "ok")
         if ollama_running():
             self.log("  ✔ Ollama API OK", "ok")
         else:
@@ -794,16 +856,18 @@ class UninstallEngine:
 
     def _remove_services(self):
         if IS_LINUX:
-            try:
-                subprocess.run(["systemctl", "--user", "stop", "opensable-update.timer"],
-                               capture_output=True, timeout=10)
-                subprocess.run(["systemctl", "--user", "disable", "opensable-update.timer"],
-                               capture_output=True, timeout=10)
-                self.log("  ✔ Stopped systemd timer", "ok")
-            except Exception:
-                pass
+            # Stop agent service + update timer
+            for svc in ["opensable", "opensable-update.timer"]:
+                try:
+                    subprocess.run(["systemctl", "--user", "stop", svc],
+                                   capture_output=True, timeout=10)
+                    subprocess.run(["systemctl", "--user", "disable", svc],
+                                   capture_output=True, timeout=10)
+                except Exception:
+                    pass
+            self.log("  ✔ Stopped systemd services", "ok")
             user_dir = os.path.expanduser("~/.config/systemd/user")
-            for name in ["opensable-update.service", "opensable-update.timer"]:
+            for name in ["opensable.service", "opensable-update.service", "opensable-update.timer"]:
                 p = os.path.join(user_dir, name)
                 if os.path.isfile(p):
                     os.remove(p)
@@ -814,14 +878,16 @@ class UninstallEngine:
             except Exception:
                 pass
         elif IS_MAC:
-            plist = os.path.expanduser("~/Library/LaunchAgents/com.ideoalabs.opensable-update.plist")
-            if os.path.isfile(plist):
-                try:
-                    subprocess.run(["launchctl", "unload", plist], capture_output=True, timeout=10)
-                except Exception:
-                    pass
-                os.remove(plist)
-                self.log("  ✔ Removed launchd plist", "ok")
+            for plist_name in ["com.ideoalabs.opensable-update.plist",
+                               "com.ideoalabs.opensable.plist"]:
+                plist = os.path.expanduser(f"~/Library/LaunchAgents/{plist_name}")
+                if os.path.isfile(plist):
+                    try:
+                        subprocess.run(["launchctl", "unload", plist], capture_output=True, timeout=10)
+                    except Exception:
+                        pass
+                    os.remove(plist)
+                    self.log(f"  ✔ Removed {plist_name}", "ok")
         elif IS_WIN:
             try:
                 subprocess.run(["schtasks", "/delete", "/tn", "OpenSable-Update", "/f"],
@@ -1027,10 +1093,11 @@ class InstallerEngine:
                 ("Installing dependencies", self._install_deps),
                 ("Installing Ollama", self._install_ollama),
                 ("Installing Node.js", self._install_node),
-                ("Building Dashboard", self._setup_node),
+                ("Building Dashboard & Frontends", self._setup_node),
+                ("Configuring environment", self._init_environment),
                 ("Pulling AI model", self._pull_model),
                 ("Creating shortcuts", self._create_shortcuts),
-                ("Setting up auto-updater", self._install_updater),
+                ("Setting up services", self._install_services),
                 ("Verifying installation", self._verify),
             ]
             total = len(steps)
@@ -1415,18 +1482,134 @@ class InstallerEngine:
 
     def _setup_node(self):
         if not find_node():
-            self.log("  ⚠ Node.js not available — skipping dashboard", "warning")
+            self.log("  ⚠ Node.js not available — skipping frontends", "warning")
             return
-        for project in ["dashboard", "desktop"]:
+        for project in ["dashboard", "desktop", "aggr"]:
             proj_dir = os.path.join(self.install_dir, project)
             pkg = os.path.join(proj_dir, "package.json")
             if not os.path.isfile(pkg):
                 continue
             self.log(f"  Building {project}...", "dim")
             self._exec(["npm", "install", "--legacy-peer-deps"], cwd=proj_dir, check=False)
-            if project != "desktop":  # desktop runs via electron, no build needed
+            if project == "desktop":
+                # Desktop runs via electron, no build step
+                electron_bin = os.path.join(proj_dir, "node_modules", ".bin", "electron")
+                if os.path.isfile(electron_bin):
+                    self.log(f"  ✔ {project} ready (electron installed)", "ok")
+                else:
+                    self.log(f"  ⚠ {project} — electron binary not found", "warning")
+            else:
                 self._exec(["npm", "run", "build"], cwd=proj_dir, check=False)
-            self.log(f"  ✔ {project} ready", "ok")
+                self.log(f"  ✔ {project} ready", "ok")
+
+    def _init_environment(self):
+        """Create .env, agent profile, required directories, and verify sandbox."""
+        # ── Required directories ──
+        for dirname in ["data", "logs", "config", "models", "episodes"]:
+            dirpath = os.path.join(self.install_dir, dirname)
+            os.makedirs(dirpath, exist_ok=True)
+        self.log("  ✔ Directories created (data, logs, config, models, episodes)", "ok")
+
+        # ── .env file ──
+        env_file = os.path.join(self.install_dir, ".env")
+        if not os.path.isfile(env_file):
+            env_example = os.path.join(self.install_dir, ".env.example")
+            model = self.config.get("model", "qwen3.5:0.8b")
+            if os.path.isfile(env_example):
+                with open(env_example, "r") as f:
+                    content = f.read()
+                # Apply user's chosen model
+                content = content.replace("DEFAULT_MODEL=llama3.1:8b", f"DEFAULT_MODEL={model}")
+                # Enable gateway by default
+                content = content.replace("GATEWAY_ENABLED=false", "GATEWAY_ENABLED=true")
+                with open(env_file, "w") as f:
+                    f.write(content)
+            else:
+                # Minimal .env if no example found
+                with open(env_file, "w") as f:
+                    f.write(f"# Open-Sable Configuration\n")
+                    f.write(f"DEFAULT_MODEL={model}\n")
+                    f.write(f"OLLAMA_BASE_URL=http://localhost:11434\n")
+                    f.write(f"GATEWAY_ENABLED=true\n")
+                    f.write(f"WEBCHAT_HOST=127.0.0.1\n")
+                    f.write(f"WEBCHAT_PORT=8789\n")
+                    f.write(f"ENABLE_SANDBOX=true\n")
+                    f.write(f"CLI_ENABLED=false\n")
+            self.log("  ✔ .env created with your settings", "ok")
+        else:
+            self.log("  ✔ .env already exists (preserved)", "ok")
+
+        # ── Agent profile (agents/sable/) ──
+        agents_dir = os.path.join(self.install_dir, "agents", "sable")
+        template_dir = os.path.join(self.install_dir, "agents", "_template")
+        os.makedirs(agents_dir, exist_ok=True)
+        os.makedirs(os.path.join(agents_dir, "data"), exist_ok=True)
+
+        profile_files = {
+            "profile.env": None,
+            "soul.md": None,
+            "tools.json": None,
+        }
+        for fname in profile_files:
+            dest = os.path.join(agents_dir, fname)
+            if not os.path.isfile(dest):
+                template_src = os.path.join(template_dir, fname)
+                if os.path.isfile(template_src):
+                    shutil.copy2(template_src, dest)
+                    # Patch profile.env with user's model
+                    if fname == "profile.env":
+                        model = self.config.get("model", "qwen3.5:0.8b")
+                        with open(dest, "r") as f:
+                            content = f.read()
+                        content = content.replace("DEFAULT_MODEL=qwen3.5:0.8b",
+                                                  f"DEFAULT_MODEL={model}")
+                        content = content.replace("AGENT_NAME=MyAgent",
+                                                  "AGENT_NAME=Sable")
+                        content = content.replace("WEBCHAT_PORT=8792",
+                                                  "WEBCHAT_PORT=8789")
+                        with open(dest, "w") as f:
+                            f.write(content)
+        self.log("  ✔ Agent profile initialized (agents/sable/)", "ok")
+
+        # ── Sandbox verification ──
+        sandbox_file = os.path.join(self.install_dir, "opensable", "core", "sandbox_runner.py")
+        if os.path.isfile(sandbox_file):
+            try:
+                result = subprocess.run(
+                    [self.venv_python, "-c",
+                     "from opensable.core.sandbox_runner import run_sandboxed_python; "
+                     "print(run_sandboxed_python('print(42)', cpu_seconds=2))"],
+                    capture_output=True, text=True, timeout=10,
+                    cwd=self.install_dir
+                )
+                if result.returncode == 0 and "42" in result.stdout:
+                    self.log("  ✔ Sandbox engine verified (process isolation)", "ok")
+                else:
+                    self.log("  ⚠ Sandbox test returned unexpected result", "warning")
+            except Exception:
+                self.log("  ⚠ Sandbox test skipped (will work at runtime)", "warning")
+        else:
+            self.log("  ⚠ Sandbox runner not found", "warning")
+
+        # ── Config/permissions ──
+        perms_file = os.path.join(self.install_dir, "config", "permissions.json")
+        if not os.path.isfile(perms_file):
+            perms_src = os.path.join(self.install_dir, "config", "permissions.json")
+            if not os.path.isfile(perms_src):
+                # Create default permissions
+                perms = {
+                    "default": {
+                        "browser_navigate": "always_allow",
+                        "file_read": "always_allow",
+                        "file_write": "ask",
+                        "system_command": "always_allow",
+                    }
+                }
+                with open(perms_file, "w") as f:
+                    json.dump(perms, f, indent=2)
+                self.log("  ✔ Default permissions created", "ok")
+        else:
+            self.log("  ✔ Permissions config exists", "ok")
 
     def _pull_model(self):
         model = self.config.get("model", "qwen3.5:0.8b")
@@ -1455,6 +1638,64 @@ class InstallerEngine:
         self.log(f"  Pulling {model}...", "dim")
         self._exec(["ollama", "pull", model], check=False)
         self.log(f"  ✔ Model {model} ready", "ok")
+
+    def _install_services(self):
+        """Install updater script + agent systemd/launchd service."""
+        self._install_updater()
+        self._install_agent_service()
+
+    def _install_agent_service(self):
+        """Create a systemd user service / launchd plist for opensable itself."""
+        if IS_LINUX:
+            user_dir = os.path.expanduser("~/.config/systemd/user")
+            os.makedirs(user_dir, exist_ok=True)
+            svc_path = os.path.join(user_dir, "opensable.service")
+            with open(svc_path, "w") as f:
+                f.write(f"[Unit]\nDescription=Open-Sable AI Agent\n")
+                f.write(f"After=network.target ollama.service\n\n")
+                f.write(f"[Service]\nType=simple\n")
+                f.write(f"WorkingDirectory={self.install_dir}\n")
+                f.write(f"ExecStart={self.install_dir}/venv/bin/python -m opensable\n")
+                f.write(f"Restart=on-failure\nRestartSec=10\n")
+                f.write(f"Environment=PYTHONUNBUFFERED=1\n\n")
+                f.write(f"[Install]\nWantedBy=default.target\n")
+            try:
+                subprocess.run(["systemctl", "--user", "daemon-reload"],
+                               capture_output=True, timeout=10)
+                self.log("  ✔ Agent service created (opensable.service)", "ok")
+                self.log("  ℹ  Start with: systemctl --user start opensable", "dim")
+                self.log("  ℹ  Auto-start: systemctl --user enable opensable", "dim")
+            except Exception:
+                self.log("  ✔ Agent service file created", "ok")
+        elif IS_MAC:
+            plist_dir = os.path.expanduser("~/Library/LaunchAgents")
+            os.makedirs(plist_dir, exist_ok=True)
+            plist = os.path.join(plist_dir, "com.ideoalabs.opensable.plist")
+            with open(plist, "w") as f:
+                f.write('<?xml version="1.0" encoding="UTF-8"?>\n')
+                f.write('<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
+                        '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n')
+                f.write('<plist version="1.0"><dict>\n')
+                f.write('<key>Label</key><string>com.ideoalabs.opensable</string>\n')
+                f.write('<key>ProgramArguments</key><array>\n')
+                f.write(f'  <string>{self.install_dir}/venv/bin/python</string>\n')
+                f.write(f'  <string>-m</string>\n')
+                f.write(f'  <string>opensable</string>\n')
+                f.write('</array>\n')
+                f.write(f'<key>WorkingDirectory</key><string>{self.install_dir}</string>\n')
+                f.write('<key>RunAtLoad</key><false/>\n')
+                f.write('<key>KeepAlive</key><false/>\n')
+                f.write('</dict></plist>\n')
+            self.log("  ✔ Agent plist created (com.ideoalabs.opensable)", "ok")
+            self.log("  ℹ  Start with: launchctl load ~/Library/LaunchAgents/com.ideoalabs.opensable.plist", "dim")
+        elif IS_WIN:
+            # Create a start script for Windows
+            start_bat = os.path.join(self.install_dir, "start-opensable.bat")
+            with open(start_bat, "w") as f:
+                f.write(f'@echo off\ncd /d "{self.install_dir}"\n')
+                f.write(f'call venv\\Scripts\\activate.bat\n')
+                f.write(f'python -m opensable %*\n')
+            self.log("  ✔ Start script created (start-opensable.bat)", "ok")
 
     def _install_updater(self):
         updater_path = os.path.join(self.install_dir, "opensable-update")
@@ -1667,8 +1908,10 @@ class InstallerEngine:
 
     def _verify(self):
         errors = 0
+        checks = 0
         if os.path.isfile(self.venv_python):
             self.log("  ✔ Python environment OK", "ok")
+            checks += 1
         else:
             self.log("  ✘ Python environment missing", "error")
             errors += 1
@@ -1677,15 +1920,52 @@ class InstallerEngine:
                                capture_output=True, text=True, timeout=15, cwd=self.install_dir)
             if r.returncode == 0:
                 self.log(f"  ✔ opensable v{r.stdout.strip()}", "ok")
+                checks += 1
             else:
                 self.log("  ✘ opensable import failed", "error")
                 errors += 1
         except Exception:
             self.log("  ⚠ Could not verify import", "warning")
+        # Dashboard
+        dist_index = os.path.join(self.install_dir, "dashboard", "dist", "index.html")
+        if os.path.isfile(dist_index):
+            self.log("  ✔ Dashboard built", "ok")
+            checks += 1
+        else:
+            self.log("  ⚠ Dashboard not built", "warning")
+        # Desktop (Electron)
+        electron_bin = os.path.join(self.install_dir, "desktop", "node_modules", ".bin", "electron")
+        if os.path.isfile(electron_bin):
+            self.log("  ✔ Desktop app ready (Electron)", "ok")
+            checks += 1
+        else:
+            self.log("  ⚠ Desktop app not installed", "warning")
+        # .env
+        env_file = os.path.join(self.install_dir, ".env")
+        if os.path.isfile(env_file):
+            self.log("  ✔ Configuration (.env)", "ok")
+            checks += 1
+        else:
+            self.log("  ⚠ No .env file", "warning")
+        # Agent profile
+        profile_env = os.path.join(self.install_dir, "agents", "sable", "profile.env")
+        if os.path.isfile(profile_env):
+            self.log("  ✔ Agent profile (agents/sable/)", "ok")
+            checks += 1
+        else:
+            self.log("  ⚠ Agent profile not initialized", "warning")
+        # Sandbox
+        sandbox = os.path.join(self.install_dir, "opensable", "core", "sandbox_runner.py")
+        if os.path.isfile(sandbox):
+            self.log("  ✔ Sandbox engine present", "ok")
+            checks += 1
+        # Ollama
         if ollama_running():
             self.log("  ✔ Ollama API OK", "ok")
+            checks += 1
         else:
             self.log("  ⚠ Ollama not running", "warning")
+        self.log(f"\n  {checks} components verified, {errors} error(s)", "ok" if errors == 0 else "warning")
         if errors:
             raise Exception(f"{errors} verification error(s)")
 
