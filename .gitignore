@@ -194,6 +194,7 @@ opensable/skills/zunvra_intel/data/visited_cells.json
 
 validation_framework.json
 .depshield.json
-installers/dist/
 installers/build/
+installers/__pycache__/
+# Keep installer binaries in dist — force-add with git add -f
 
