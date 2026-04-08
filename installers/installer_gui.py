@@ -634,7 +634,7 @@ class ReinstallEngine:
         if not find_node():
             self.log("  ⚠ Node.js not available — skipping", "warning")
             return
-        for project in ["dashboard", "aggr"]:
+        for project in ["dashboard", "desktop", "aggr"]:
             pkg = os.path.join(self.install_dir, project, "package.json")
             if not os.path.isfile(pkg):
                 continue
@@ -644,6 +644,14 @@ class ReinstallEngine:
             if os.path.isdir(nm):
                 shutil.rmtree(nm, ignore_errors=True)
             self._exec(["npm", "install", "--legacy-peer-deps"], cwd=proj_dir, check=False)
+            # Desktop runs via electron, no build step needed
+            if project == "desktop":
+                electron_bin = os.path.join(nm, ".bin", "electron")
+                if os.path.isfile(electron_bin):
+                    self.log(f"  ✔ {project} ready (electron installed)", "ok")
+                else:
+                    self.log(f"  ⚠ {project} — electron binary missing", "warning")
+                continue
             result = self._exec(["npm", "run", "build"], cwd=proj_dir, check=False)
             # Retry on build failure: wipe node_modules and reinstall
             dist_check = os.path.join(proj_dir, "dist", "index.html")
@@ -1409,11 +1417,16 @@ class InstallerEngine:
         if not find_node():
             self.log("  ⚠ Node.js not available — skipping dashboard", "warning")
             return
-        dash = os.path.join(self.install_dir, "dashboard")
-        if os.path.isfile(os.path.join(dash, "package.json")):
-            self._exec(["npm", "install", "--legacy-peer-deps"], cwd=dash, check=False)
-            self._exec(["npm", "run", "build"], cwd=dash, check=False)
-            self.log("  ✔ Dashboard built", "ok")
+        for project in ["dashboard", "desktop"]:
+            proj_dir = os.path.join(self.install_dir, project)
+            pkg = os.path.join(proj_dir, "package.json")
+            if not os.path.isfile(pkg):
+                continue
+            self.log(f"  Building {project}...", "dim")
+            self._exec(["npm", "install", "--legacy-peer-deps"], cwd=proj_dir, check=False)
+            if project != "desktop":  # desktop runs via electron, no build needed
+                self._exec(["npm", "run", "build"], cwd=proj_dir, check=False)
+            self.log(f"  ✔ {project} ready", "ok")
 
     def _pull_model(self):
         model = self.config.get("model", "qwen3.5:0.8b")
