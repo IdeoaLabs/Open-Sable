@@ -515,6 +515,7 @@ class ReinstallEngine:
                 ("Installing Node.js", self._check_node),
                 ("Rebuilding frontends", self._rebuild_node),
                 ("Configuring environment", self._init_environment),
+                ("Clearing old sessions", self._clear_sessions),
                 ("Checking AI model", self._check_model),
                 ("Verifying installation", self._verify),
             ]
@@ -741,6 +742,24 @@ class ReinstallEngine:
             self.log(f"  ✔ Model {model} ready", "ok")
         else:
             self.log(f"  ⚠ Ollama not running — run: ollama pull {model}", "warning")
+
+    def _clear_sessions(self):
+        """Remove old chat sessions from ~/.opensable/ so reinstall feels fresh."""
+        dot_opensable = os.path.join(os.path.expanduser("~"), ".opensable")
+        if not os.path.isdir(dot_opensable):
+            self.log("  No previous sessions found", "dim")
+            return
+        cleared = 0
+        for root, dirs, files in os.walk(dot_opensable):
+            if os.path.basename(root) == "sessions":
+                for f in files:
+                    if f.endswith(".json"):
+                        os.remove(os.path.join(root, f))
+                        cleared += 1
+        if cleared:
+            self.log(f"  ✔ Cleared {cleared} old chat sessions", "ok")
+        else:
+            self.log("  No previous sessions found", "dim")
 
     def _verify(self):
         if os.path.isfile(self.venv_python):
@@ -1022,6 +1041,12 @@ class UninstallEngine:
                 os.remove(p)
                 self.log(f"  ✔ Removed {name}", "ok")
                 removed += 1
+        # Also remove ~/.opensable/ (sessions, caches, runtime state)
+        dot_opensable = os.path.join(os.path.expanduser("~"), ".opensable")
+        if os.path.isdir(dot_opensable):
+            shutil.rmtree(dot_opensable, ignore_errors=True)
+            self.log("  ✔ Removed ~/.opensable/ (sessions & runtime state)", "ok")
+            removed += 1
         if removed == 0:
             self.log("  No user data found", "dim")
 
@@ -1095,6 +1120,7 @@ class InstallerEngine:
                 ("Installing Node.js", self._install_node),
                 ("Building Dashboard & Frontends", self._setup_node),
                 ("Configuring environment", self._init_environment),
+                ("Clearing old sessions", self._clear_sessions),
                 ("Pulling AI model", self._pull_model),
                 ("Creating shortcuts", self._create_shortcuts),
                 ("Setting up services", self._install_services),
@@ -1905,6 +1931,24 @@ class InstallerEngine:
             f.write(f'#!/bin/bash\ncd "{self.install_dir}" && source venv/bin/activate && python -m opensable "$@"\n')
         os.chmod(cli, 0o755)
         self.log("  ✔ Desktop entry + CLI link created", "ok")
+
+    def _clear_sessions(self):
+        """Remove old chat sessions from ~/.opensable/ so install starts fresh."""
+        dot_opensable = os.path.join(os.path.expanduser("~"), ".opensable")
+        if not os.path.isdir(dot_opensable):
+            self.log("  No previous sessions found", "dim")
+            return
+        cleared = 0
+        for root, dirs, files in os.walk(dot_opensable):
+            if os.path.basename(root) == "sessions":
+                for f in files:
+                    if f.endswith(".json"):
+                        os.remove(os.path.join(root, f))
+                        cleared += 1
+        if cleared:
+            self.log(f"  ✔ Cleared {cleared} old chat sessions", "ok")
+        else:
+            self.log("  No previous sessions found", "dim")
 
     def _verify(self):
         errors = 0
