@@ -36,11 +36,12 @@ except ImportError:
 APP_NAME = "Open-Sable"
 APP_VERSION = "1.7.0"
 APP_TAGLINE = "Your Autonomous AI Agent — Think, Learn, Act"
-REPO_URL = "https://github.com/ideoalabs/opensable.git"
+REPO_URL = "https://github.com/IdeoaLabs/Open-Sable.git"
 REPO_BRANCH = "master"
 OLLAMA_WIN_URL = "https://ollama.com/download/OllamaSetup.exe"
 
 IS_WIN = sys.platform == "win32"
+_NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
 IS_MAC = sys.platform == "darwin"
 IS_LINUX = sys.platform.startswith("linux")
 
@@ -214,7 +215,8 @@ def make_button(parent, text, command, bg=BG_INPUT, fg=FG_TEXT,
 def find_python() -> Tuple[Optional[List[str]], Optional[str]]:
     for cmd in [["python3.13"], ["python3.12"], ["python3"], ["python"]]:
         try:
-            r = subprocess.run(cmd + ["--version"], capture_output=True, text=True, timeout=5)
+            r = subprocess.run(cmd + ["--version"], capture_output=True, text=True, timeout=5,
+                               creationflags=_NO_WINDOW)
             if r.returncode == 0:
                 ver = r.stdout.strip().split()[-1]
                 major, minor = map(int, ver.split(".")[:2])
@@ -227,7 +229,8 @@ def find_python() -> Tuple[Optional[List[str]], Optional[str]]:
 
 def find_git() -> Optional[str]:
     try:
-        r = subprocess.run(["git", "--version"], capture_output=True, text=True, timeout=5)
+        r = subprocess.run(["git", "--version"], capture_output=True, text=True, timeout=5,
+                           creationflags=_NO_WINDOW)
         return r.stdout.strip().split()[-1] if r.returncode == 0 else None
     except Exception:
         return None
@@ -235,7 +238,8 @@ def find_git() -> Optional[str]:
 
 def find_node() -> Optional[str]:
     try:
-        r = subprocess.run(["node", "--version"], capture_output=True, text=True, timeout=5)
+        r = subprocess.run(["node", "--version"], capture_output=True, text=True, timeout=5,
+                           creationflags=_NO_WINDOW)
         if r.returncode == 0:
             ver = r.stdout.strip().lstrip("v")
             if int(ver.split(".")[0]) >= 18:
@@ -247,7 +251,8 @@ def find_node() -> Optional[str]:
 
 def find_ollama() -> Optional[str]:
     try:
-        r = subprocess.run(["ollama", "--version"], capture_output=True, text=True, timeout=5)
+        r = subprocess.run(["ollama", "--version"], capture_output=True, text=True, timeout=5,
+                           creationflags=_NO_WINDOW)
         if r.returncode == 0:
             return r.stdout.strip().split()[-1]
     except Exception:
@@ -282,7 +287,7 @@ def get_local_version(install_dir: str) -> str:
 
 def get_remote_version() -> Optional[str]:
     try:
-        url = f"https://raw.githubusercontent.com/ideoalabs/opensable/{REPO_BRANCH}/pyproject.toml"
+        url = f"https://raw.githubusercontent.com/IdeoaLabs/Open-Sable/{REPO_BRANCH}/pyproject.toml"
         r = urllib.request.urlopen(url, timeout=5)
         for line in r.read().decode().splitlines():
             if line.strip().startswith("version"):
@@ -344,7 +349,8 @@ class UpdateEngine:
             proc = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                 cwd=cwd or self.install_dir, text=True, shell=shell,
-                env={**os.environ, "PYTHONUNBUFFERED": "1"}
+                env={**os.environ, "PYTHONUNBUFFERED": "1"},
+                creationflags=_NO_WINDOW,
             )
             output = []
             for line in iter(proc.stdout.readline, ""):
@@ -486,7 +492,8 @@ class ReinstallEngine:
             proc = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                 cwd=cwd or self.install_dir, text=True, shell=shell,
-                env={**os.environ, "PYTHONUNBUFFERED": "1"}
+                env={**os.environ, "PYTHONUNBUFFERED": "1"},
+                creationflags=_NO_WINDOW,
             )
             output = []
             for line in iter(proc.stdout.readline, ""):
@@ -1091,7 +1098,8 @@ class InstallerEngine:
             proc = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                 cwd=cwd or self.install_dir, text=True, shell=shell,
-                env={**os.environ, "PYTHONUNBUFFERED": "1"}
+                env={**os.environ, "PYTHONUNBUFFERED": "1"},
+                creationflags=_NO_WINDOW,
             )
             output = []
             for line in iter(proc.stdout.readline, ""):
@@ -1385,62 +1393,68 @@ class InstallerEngine:
 
         if find_git():
             os.makedirs(os.path.dirname(self.install_dir), exist_ok=True)
-            self._exec(["git", "clone", "--branch", REPO_BRANCH, "--depth", "1",
-                         REPO_URL, self.install_dir],
-                        cwd=os.path.dirname(self.install_dir))
-            self.log("  ✔ Repository cloned", "ok")
-        else:
-            # Fallback: download tarball (no git dependency)
-            self.log("  Git not available — downloading archive...", "dim")
-            url = (f"https://github.com/ideoalabs/opensable/archive/"
-                   f"refs/heads/{REPO_BRANCH}.tar.gz")
-            tarball = os.path.join(tempfile.gettempdir(), "opensable.tar.gz")
-            urllib.request.urlretrieve(url, tarball)
-
-            tmp_extract = tempfile.mkdtemp(prefix="opensable-")
             try:
-                with tarfile.open(tarball) as tf:
-                    try:
-                        tf.extractall(tmp_extract, filter="data")
-                    except TypeError:
-                        tf.extractall(tmp_extract)
+                self._exec(["git", "clone", "--branch", REPO_BRANCH, "--depth", "1",
+                             REPO_URL, self.install_dir],
+                            cwd=os.path.dirname(self.install_dir))
+                self.log("  ✔ Repository cloned", "ok")
+                return
+            except Exception as e:
+                self.log(f"  ⚠ git clone failed: {e}", "warning")
+                self.log("  Falling back to archive download...", "dim")
 
-                # GitHub tarballs have a single top-level dir (e.g., Open-Sable-master/)
-                contents = os.listdir(tmp_extract)
-                src = (os.path.join(tmp_extract, contents[0])
-                       if len(contents) == 1 and os.path.isdir(os.path.join(tmp_extract, contents[0]))
-                       else tmp_extract)
+        # Fallback: download tarball
+        if not find_git():
+            self.log("  Git not available - downloading archive...", "dim")
+        url = (f"https://github.com/IdeoaLabs/Open-Sable/archive/"
+               f"refs/heads/{REPO_BRANCH}.tar.gz")
+        tarball = os.path.join(tempfile.gettempdir(), "opensable.tar.gz")
+        urllib.request.urlretrieve(url, tarball)
 
-                os.makedirs(self.install_dir, exist_ok=True)
-                for item in os.listdir(src):
-                    s, d = os.path.join(src, item), os.path.join(self.install_dir, item)
-                    if os.path.exists(d):
-                        if os.path.isdir(d):
-                            shutil.rmtree(d)
-                        else:
-                            os.remove(d)
-                    shutil.move(s, d)
-            finally:
-                shutil.rmtree(tmp_extract, ignore_errors=True)
+        tmp_extract = tempfile.mkdtemp(prefix="opensable-")
+        try:
+            with tarfile.open(tarball) as tf:
                 try:
-                    os.unlink(tarball)
-                except OSError:
-                    pass
+                    tf.extractall(tmp_extract, filter="data")
+                except TypeError:
+                    tf.extractall(tmp_extract)
 
-            self.log("  ✔ Source code downloaded", "ok")
+            # GitHub tarballs have a single top-level dir (e.g., Open-Sable-master/)
+            contents = os.listdir(tmp_extract)
+            src = (os.path.join(tmp_extract, contents[0])
+                   if len(contents) == 1 and os.path.isdir(os.path.join(tmp_extract, contents[0]))
+                   else tmp_extract)
 
-            # Initialize git for future updates
-            if find_git():
-                try:
-                    self._exec(["git", "init"], check=False)
-                    self._exec(["git", "remote", "add", "origin", REPO_URL], check=False)
-                    self._exec(["git", "fetch", "--depth", "1", "origin", REPO_BRANCH],
-                               check=False)
-                    self._exec(["git", "reset", "--soft", f"origin/{REPO_BRANCH}"],
-                               check=False)
-                    self.log("  ✔ Git initialized for future updates", "ok")
-                except Exception:
-                    self.log("  ⚠ Git init skipped — updates will need manual git setup", "warning")
+            os.makedirs(self.install_dir, exist_ok=True)
+            for item in os.listdir(src):
+                s, d = os.path.join(src, item), os.path.join(self.install_dir, item)
+                if os.path.exists(d):
+                    if os.path.isdir(d):
+                        shutil.rmtree(d)
+                    else:
+                        os.remove(d)
+                shutil.move(s, d)
+        finally:
+            shutil.rmtree(tmp_extract, ignore_errors=True)
+            try:
+                os.unlink(tarball)
+            except OSError:
+                pass
+
+        self.log("  ✔ Source code downloaded", "ok")
+
+        # Initialize git for future updates
+        if find_git():
+            try:
+                self._exec(["git", "init"], check=False)
+                self._exec(["git", "remote", "add", "origin", REPO_URL], check=False)
+                self._exec(["git", "fetch", "--depth", "1", "origin", REPO_BRANCH],
+                           check=False)
+                self._exec(["git", "reset", "--soft", f"origin/{REPO_BRANCH}"],
+                           check=False)
+                self.log("  ✔ Git initialized for future updates", "ok")
+            except Exception:
+                self.log("  ⚠ Git init skipped - updates will need manual git setup", "warning")
 
     def _create_venv(self):
         py_cmd, py_ver = find_python()
