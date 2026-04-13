@@ -121,6 +121,10 @@ class OpenSableConfig(BaseModel):
     # Arena Fighter (fighting-game)
     arena_url: Optional[str] = None  # arena server URL (auto-provisions)
 
+    # Career-ops (job search automation)
+    career_ops_path: Optional[str] = None
+    career_ops_model: str = "gemma4:31b"
+
     # Email & Calendar
     gmail_enabled: bool = True
     gmail_credentials_path: Path = Path("./config/gmail_credentials.json")
@@ -493,6 +497,9 @@ def load_config() -> OpenSableConfig:
         "news_cache_ttl": int(os.getenv("NEWS_CACHE_TTL", "1800")),
         # Arena Fighter
         "arena_url": os.getenv("ARENA_URL") or None,
+        # Career-ops
+        "career_ops_path": os.getenv("CAREER_OPS_PATH") or None,
+        "career_ops_model": os.getenv("CAREER_OPS_MODEL", "gemma4:31b"),
         "calendar_enabled": os.getenv("CALENDAR_ENABLED", "true").lower() == "true",
         "calendar_credentials_path": Path(
             os.getenv("CALENDAR_CREDENTIALS_PATH", "./config/calendar_credentials.json")

@@ -64,6 +64,7 @@ from ._arena import ArenaToolsMixin
 from ._zunvra import ZunvraToolsMixin
 from ._agentmon import AgentMonToolsMixin
 from ._agent_manager import AgentManagerToolsMixin
+from ._career_ops import CareerOpsToolsMixin
 
 from ._permissions import TOOL_PERMISSIONS
 from ._dispatch import SCHEMA_TO_TOOL
@@ -86,6 +87,7 @@ class ToolRegistry(
     ZunvraToolsMixin,
     AgentMonToolsMixin,
     AgentManagerToolsMixin,
+    CareerOpsToolsMixin,
 ):
     """Registry of all available tools/actions.
 
@@ -255,6 +257,14 @@ class ToolRegistry(
             )
         except Exception as e:
             logger.debug(f"Business skills not available: {e}")
+
+        # Career-ops job search skill (conditional)
+        self.career_ops_skill = None
+        try:
+            from ...skills.career_ops.career_ops_skill import CareerOpsSkill
+            self.career_ops_skill = CareerOpsSkill(config)
+        except Exception as e:
+            logger.debug(f"Career-ops skill not available: {e}")
 
     # ── Initialization ────────────────────────────────────────────────────────
 
@@ -517,6 +527,23 @@ class ToolRegistry(
                     logger.info(f"✅ {name} skill initialized")
                 except Exception as e:
                     logger.warning(f"{name} skill initialization failed: {e}")
+
+        # ── Career-ops (Job Search) ────────────────────────────────────────
+        self.register("career_evaluate_offer", self._career_evaluate_offer_tool)
+        self.register("career_generate_cv", self._career_generate_cv_tool)
+        self.register("career_scan_portals", self._career_scan_portals_tool)
+        self.register("career_get_tracker", self._career_get_tracker_tool)
+        self.register("career_merge_tracker", self._career_merge_tracker_tool)
+        self.register("career_prepare_application", self._career_prepare_application_tool)
+        self.register("career_get_report", self._career_get_report_tool)
+
+        # Initialize career-ops skill
+        if self.career_ops_skill:
+            try:
+                await self.career_ops_skill.initialize()
+                logger.info("✅ Career-ops skill initialized")
+            except Exception as e:
+                logger.warning(f"Career-ops skill initialization failed: {e}")
 
         # ── X (Twitter) ──────────────────────────────────────────────────────
         self.register("x_post_tweet", self._x_post_tweet_tool)

@@ -36,6 +36,7 @@ from .arena import SCHEMAS as ARENA_SCHEMAS
 from .zunvra import SCHEMAS as ZUNVRA_SCHEMAS
 from .agentmon import SCHEMAS as AGENTMON_SCHEMAS
 from .agent_manager import SCHEMAS as AGENT_MANAGER_SCHEMAS
+from .career_ops import SCHEMAS as CAREER_OPS_SCHEMAS
 
 
 def get_all_schemas() -> List[Dict[str, Any]]:
@@ -70,4 +71,5 @@ def get_all_schemas() -> List[Dict[str, Any]]:
     all_schemas.extend(ZUNVRA_SCHEMAS)
     all_schemas.extend(AGENTMON_SCHEMAS)
     all_schemas.extend(AGENT_MANAGER_SCHEMAS)
+    all_schemas.extend(CAREER_OPS_SCHEMAS)
     return all_schemas
