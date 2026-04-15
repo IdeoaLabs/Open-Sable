@@ -89,7 +89,7 @@ ICON_PNG = LOGO_PATH
 # JavaScript bootstrap for the macOS .app bundle
 ELECTRON_BOOTSTRAP_JS = r"""'use strict';
 
-const { app } = require('electron');
+const { app, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -110,6 +110,16 @@ if (fs.existsSync(envPath)) {
 }
 process.env.WEBCHAT_PORT = process.env.WEBCHAT_PORT || '8789';
 process.env.WEBCHAT_HOST = process.env.WEBCHAT_HOST || 'localhost';
+// Prevent start.sh from launching a second Electron window
+process.env.DESKTOP_ENABLED = 'false';
+
+// Set dock icon to Sable logo
+const iconPath = path.join(__dirname, '..', 'opensable.icns');
+if (process.platform === 'darwin' && fs.existsSync(iconPath)) {
+  app.whenReady().then(() => {
+    try { app.dock.setIcon(nativeImage.createFromPath(iconPath)); } catch (_) {}
+  });
+}
 
 function isBackendRunning() {
   try {
@@ -2790,7 +2800,8 @@ class InstallerApp(tk.Tk):
                 self.after(1000, self.destroy)
                 return
 
-        # Start backend
+        # Start backend (with DESKTOP_ENABLED=false to avoid double Electron)
+        launch_env = {**os.environ, "DESKTOP_ENABLED": "false"}
         if IS_WIN:
             bat = os.path.join(install_dir, "opensable.bat")
             if os.path.isfile(bat):
@@ -2800,11 +2811,11 @@ class InstallerApp(tk.Tk):
                                   f"cd /d {install_dir} && venv\\Scripts\\activate.bat && python -m opensable"],
                                  cwd=install_dir)
         elif os.path.isfile(start_sh):
-            subprocess.Popen(["bash", start_sh, "start"], cwd=install_dir)
+            subprocess.Popen(["bash", start_sh, "start"], cwd=install_dir, env=launch_env)
         else:
             subprocess.Popen(["bash", "-c",
                               f"cd '{install_dir}' && source venv/bin/activate && python -m opensable"],
-                             cwd=install_dir)
+                             cwd=install_dir, env=launch_env)
 
         # Launch desktop app (Electron)
         def _open_desktop():
