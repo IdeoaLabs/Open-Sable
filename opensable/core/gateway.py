@@ -2191,6 +2191,7 @@ class Gateway:
             "action": action,
             "tool": tool_name,
             "arguments": display_args,
+            "userId": user_id,
             "message": f"Allow {tool_name}?",
         }
 
@@ -2223,11 +2224,15 @@ class Gateway:
             # Optionally persist the choice
             if remember and allowed:
                 action_str = msg.get("action", "")
+                user_id = msg.get("userId", "default")
                 try:
                     from opensable.core.security import ActionType, PermissionLevel
                     action = ActionType(action_str)
-                    pm.set_permission("default", action, PermissionLevel.ALWAYS_ALLOW)
-                    logger.info(f"[Gateway] Permission {action_str} set to always_allow (remembered)")
+                    # Save under both the requesting user_id and default
+                    pm.set_permission(user_id, action, PermissionLevel.ALWAYS_ALLOW)
+                    if user_id != "default":
+                        pm.set_permission("default", action, PermissionLevel.ALWAYS_ALLOW)
+                    logger.info(f"[Gateway] Permission {action_str} set to always_allow for {user_id} (remembered)")
                 except Exception:
                     pass
     async def _on_llm_status(self, client: _Client, msg: dict = None):

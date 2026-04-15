@@ -388,8 +388,7 @@ export function useWebSocket(onExternalMessage) {
         requestId,
         allowed,
         remember,
-        action: pendingPermission?.action || '',
-      }));
+        action: pendingPermission?.action || '',        userId: pending?.userId || 'default',      }));
     }
     setPendingPermission(null);
   }, [pendingPermission]);

@@ -562,6 +562,7 @@ export const useSableStore = create((set, get) => ({
         allowed,
         remember,
         action: pendingPermission?.action || '',
+        userId: pendingPermission?.userId || 'default',
       }))
     }
     set({ pendingPermission: null })
