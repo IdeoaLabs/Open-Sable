@@ -20,6 +20,16 @@ const ACTION_ICONS = {
   calendar_write: '📅',
 };
 
+const ACTION_DESCRIPTIONS = {
+  browser_navigate: 'The agent wants to open a web page. This allows it to browse, scrape, or interact with websites on your behalf.',
+  file_write: 'The agent wants to create or modify a file on your system. Review the path below to make sure it\'s expected.',
+  file_delete: 'The agent wants to permanently delete a file. This action cannot be undone — review carefully.',
+  system_command: 'The agent wants to run a shell command on your machine. Only allow if you trust the command shown below.',
+  email_send: 'The agent wants to send an email from your account. Check the recipient and content before approving.',
+  email_read: 'The agent wants to read emails from your inbox. This lets it access message contents and metadata.',
+  calendar_write: 'The agent wants to create or modify a calendar event. Review the details below.',
+};
+
 const overlayStyle = {
   position: 'fixed', inset: 0, zIndex: 10000,
   background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)',
@@ -78,8 +88,11 @@ export default function PermissionDialog({ pending, onRespond }) {
         </div>
 
         {/* Body */}
-        <p style={{ fontSize: 13, color: 'var(--text-secondary, #bbb)', margin: '0 0 8px', lineHeight: 1.5 }}>
+        <p style={{ fontSize: 13, color: 'var(--text-secondary, #bbb)', margin: '0 0 4px', lineHeight: 1.5 }}>
           Sable wants to use <strong style={{ color: 'var(--text-primary, #eee)' }}>{label}</strong>
+        </p>
+        <p style={{ fontSize: 11, color: 'var(--text-muted, #888)', margin: '0 0 10px', lineHeight: 1.5 }}>
+          {ACTION_DESCRIPTIONS[pending.action] || 'The agent is requesting access to a protected action. Review the details below before deciding.'}
         </p>
         <div style={{
           background: 'var(--bg-secondary, #252540)', borderRadius: 6, padding: '6px 10px',

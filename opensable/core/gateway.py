@@ -2170,15 +2170,27 @@ class Gateway:
         pm = self.agent.tools._permission_manager
         fut = pm.create_pending(request_id)
 
+        # Resolve relative paths to absolute so the user sees exactly which file
+        display_args: dict[str, object] = {}
+        for k, v in (tool_args or {}).items():
+            if isinstance(v, str):
+                if k in ("path", "file_path", "filepath", "filename", "dest", "src"):
+                    try:
+                        resolved = str((self._project_root / v).resolve())
+                        display_args[k] = resolved[:300]
+                    except Exception:
+                        display_args[k] = str(v)[:200]
+                else:
+                    display_args[k] = str(v)[:200]
+            else:
+                display_args[k] = v
+
         payload = {
             "type": "permission.request",
             "requestId": request_id,
             "action": action,
             "tool": tool_name,
-            "arguments": {
-                k: (str(v)[:200] if isinstance(v, str) else v)
-                for k, v in (tool_args or {}).items()
-            },
+            "arguments": display_args,
             "message": f"Allow {tool_name}?",
         }
 

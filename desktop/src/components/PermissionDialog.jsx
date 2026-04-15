@@ -21,6 +21,16 @@ const ACTION_ICONS = {
   calendar_write: '📅',
 }
 
+const ACTION_DESCRIPTIONS = {
+  browser_navigate: 'The agent wants to open a web page. This allows it to browse, scrape, or interact with websites on your behalf.',
+  file_write: 'The agent wants to create or modify a file on your system. Review the path below to make sure it\'s expected.',
+  file_delete: 'The agent wants to permanently delete a file. This action cannot be undone — review carefully.',
+  system_command: 'The agent wants to run a shell command on your machine. Only allow if you trust the command shown below.',
+  email_send: 'The agent wants to send an email from your account. Check the recipient and content before approving.',
+  email_read: 'The agent wants to read emails from your inbox. This lets it access message contents and metadata.',
+  calendar_write: 'The agent wants to create or modify a calendar event. Review the details below.',
+}
+
 export default function PermissionDialog() {
   const pending = useSableStore(s => s.pendingPermission)
   const respond = useSableStore(s => s.respondPermission)
@@ -64,6 +74,9 @@ export default function PermissionDialog() {
         <div className="permission-body">
           <p className="permission-question">
             Sable wants to use <strong>{label}</strong>
+          </p>
+          <p className="permission-description" style={{ fontSize: 11, opacity: 0.7, margin: '4px 0 10px', lineHeight: 1.5 }}>
+            {ACTION_DESCRIPTIONS[pending.action] || 'The agent is requesting access to a protected action. Review the details below before deciding.'}
           </p>
           <div className="permission-tool">
             <code>{pending.tool}</code>
