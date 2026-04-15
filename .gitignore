@@ -182,6 +182,7 @@ epistemic_wary.png
 data/agent_output/
 /agents/nano/
 /agents/nano-sweaters/
+/agents/btc-5min-scalper/
 tournament-operation-requirements.md
 opensable/data/operation_diary.json
 opensable/data/operation_dossier.json

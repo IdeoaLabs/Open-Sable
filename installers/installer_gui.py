@@ -1282,13 +1282,18 @@ class InstallerEngine:
             self.log("  ✔ Repository updated", "ok")
             return
 
+        cloned = False
         if find_git():
             os.makedirs(os.path.dirname(self.install_dir), exist_ok=True)
-            self._exec(["git", "clone", "--branch", REPO_BRANCH, "--depth", "1",
+            result = self._exec(["git", "clone", "--branch", REPO_BRANCH, "--depth", "1",
                          REPO_URL, self.install_dir],
-                        cwd=os.path.dirname(self.install_dir))
-            self.log("  ✔ Repository cloned", "ok")
-        else:
+                        cwd=os.path.dirname(self.install_dir), check=False)
+            if os.path.isdir(os.path.join(self.install_dir, ".git")):
+                self.log("  ✔ Repository cloned", "ok")
+                cloned = True
+            else:
+                self.log("  ⚠ git clone failed — falling back to archive download", "warning")
+        if not cloned:
             # Fallback: download tarball (no git dependency)
             self.log("  Git not available — downloading archive...", "dim")
             url = (f"https://github.com/ideoalabs/opensable/archive/"
