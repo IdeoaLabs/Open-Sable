@@ -545,6 +545,12 @@ class ReinstallEngine:
                     "method": "gui-reinstall",
                 }, f, indent=2)
             self.log("\n✔ Reinstall complete! Everything rebuilt.", "success")
+            # Refresh install marker
+            try:
+                Path(os.path.join(self.install_dir, ".installed")).write_text(
+                    f"installed={datetime.now().isoformat()}\n")
+            except OSError:
+                pass
             self.done(True, None)
         except Exception as e:
             self.log(f"\n✘ Reinstall error: {e}", "error")
@@ -875,6 +881,13 @@ class UninstallEngine:
             if kept:
                 self.log(f"  Kept: {', '.join(kept)}", "dim")
             self.log(f"  Location: {self.install_dir}", "dim")
+            # Remove install marker so GUI shows fresh-install page next time
+            marker = os.path.join(self.install_dir, ".installed")
+            if os.path.isfile(marker):
+                try:
+                    os.remove(marker)
+                except OSError:
+                    pass
             self.done(True, None)
         except Exception as e:
             self.log(f"\n✘ Uninstall error: {e}", "error")
@@ -1147,6 +1160,12 @@ class InstallerEngine:
             self.progress(100, "Installation complete!")
             self.log("\n✔ Open-Sable installed successfully!", "success")
             self.log(f"  Location: {self.install_dir}", "dim")
+            # Write install marker
+            try:
+                Path(os.path.join(self.install_dir, ".installed")).write_text(
+                    f"installed={datetime.now().isoformat()}\n")
+            except OSError:
+                pass
             self.done(True, None)
         except Exception as e:
             self.log(f"\n✘ Installation error: {e}", "error")
@@ -2154,7 +2173,8 @@ class InstallerApp(tk.Tk):
         install_dir = self.install_dir_var.get()
         is_installed = (os.path.isdir(install_dir)
                         and os.path.isfile(os.path.join(install_dir, "pyproject.toml"))
-                        and os.path.isdir(os.path.join(install_dir, "opensable")))
+                        and os.path.isdir(os.path.join(install_dir, "opensable"))
+                        and os.path.isfile(os.path.join(install_dir, ".installed")))
 
         if is_installed:
             local_ver = get_local_version(install_dir)
@@ -2280,41 +2300,30 @@ class InstallerApp(tk.Tk):
         header.pack(fill="x", padx=30, pady=(20, 10))
         ttk.Label(header, text="Configuration", style="Title.TLabel").pack(anchor="w")
 
-        # Scrollable area
-        canvas = tk.Canvas(page, bg=BG_DARK, highlightthickness=0)
-        scrollbar = ttk.Scrollbar(page, orient="vertical", command=canvas.yview)
-        scroll_frame = tk.Frame(canvas, bg=BG_DARK)
+        # Scrollable area using Text widget (Tk 9.0 macOS native scroll)
+        scroll_text = tk.Text(page, bg=BG_DARK, highlightthickness=0, bd=0,
+                              cursor="arrow", wrap="none", padx=30)
+        scroll_sb = ttk.Scrollbar(page, orient="vertical", command=scroll_text.yview)
+        scroll_text.configure(yscrollcommand=scroll_sb.set)
+        scroll_sb.pack(side="right", fill="y")
+        scroll_text.pack(side="left", fill="both", expand=True)
 
-        scroll_frame.bind("<Configure>",
-                          lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas.create_window((0, 0), window=scroll_frame, anchor="nw",
-                             width=660)
-        canvas.configure(yscrollcommand=scrollbar.set)
+        def _embed(widget):
+            """Embed a frame into the scrollable Text widget, full width."""
+            scroll_text.window_create("end", window=widget, stretch=True)
+            scroll_text.insert("end", "\n")
 
-        canvas.pack(side="left", fill="both", expand=True, padx=30)
-        scrollbar.pack(side="right", fill="y")
-
-        # Mousewheel scrolling (Linux X11)
-        def _on_mousewheel(event):
-            canvas.yview_scroll(-1 if event.num == 4 else 1, "units")
-
-        def _bind_mousewheel(event):
-            canvas.bind_all("<Button-4>", _on_mousewheel)
-            canvas.bind_all("<Button-5>", _on_mousewheel)
-
-        def _unbind_mousewheel(event):
-            canvas.unbind_all("<Button-4>")
-            canvas.unbind_all("<Button-5>")
-
-        canvas.bind("<Map>", _bind_mousewheel)
-        canvas.bind("<Unmap>", _unbind_mousewheel)
-        # Also Windows/Mac
-        canvas.bind_all("<MouseWheel>",
-                        lambda e: canvas.yview_scroll(int(-1 * (e.delta / 120)), "units"))
+        # Auto-resize embedded frames to fill the Text widget width
+        def _on_configure(event):
+            w = event.width - 60  # account for padx on both sides
+            if w < 100:
+                return
+            for name in scroll_text.window_names():
+                scroll_text.window_configure(name, minwidth=w)
+        scroll_text.bind("<Configure>", _on_configure)
 
         # ── Install location ──
-        loc_frame = tk.Frame(scroll_frame, bg=BG_DARK)
-        loc_frame.pack(fill="x", pady=(10, 15))
+        loc_frame = tk.Frame(scroll_text, bg=BG_DARK)
         ttk.Label(loc_frame, text="Install Location").pack(anchor="w")
         row = tk.Frame(loc_frame, bg=BG_DARK)
         row.pack(fill="x", pady=5)
@@ -2325,10 +2334,10 @@ class InstallerApp(tk.Tk):
                    bg=BG_INPUT, fg=FG_TEXT, hover_bg=BG_CARD,
                    font=("Segoe UI", 9), padx=10, pady=5
                    ).pack(side="left", padx=(5, 0))
+        _embed(loc_frame)
 
         # ── Dependencies status ──
-        dep_frame = tk.Frame(scroll_frame, bg=BG_DARK)
-        dep_frame.pack(fill="x", pady=(0, 10))
+        dep_frame = tk.Frame(scroll_text, bg=BG_DARK)
         ttk.Label(dep_frame, text="Dependencies").pack(anchor="w", pady=(0, 5))
 
         deps = [
@@ -2346,28 +2355,27 @@ class InstallerApp(tk.Tk):
             else:
                 ttk.Label(r, text=f"  ○ {name} (will be installed)", foreground=WARNING_C,
                           font=("Segoe UI", 10)).pack(anchor="w")
+        _embed(dep_frame)
 
         # ── Model selection ──
-        model_frame = tk.Frame(scroll_frame, bg=BG_DARK)
-        model_frame.pack(fill="x", pady=(10, 5))
+        model_frame = tk.Frame(scroll_text, bg=BG_DARK)
         ttk.Label(model_frame, text="AI Model (all support <thinking>)").pack(anchor="w", pady=(0, 5))
 
         for value, label in MODELS:
             ttk.Radiobutton(model_frame, text=label, variable=self.model_var,
                            value=value).pack(anchor="w", padx=10, pady=1)
+        _embed(model_frame)
 
         # ── Options ──
-        opt_frame = tk.Frame(scroll_frame, bg=BG_DARK)
-        opt_frame.pack(fill="x", pady=(15, 10))
+        opt_frame = tk.Frame(scroll_text, bg=BG_DARK)
         ttk.Checkbutton(opt_frame, text="Install Ollama (if not present)",
                         variable=self.install_ollama_var).pack(anchor="w")
         ttk.Checkbutton(opt_frame, text="Install Node.js (if not present)",
                         variable=self.install_node_var).pack(anchor="w")
+        _embed(opt_frame)
 
         # ── Buttons ──
-        btn_frame = tk.Frame(scroll_frame, bg=BG_DARK)
-        btn_frame.pack(fill="x", pady=(15, 20))
-
+        btn_frame = tk.Frame(scroll_text, bg=BG_DARK)
         make_button(btn_frame, text="← Back",
                    command=lambda: self._show_page(0),
                    bg=BG_INPUT, fg=FG_TEXT, hover_bg=BG_CARD,
@@ -2378,7 +2386,9 @@ class InstallerApp(tk.Tk):
                    bg=ACCENT, fg=BG_DARK, hover_bg=ACCENT_HOVER, hover_fg=BG_DARK,
                    font=("Segoe UI", 12, "bold"), padx=25, pady=8
                    ).pack(side="right")
+        _embed(btn_frame)
 
+        scroll_text.configure(state="disabled")
         return page
 
     # ── Page 2: Progress ─────────────────────────────────────────────
@@ -2573,18 +2583,37 @@ class InstallerApp(tk.Tk):
         page = tk.Frame(self._container, bg=BG_DARK)
         page.pack(fill="both", expand=True)
 
+        # Scrollable area using Text widget (Tk 9.0 macOS native scroll)
+        scroll_text = tk.Text(page, bg=BG_DARK, highlightthickness=0, bd=0,
+                              cursor="arrow", wrap="none", padx=30)
+        scroll_sb = ttk.Scrollbar(page, orient="vertical", command=scroll_text.yview)
+        scroll_text.configure(yscrollcommand=scroll_sb.set)
+        scroll_sb.pack(side="right", fill="y")
+        scroll_text.pack(side="left", fill="both", expand=True)
+
+        def _embed(widget):
+            scroll_text.window_create("end", window=widget, stretch=True)
+            scroll_text.insert("end", "\n")
+
+        def _on_configure(event):
+            w = event.width - 60
+            if w < 100:
+                return
+            for name in scroll_text.window_names():
+                scroll_text.window_configure(name, minwidth=w)
+        scroll_text.bind("<Configure>", _on_configure)
+
         # Header
-        header = tk.Frame(page, bg=BG_DARK)
-        header.pack(fill="x", padx=30, pady=(25, 5))
+        header = tk.Frame(scroll_text, bg=BG_DARK)
         ttk.Label(header, text="🗑  Uninstall Open-Sable",
                   font=("Segoe UI", 18, "bold"),
                   foreground=ERROR_C, background=BG_DARK).pack(anchor="w")
         ttk.Label(header, text="Select what you want to remove:",
                   style="Subtitle.TLabel").pack(anchor="w", pady=(2, 0))
+        _embed(header)
 
         # Checkboxes with descriptions
-        checks_frame = tk.Frame(page, bg=BG_DARK)
-        checks_frame.pack(fill="x", padx=30, pady=(15, 10))
+        checks_frame = tk.Frame(scroll_text, bg=BG_DARK)
 
         vars_dict = {}
 
@@ -2649,18 +2678,18 @@ class InstallerApp(tk.Tk):
         _add_check("user_data", "User Data (CAUTION)",
                    "agents/, data/, episodes/, logs/, models/, .env — YOUR personal data",
                    default=False, has_it=has_data)
+        _embed(checks_frame)
 
         # Warning label
-        warn_frame = tk.Frame(page, bg=BG_DARK)
-        warn_frame.pack(fill="x", padx=30, pady=(5, 10))
+        warn_frame = tk.Frame(scroll_text, bg=BG_DARK)
         tk.Label(warn_frame, text="⚠  Source code (git repo) will NOT be removed.",
                  fg=FG_DIM, bg=BG_DARK, font=("Segoe UI", 9)).pack(anchor="w")
         tk.Label(warn_frame, text="    You can always reinstall from the same folder.",
                  fg=FG_DIM, bg=BG_DARK, font=("Segoe UI", 9)).pack(anchor="w")
+        _embed(warn_frame)
 
         # Buttons
-        btn_frame = tk.Frame(page, bg=BG_DARK)
-        btn_frame.pack(fill="x", padx=30, pady=(5, 20))
+        btn_frame = tk.Frame(scroll_text, bg=BG_DARK)
 
         def _go_back():
             page.destroy()
@@ -2700,6 +2729,9 @@ class InstallerApp(tk.Tk):
                    bg="#5c1a1a", fg="#ff6b6b", hover_bg="#7a2020", hover_fg="#ff6b6b",
                    font=("Segoe UI", 12, "bold"), padx=20, pady=8
                    ).pack(side="right")
+        _embed(btn_frame)
+
+        scroll_text.configure(state="disabled")
 
     def _cancel_install(self):
         if self.engine:
