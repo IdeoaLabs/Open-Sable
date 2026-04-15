@@ -726,11 +726,13 @@ class ReinstallEngine:
                     content = f.read()
                 content = content.replace("DEFAULT_MODEL=llama3.1:8b", f"DEFAULT_MODEL={model}")
                 content = content.replace("GATEWAY_ENABLED=false", "GATEWAY_ENABLED=true")
+                # Disable auto-select so the user's chosen model sticks
+                content = content.replace("AUTO_SELECT_MODEL=true", "AUTO_SELECT_MODEL=false")
                 with open(env_file, "w") as f:
                     f.write(content)
             else:
                 with open(env_file, "w") as f:
-                    f.write(f"DEFAULT_MODEL={model}\nGATEWAY_ENABLED=true\nWEBCHAT_PORT=8789\n")
+                    f.write(f"DEFAULT_MODEL={model}\nAUTO_SELECT_MODEL=false\nGATEWAY_ENABLED=true\nWEBCHAT_PORT=8789\n")
             self.log("  ✔ .env created", "ok")
         else:
             self.log("  ✔ .env preserved", "ok")
@@ -1608,6 +1610,8 @@ class InstallerEngine:
                     content = f.read()
                 # Apply user's chosen model
                 content = content.replace("DEFAULT_MODEL=llama3.1:8b", f"DEFAULT_MODEL={model}")
+                # Disable auto-select so the user's chosen model sticks
+                content = content.replace("AUTO_SELECT_MODEL=true", "AUTO_SELECT_MODEL=false")
                 # Enable gateway by default
                 content = content.replace("GATEWAY_ENABLED=false", "GATEWAY_ENABLED=true")
                 with open(env_file, "w") as f:
@@ -1617,6 +1621,7 @@ class InstallerEngine:
                 with open(env_file, "w") as f:
                     f.write(f"# Open-Sable Configuration\n")
                     f.write(f"DEFAULT_MODEL={model}\n")
+                    f.write(f"AUTO_SELECT_MODEL=false\n")
                     f.write(f"OLLAMA_BASE_URL=http://localhost:11434\n")
                     f.write(f"GATEWAY_ENABLED=true\n")
                     f.write(f"WEBCHAT_HOST=127.0.0.1\n")
