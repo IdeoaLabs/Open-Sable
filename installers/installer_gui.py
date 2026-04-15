@@ -1922,6 +1922,16 @@ class InstallerEngine:
         except Exception:
             pass
 
+        # Refresh icon cache so macOS picks up our icon
+        try:
+            lsregister = ("/System/Library/Frameworks/CoreServices.framework"
+                          "/Frameworks/LaunchServices.framework/Support/lsregister")
+            if os.path.isfile(lsregister):
+                subprocess.run([lsregister, "-f", app_bundle], capture_output=True, check=False)
+            subprocess.run(["touch", app_bundle], capture_output=True, check=False)
+        except Exception:
+            pass
+
         self.log("  ✔ Open-Sable.app created in ~/Applications", "ok")
 
     def _shortcuts_linux(self):
@@ -2740,6 +2750,14 @@ class InstallerApp(tk.Tk):
         install_dir = self.install_dir_var.get()
         start_sh = os.path.join(install_dir, "start.sh")
 
+        if IS_MAC:
+            # On macOS, the .app bundle handles both backend start and Electron launch
+            app_bundle = os.path.expanduser("~/Applications/Open-Sable.app")
+            if os.path.isdir(app_bundle):
+                subprocess.Popen(["open", app_bundle])
+                self.after(1000, self.destroy)
+                return
+
         # Start backend
         if IS_WIN:
             bat = os.path.join(install_dir, "opensable.bat")
@@ -2756,14 +2774,9 @@ class InstallerApp(tk.Tk):
                               f"cd '{install_dir}' && source venv/bin/activate && python -m opensable"],
                              cwd=install_dir)
 
-        # Launch desktop app (Electron) or .app bundle
+        # Launch desktop app (Electron)
         def _open_desktop():
             time.sleep(4)  # wait for backend to start
-            if IS_MAC:
-                app_bundle = os.path.expanduser("~/Applications/Open-Sable.app")
-                if os.path.isdir(app_bundle):
-                    subprocess.Popen(["open", app_bundle])
-                    return
             electron = os.path.join(install_dir, "desktop", "node_modules", ".bin", "electron")
             if os.path.isfile(electron):
                 subprocess.Popen([electron, os.path.join(install_dir, "desktop")],
