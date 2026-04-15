@@ -2488,16 +2488,17 @@ class InstallerApp(tk.Tk):
         btn_row = tk.Frame(content, bg=BG_DARK)
         btn_row.pack(pady=10)
 
-        make_button(btn_row, text="  🚀 Launch Open-Sable  ",
+        self._done_launch_btn = make_button(btn_row, text="  🚀 Launch Open-Sable  ",
                    command=self._launch,
                    bg=ACCENT, fg=BG_DARK, hover_bg=ACCENT_HOVER, hover_fg=BG_DARK,
-                   font=("Segoe UI", 13, "bold"), padx=25, pady=10
-                   ).pack(side="left", padx=5)
+                   font=("Segoe UI", 13, "bold"), padx=25, pady=10)
+        self._done_launch_btn.pack(side="left", padx=5)
 
-        make_button(btn_row, text=" 📂 Open Folder ",
+        self._done_folder_btn = make_button(btn_row, text=" 📂 Open Folder ",
                    command=self._open_folder,
                    bg=BG_INPUT, fg=FG_TEXT, hover_bg=BG_CARD,
-                   padx=15, pady=8).pack(side="left", padx=5)
+                   padx=15, pady=8)
+        self._done_folder_btn.pack(side="left", padx=5)
 
         # Start Over button
         make_button(content, text="← Start Over",
@@ -2777,10 +2778,19 @@ class InstallerApp(tk.Tk):
     def _do_done(self, success, error):
         self._cancel_btn.configure(text="Cancel", fg=ERROR_C, cursor="hand2")
         self._cancel_btn.bind("<Button-1>", lambda e: self._cancel_install())
+        is_uninstall = isinstance(self.engine, UninstallEngine)
         if success:
             self._done_icon.configure(text="✔", foreground=ACCENT)
-            self._done_title.configure(text="Complete!")
-            self._done_subtitle.configure(text="Open-Sable is ready to use.")
+            if is_uninstall:
+                self._done_title.configure(text="Uninstall Complete!")
+                self._done_subtitle.configure(text="Selected components have been removed.")
+                self._done_launch_btn.pack_forget()
+                self._done_folder_btn.pack_forget()
+            else:
+                self._done_title.configure(text="Complete!")
+                self._done_subtitle.configure(text="Open-Sable is ready to use.")
+                self._done_launch_btn.pack(side="left", padx=5)
+                self._done_folder_btn.pack(side="left", padx=5)
             self._show_page(3)
         else:
             self._done_icon.configure(text="✘", foreground=ERROR_C)
