@@ -1,0 +1,86 @@
+name: Build Installers
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: |
+          sudo apt-get update && sudo apt-get install -y python3-tk
+          pip install pyinstaller
+      - name: Build Linux installer
+        working-directory: installers
+        run: pyinstaller opensable-installer-linux.spec --clean --noconfirm
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenSable-Installer-Linux-x86_64
+          path: installers/dist/OpenSable-Installer-Linux-x86_64
+
+  build-windows-x64:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: x64
+      - name: Install PyInstaller
+        run: pip install pyinstaller
+      - name: Build Windows x64 installer
+        working-directory: installers
+        run: pyinstaller opensable-installer-windows.spec --clean --noconfirm
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenSable-Installer-Windows-x64
+          path: installers/dist/OpenSable-Installer-Windows-x64.exe
+
+  build-windows-x86:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: x86
+      - name: Install PyInstaller
+        run: pip install pyinstaller
+      - name: Build Windows x86 installer
+        working-directory: installers
+        run: pyinstaller opensable-installer-windows.spec --clean --noconfirm
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenSable-Installer-Windows-x86
+          path: installers/dist/OpenSable-Installer-Windows-x86.exe
+
+  release:
+    needs: [build-linux, build-windows-x64, build-windows-x86]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/OpenSable-Installer-Linux-x86_64/OpenSable-Installer-Linux-x86_64
+            artifacts/OpenSable-Installer-Windows-x64/OpenSable-Installer-Windows-x64.exe
+            artifacts/OpenSable-Installer-Windows-x86/OpenSable-Installer-Windows-x86.exe
+          draft: false
+          prerelease: false

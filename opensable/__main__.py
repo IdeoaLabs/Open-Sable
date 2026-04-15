@@ -40,6 +40,36 @@ def setup_logging(log_level: str = "INFO"):
     )
 
 
+def _launch_desktop():
+    """Launch Electron desktop app if available, otherwise open browser."""
+    import subprocess
+    import threading
+
+    _log = logging.getLogger("opensable")
+
+    def _open():
+        try:
+            base = Path(__file__).resolve().parent.parent
+            desktop_dir = base / "desktop"
+            electron = desktop_dir / "node_modules" / ".bin" / "electron"
+            if electron.exists():
+                subprocess.Popen(
+                    [str(electron), str(desktop_dir)],
+                    cwd=str(base),
+                    env={**os.environ, "WEBCHAT_PORT": "8789", "WEBCHAT_HOST": "localhost"},
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                )
+                _log.info("🖥️  Desktop app launched")
+            else:
+                import webbrowser
+                webbrowser.open("http://127.0.0.1:8789")
+                _log.info("🌐 Opened browser to gateway")
+        except Exception as e:
+            _log.warning(f"Desktop launch failed: {e}")
+
+    threading.Thread(target=_open, daemon=True).start()
+
+
 async def async_main():
     """Main async entry point"""
     import argparse
@@ -386,6 +416,7 @@ async def async_main():
             )
             console.print("[dim]Add tokens to .env for Telegram, Discord, WhatsApp, Slack[/dim]")
             console.print("[dim]Type Ctrl+C to stop[/dim]")
+            _launch_desktop()
             try:
                 await asyncio.Event().wait()
             finally:
@@ -405,6 +436,7 @@ async def async_main():
             f"[dim]Agent: {config.agent_name} | Personality: {config.agent_personality}[/dim]"
         )
         console.print("[dim]Type Ctrl+C to stop[/dim]")
+        _launch_desktop()
 
         try:
             await asyncio.gather(*[interface.start() for interface in interfaces])

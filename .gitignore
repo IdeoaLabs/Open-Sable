@@ -140,8 +140,11 @@ desktop/release/
 desktop/out/
 desktop/.env
 .desktop.pid
+# Agent runtime data — NEVER commit (conversations, memory, state, vectordb, etc.)
+agents/*/data
+!agents/_template/data/
 agents/nexus_erebus/
-/agents/sable/data
+agents/btc-5min-scalper/
 # All agent profile.env files contain credentials,  only EXAMPLE files go to repo
 agents/*/profile.env
 .sable-analyst.pid
@@ -195,6 +198,7 @@ opensable/skills/zunvra_intel/data/visited_cells.json
 
 validation_framework.json
 .depshield.json
-installers/dist/
 installers/build/
+installers/__pycache__/
+# Keep installer binaries in dist — force-add with git add -f
 

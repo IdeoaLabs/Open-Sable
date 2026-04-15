@@ -36,11 +36,12 @@ except ImportError:
 APP_NAME = "Open-Sable"
 APP_VERSION = "1.7.0"
 APP_TAGLINE = "Your Autonomous AI Agent — Think, Learn, Act"
-REPO_URL = "https://github.com/ideoalabs/opensable.git"
+REPO_URL = "https://github.com/IdeoaLabs/Open-Sable.git"
 REPO_BRANCH = "master"
 OLLAMA_WIN_URL = "https://ollama.com/download/OllamaSetup.exe"
 
 IS_WIN = sys.platform == "win32"
+_NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
 IS_MAC = sys.platform == "darwin"
 IS_LINUX = sys.platform.startswith("linux")
 
@@ -214,7 +215,8 @@ def make_button(parent, text, command, bg=BG_INPUT, fg=FG_TEXT,
 def find_python() -> Tuple[Optional[List[str]], Optional[str]]:
     for cmd in [["python3.13"], ["python3.12"], ["python3"], ["python"]]:
         try:
-            r = subprocess.run(cmd + ["--version"], capture_output=True, text=True, timeout=5)
+            r = subprocess.run(cmd + ["--version"], capture_output=True, text=True, timeout=5,
+                               creationflags=_NO_WINDOW)
             if r.returncode == 0:
                 ver = r.stdout.strip().split()[-1]
                 major, minor = map(int, ver.split(".")[:2])
@@ -227,7 +229,8 @@ def find_python() -> Tuple[Optional[List[str]], Optional[str]]:
 
 def find_git() -> Optional[str]:
     try:
-        r = subprocess.run(["git", "--version"], capture_output=True, text=True, timeout=5)
+        r = subprocess.run(["git", "--version"], capture_output=True, text=True, timeout=5,
+                           creationflags=_NO_WINDOW)
         return r.stdout.strip().split()[-1] if r.returncode == 0 else None
     except Exception:
         return None
@@ -235,7 +238,8 @@ def find_git() -> Optional[str]:
 
 def find_node() -> Optional[str]:
     try:
-        r = subprocess.run(["node", "--version"], capture_output=True, text=True, timeout=5)
+        r = subprocess.run(["node", "--version"], capture_output=True, text=True, timeout=5,
+                           creationflags=_NO_WINDOW)
         if r.returncode == 0:
             ver = r.stdout.strip().lstrip("v")
             if int(ver.split(".")[0]) >= 18:
@@ -247,7 +251,8 @@ def find_node() -> Optional[str]:
 
 def find_ollama() -> Optional[str]:
     try:
-        r = subprocess.run(["ollama", "--version"], capture_output=True, text=True, timeout=5)
+        r = subprocess.run(["ollama", "--version"], capture_output=True, text=True, timeout=5,
+                           creationflags=_NO_WINDOW)
         if r.returncode == 0:
             return r.stdout.strip().split()[-1]
     except Exception:
@@ -282,7 +287,7 @@ def get_local_version(install_dir: str) -> str:
 
 def get_remote_version() -> Optional[str]:
     try:
-        url = f"https://raw.githubusercontent.com/ideoalabs/opensable/{REPO_BRANCH}/pyproject.toml"
+        url = f"https://raw.githubusercontent.com/IdeoaLabs/Open-Sable/{REPO_BRANCH}/pyproject.toml"
         r = urllib.request.urlopen(url, timeout=5)
         for line in r.read().decode().splitlines():
             if line.strip().startswith("version"):
@@ -344,7 +349,8 @@ class UpdateEngine:
             proc = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                 cwd=cwd or self.install_dir, text=True, shell=shell,
-                env={**os.environ, "PYTHONUNBUFFERED": "1"}
+                env={**os.environ, "PYTHONUNBUFFERED": "1"},
+                creationflags=_NO_WINDOW,
             )
             output = []
             for line in iter(proc.stdout.readline, ""):
@@ -486,7 +492,8 @@ class ReinstallEngine:
             proc = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                 cwd=cwd or self.install_dir, text=True, shell=shell,
-                env={**os.environ, "PYTHONUNBUFFERED": "1"}
+                env={**os.environ, "PYTHONUNBUFFERED": "1"},
+                creationflags=_NO_WINDOW,
             )
             output = []
             for line in iter(proc.stdout.readline, ""):
@@ -513,7 +520,9 @@ class ReinstallEngine:
                 ("Installing Python dependencies", self._install_deps),
                 ("Installing Ollama", self._check_ollama),
                 ("Installing Node.js", self._check_node),
-                ("Rebuilding Dashboard", self._rebuild_node),
+                ("Rebuilding frontends", self._rebuild_node),
+                ("Configuring environment", self._init_environment),
+                ("Clearing old sessions", self._clear_sessions),
                 ("Checking AI model", self._check_model),
                 ("Verifying installation", self._verify),
             ]
@@ -634,7 +643,7 @@ class ReinstallEngine:
         if not find_node():
             self.log("  ⚠ Node.js not available — skipping", "warning")
             return
-        for project in ["dashboard", "aggr"]:
+        for project in ["dashboard", "desktop", "aggr"]:
             pkg = os.path.join(self.install_dir, project, "package.json")
             if not os.path.isfile(pkg):
                 continue
@@ -644,6 +653,14 @@ class ReinstallEngine:
             if os.path.isdir(nm):
                 shutil.rmtree(nm, ignore_errors=True)
             self._exec(["npm", "install", "--legacy-peer-deps"], cwd=proj_dir, check=False)
+            # Desktop runs via electron, no build step needed
+            if project == "desktop":
+                electron_bin = os.path.join(nm, ".bin", "electron")
+                if os.path.isfile(electron_bin):
+                    self.log(f"  ✔ {project} ready (electron installed)", "ok")
+                else:
+                    self.log(f"  ⚠ {project} — electron binary missing", "warning")
+                continue
             result = self._exec(["npm", "run", "build"], cwd=proj_dir, check=False)
             # Retry on build failure: wipe node_modules and reinstall
             dist_check = os.path.join(proj_dir, "dist", "index.html")
@@ -657,6 +674,53 @@ class ReinstallEngine:
                 self.log(f"  ✔ {project} rebuilt", "ok")
             else:
                 self.log(f"  ⚠ {project} build incomplete — dist/index.html missing", "warning")
+
+    def _init_environment(self):
+        """Ensure .env, agent profile, and directories exist (preserve existing)."""
+        # Required directories
+        for dirname in ["data", "logs", "config", "models", "episodes"]:
+            os.makedirs(os.path.join(self.install_dir, dirname), exist_ok=True)
+        self.log("  ✔ Directories verified", "ok")
+
+        # .env
+        env_file = os.path.join(self.install_dir, ".env")
+        if not os.path.isfile(env_file):
+            env_example = os.path.join(self.install_dir, ".env.example")
+            model = self.config.get("model", "qwen3.5:0.8b")
+            if os.path.isfile(env_example):
+                with open(env_example, "r") as f:
+                    content = f.read()
+                content = content.replace("DEFAULT_MODEL=llama3.1:8b", f"DEFAULT_MODEL={model}")
+                content = content.replace("GATEWAY_ENABLED=false", "GATEWAY_ENABLED=true")
+                with open(env_file, "w") as f:
+                    f.write(content)
+            else:
+                with open(env_file, "w") as f:
+                    f.write(f"DEFAULT_MODEL={model}\nGATEWAY_ENABLED=true\nWEBCHAT_PORT=8789\n")
+            self.log("  ✔ .env created", "ok")
+        else:
+            self.log("  ✔ .env preserved", "ok")
+
+        # Agent profile
+        agents_dir = os.path.join(self.install_dir, "agents", "sable")
+        template_dir = os.path.join(self.install_dir, "agents", "_template")
+        os.makedirs(os.path.join(agents_dir, "data"), exist_ok=True)
+        for fname in ["profile.env", "soul.md", "tools.json"]:
+            dest = os.path.join(agents_dir, fname)
+            if not os.path.isfile(dest):
+                src = os.path.join(template_dir, fname)
+                if os.path.isfile(src):
+                    shutil.copy2(src, dest)
+                    if fname == "profile.env":
+                        model = self.config.get("model", "qwen3.5:0.8b")
+                        with open(dest, "r") as f:
+                            c = f.read()
+                        c = c.replace("DEFAULT_MODEL=qwen3.5:0.8b", f"DEFAULT_MODEL={model}")
+                        c = c.replace("AGENT_NAME=MyAgent", "AGENT_NAME=Sable")
+                        c = c.replace("WEBCHAT_PORT=8792", "WEBCHAT_PORT=8789")
+                        with open(dest, "w") as f:
+                            f.write(c)
+        self.log("  ✔ Agent profile verified (agents/sable/)", "ok")
 
     def _check_model(self):
         model = self.config.get("model", "qwen3.5:0.8b")
@@ -686,6 +750,24 @@ class ReinstallEngine:
         else:
             self.log(f"  ⚠ Ollama not running — run: ollama pull {model}", "warning")
 
+    def _clear_sessions(self):
+        """Remove old chat sessions from ~/.opensable/ so reinstall feels fresh."""
+        dot_opensable = os.path.join(os.path.expanduser("~"), ".opensable")
+        if not os.path.isdir(dot_opensable):
+            self.log("  No previous sessions found", "dim")
+            return
+        cleared = 0
+        for root, dirs, files in os.walk(dot_opensable):
+            if os.path.basename(root) == "sessions":
+                for f in files:
+                    if f.endswith(".json"):
+                        os.remove(os.path.join(root, f))
+                        cleared += 1
+        if cleared:
+            self.log(f"  ✔ Cleared {cleared} old chat sessions", "ok")
+        else:
+            self.log("  No previous sessions found", "dim")
+
     def _verify(self):
         if os.path.isfile(self.venv_python):
             self.log("  ✔ Python environment OK", "ok")
@@ -714,6 +796,20 @@ class ReinstallEngine:
                     self.log("  ✔ Dashboard repaired", "ok")
                 else:
                     self.log("  ⚠ Dashboard repair failed — build manually", "warning")
+        # Desktop (Electron)
+        electron_bin = os.path.join(self.install_dir, "desktop", "node_modules", ".bin", "electron")
+        if os.path.isfile(electron_bin):
+            self.log("  ✔ Desktop app ready (Electron)", "ok")
+        else:
+            self.log("  ⚠ Desktop app not installed", "warning")
+        # .env & agent profile
+        if os.path.isfile(os.path.join(self.install_dir, ".env")):
+            self.log("  ✔ Configuration (.env)", "ok")
+        if os.path.isfile(os.path.join(self.install_dir, "agents", "sable", "profile.env")):
+            self.log("  ✔ Agent profile (agents/sable/)", "ok")
+        # Sandbox
+        if os.path.isfile(os.path.join(self.install_dir, "opensable", "core", "sandbox_runner.py")):
+            self.log("  ✔ Sandbox engine present", "ok")
         if ollama_running():
             self.log("  ✔ Ollama API OK", "ok")
         else:
@@ -786,16 +882,18 @@ class UninstallEngine:
 
     def _remove_services(self):
         if IS_LINUX:
-            try:
-                subprocess.run(["systemctl", "--user", "stop", "opensable-update.timer"],
-                               capture_output=True, timeout=10)
-                subprocess.run(["systemctl", "--user", "disable", "opensable-update.timer"],
-                               capture_output=True, timeout=10)
-                self.log("  ✔ Stopped systemd timer", "ok")
-            except Exception:
-                pass
+            # Stop agent service + update timer
+            for svc in ["opensable", "opensable-update.timer"]:
+                try:
+                    subprocess.run(["systemctl", "--user", "stop", svc],
+                                   capture_output=True, timeout=10)
+                    subprocess.run(["systemctl", "--user", "disable", svc],
+                                   capture_output=True, timeout=10)
+                except Exception:
+                    pass
+            self.log("  ✔ Stopped systemd services", "ok")
             user_dir = os.path.expanduser("~/.config/systemd/user")
-            for name in ["opensable-update.service", "opensable-update.timer"]:
+            for name in ["opensable.service", "opensable-update.service", "opensable-update.timer"]:
                 p = os.path.join(user_dir, name)
                 if os.path.isfile(p):
                     os.remove(p)
@@ -806,14 +904,16 @@ class UninstallEngine:
             except Exception:
                 pass
         elif IS_MAC:
-            plist = os.path.expanduser("~/Library/LaunchAgents/com.ideoalabs.opensable-update.plist")
-            if os.path.isfile(plist):
-                try:
-                    subprocess.run(["launchctl", "unload", plist], capture_output=True, timeout=10)
-                except Exception:
-                    pass
-                os.remove(plist)
-                self.log("  ✔ Removed launchd plist", "ok")
+            for plist_name in ["com.ideoalabs.opensable-update.plist",
+                               "com.ideoalabs.opensable.plist"]:
+                plist = os.path.expanduser(f"~/Library/LaunchAgents/{plist_name}")
+                if os.path.isfile(plist):
+                    try:
+                        subprocess.run(["launchctl", "unload", plist], capture_output=True, timeout=10)
+                    except Exception:
+                        pass
+                    os.remove(plist)
+                    self.log(f"  ✔ Removed {plist_name}", "ok")
         elif IS_WIN:
             try:
                 subprocess.run(["schtasks", "/delete", "/tn", "OpenSable-Update", "/f"],
@@ -948,6 +1048,12 @@ class UninstallEngine:
                 os.remove(p)
                 self.log(f"  ✔ Removed {name}", "ok")
                 removed += 1
+        # Also remove ~/.opensable/ (sessions, caches, runtime state)
+        dot_opensable = os.path.join(os.path.expanduser("~"), ".opensable")
+        if os.path.isdir(dot_opensable):
+            shutil.rmtree(dot_opensable, ignore_errors=True)
+            self.log("  ✔ Removed ~/.opensable/ (sessions & runtime state)", "ok")
+            removed += 1
         if removed == 0:
             self.log("  No user data found", "dim")
 
@@ -992,7 +1098,8 @@ class InstallerEngine:
             proc = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                 cwd=cwd or self.install_dir, text=True, shell=shell,
-                env={**os.environ, "PYTHONUNBUFFERED": "1"}
+                env={**os.environ, "PYTHONUNBUFFERED": "1"},
+                creationflags=_NO_WINDOW,
             )
             output = []
             for line in iter(proc.stdout.readline, ""):
@@ -1019,10 +1126,12 @@ class InstallerEngine:
                 ("Installing dependencies", self._install_deps),
                 ("Installing Ollama", self._install_ollama),
                 ("Installing Node.js", self._install_node),
-                ("Building Dashboard", self._setup_node),
+                ("Building Dashboard & Frontends", self._setup_node),
+                ("Configuring environment", self._init_environment),
+                ("Clearing old sessions", self._clear_sessions),
                 ("Pulling AI model", self._pull_model),
                 ("Creating shortcuts", self._create_shortcuts),
-                ("Setting up auto-updater", self._install_updater),
+                ("Setting up services", self._install_services),
                 ("Verifying installation", self._verify),
             ]
             total = len(steps)
@@ -1285,66 +1394,68 @@ class InstallerEngine:
         cloned = False
         if find_git():
             os.makedirs(os.path.dirname(self.install_dir), exist_ok=True)
-            result = self._exec(["git", "clone", "--branch", REPO_BRANCH, "--depth", "1",
-                         REPO_URL, self.install_dir],
-                        cwd=os.path.dirname(self.install_dir), check=False)
-            if os.path.isdir(os.path.join(self.install_dir, ".git")):
-                self.log("  ✔ Repository cloned", "ok")
-                cloned = True
-            else:
-                self.log("  ⚠ git clone failed — falling back to archive download", "warning")
-        if not cloned:
-            # Fallback: download tarball (no git dependency)
-            self.log("  Git not available — downloading archive...", "dim")
-            url = (f"https://github.com/ideoalabs/opensable/archive/"
-                   f"refs/heads/{REPO_BRANCH}.tar.gz")
-            tarball = os.path.join(tempfile.gettempdir(), "opensable.tar.gz")
-            urllib.request.urlretrieve(url, tarball)
-
-            tmp_extract = tempfile.mkdtemp(prefix="opensable-")
             try:
-                with tarfile.open(tarball) as tf:
-                    try:
-                        tf.extractall(tmp_extract, filter="data")
-                    except TypeError:
-                        tf.extractall(tmp_extract)
+                self._exec(["git", "clone", "--branch", REPO_BRANCH, "--depth", "1",
+                             REPO_URL, self.install_dir],
+                            cwd=os.path.dirname(self.install_dir))
+                self.log("  ✔ Repository cloned", "ok")
+                return
+            except Exception as e:
+                self.log(f"  ⚠ git clone failed: {e}", "warning")
+                self.log("  Falling back to archive download...", "dim")
 
-                # GitHub tarballs have a single top-level dir (e.g., Open-Sable-master/)
-                contents = os.listdir(tmp_extract)
-                src = (os.path.join(tmp_extract, contents[0])
-                       if len(contents) == 1 and os.path.isdir(os.path.join(tmp_extract, contents[0]))
-                       else tmp_extract)
+        # Fallback: download tarball
+        if not find_git():
+            self.log("  Git not available - downloading archive...", "dim")
+        url = (f"https://github.com/IdeoaLabs/Open-Sable/archive/"
+               f"refs/heads/{REPO_BRANCH}.tar.gz")
+        tarball = os.path.join(tempfile.gettempdir(), "opensable.tar.gz")
+        urllib.request.urlretrieve(url, tarball)
 
-                os.makedirs(self.install_dir, exist_ok=True)
-                for item in os.listdir(src):
-                    s, d = os.path.join(src, item), os.path.join(self.install_dir, item)
-                    if os.path.exists(d):
-                        if os.path.isdir(d):
-                            shutil.rmtree(d)
-                        else:
-                            os.remove(d)
-                    shutil.move(s, d)
-            finally:
-                shutil.rmtree(tmp_extract, ignore_errors=True)
+        tmp_extract = tempfile.mkdtemp(prefix="opensable-")
+        try:
+            with tarfile.open(tarball) as tf:
                 try:
-                    os.unlink(tarball)
-                except OSError:
-                    pass
+                    tf.extractall(tmp_extract, filter="data")
+                except TypeError:
+                    tf.extractall(tmp_extract)
 
-            self.log("  ✔ Source code downloaded", "ok")
+            # GitHub tarballs have a single top-level dir (e.g., Open-Sable-master/)
+            contents = os.listdir(tmp_extract)
+            src = (os.path.join(tmp_extract, contents[0])
+                   if len(contents) == 1 and os.path.isdir(os.path.join(tmp_extract, contents[0]))
+                   else tmp_extract)
 
-            # Initialize git for future updates
-            if find_git():
-                try:
-                    self._exec(["git", "init"], check=False)
-                    self._exec(["git", "remote", "add", "origin", REPO_URL], check=False)
-                    self._exec(["git", "fetch", "--depth", "1", "origin", REPO_BRANCH],
-                               check=False)
-                    self._exec(["git", "reset", "--soft", f"origin/{REPO_BRANCH}"],
-                               check=False)
-                    self.log("  ✔ Git initialized for future updates", "ok")
-                except Exception:
-                    self.log("  ⚠ Git init skipped — updates will need manual git setup", "warning")
+            os.makedirs(self.install_dir, exist_ok=True)
+            for item in os.listdir(src):
+                s, d = os.path.join(src, item), os.path.join(self.install_dir, item)
+                if os.path.exists(d):
+                    if os.path.isdir(d):
+                        shutil.rmtree(d)
+                    else:
+                        os.remove(d)
+                shutil.move(s, d)
+        finally:
+            shutil.rmtree(tmp_extract, ignore_errors=True)
+            try:
+                os.unlink(tarball)
+            except OSError:
+                pass
+
+        self.log("  ✔ Source code downloaded", "ok")
+
+        # Initialize git for future updates
+        if find_git():
+            try:
+                self._exec(["git", "init"], check=False)
+                self._exec(["git", "remote", "add", "origin", REPO_URL], check=False)
+                self._exec(["git", "fetch", "--depth", "1", "origin", REPO_BRANCH],
+                           check=False)
+                self._exec(["git", "reset", "--soft", f"origin/{REPO_BRANCH}"],
+                           check=False)
+                self.log("  ✔ Git initialized for future updates", "ok")
+            except Exception:
+                self.log("  ⚠ Git init skipped - updates will need manual git setup", "warning")
 
     def _create_venv(self):
         py_cmd, py_ver = find_python()
@@ -1412,13 +1523,134 @@ class InstallerEngine:
 
     def _setup_node(self):
         if not find_node():
-            self.log("  ⚠ Node.js not available — skipping dashboard", "warning")
+            self.log("  ⚠ Node.js not available — skipping frontends", "warning")
             return
-        dash = os.path.join(self.install_dir, "dashboard")
-        if os.path.isfile(os.path.join(dash, "package.json")):
-            self._exec(["npm", "install", "--legacy-peer-deps"], cwd=dash, check=False)
-            self._exec(["npm", "run", "build"], cwd=dash, check=False)
-            self.log("  ✔ Dashboard built", "ok")
+        for project in ["dashboard", "desktop", "aggr"]:
+            proj_dir = os.path.join(self.install_dir, project)
+            pkg = os.path.join(proj_dir, "package.json")
+            if not os.path.isfile(pkg):
+                continue
+            self.log(f"  Building {project}...", "dim")
+            self._exec(["npm", "install", "--legacy-peer-deps"], cwd=proj_dir, check=False)
+            if project == "desktop":
+                # Desktop runs via electron, no build step
+                electron_bin = os.path.join(proj_dir, "node_modules", ".bin", "electron")
+                if os.path.isfile(electron_bin):
+                    self.log(f"  ✔ {project} ready (electron installed)", "ok")
+                else:
+                    self.log(f"  ⚠ {project} — electron binary not found", "warning")
+            else:
+                self._exec(["npm", "run", "build"], cwd=proj_dir, check=False)
+                self.log(f"  ✔ {project} ready", "ok")
+
+    def _init_environment(self):
+        """Create .env, agent profile, required directories, and verify sandbox."""
+        # ── Required directories ──
+        for dirname in ["data", "logs", "config", "models", "episodes"]:
+            dirpath = os.path.join(self.install_dir, dirname)
+            os.makedirs(dirpath, exist_ok=True)
+        self.log("  ✔ Directories created (data, logs, config, models, episodes)", "ok")
+
+        # ── .env file ──
+        env_file = os.path.join(self.install_dir, ".env")
+        if not os.path.isfile(env_file):
+            env_example = os.path.join(self.install_dir, ".env.example")
+            model = self.config.get("model", "qwen3.5:0.8b")
+            if os.path.isfile(env_example):
+                with open(env_example, "r") as f:
+                    content = f.read()
+                # Apply user's chosen model
+                content = content.replace("DEFAULT_MODEL=llama3.1:8b", f"DEFAULT_MODEL={model}")
+                # Enable gateway by default
+                content = content.replace("GATEWAY_ENABLED=false", "GATEWAY_ENABLED=true")
+                with open(env_file, "w") as f:
+                    f.write(content)
+            else:
+                # Minimal .env if no example found
+                with open(env_file, "w") as f:
+                    f.write(f"# Open-Sable Configuration\n")
+                    f.write(f"DEFAULT_MODEL={model}\n")
+                    f.write(f"OLLAMA_BASE_URL=http://localhost:11434\n")
+                    f.write(f"GATEWAY_ENABLED=true\n")
+                    f.write(f"WEBCHAT_HOST=127.0.0.1\n")
+                    f.write(f"WEBCHAT_PORT=8789\n")
+                    f.write(f"ENABLE_SANDBOX=true\n")
+                    f.write(f"CLI_ENABLED=false\n")
+            self.log("  ✔ .env created with your settings", "ok")
+        else:
+            self.log("  ✔ .env already exists (preserved)", "ok")
+
+        # ── Agent profile (agents/sable/) ──
+        agents_dir = os.path.join(self.install_dir, "agents", "sable")
+        template_dir = os.path.join(self.install_dir, "agents", "_template")
+        os.makedirs(agents_dir, exist_ok=True)
+        os.makedirs(os.path.join(agents_dir, "data"), exist_ok=True)
+
+        profile_files = {
+            "profile.env": None,
+            "soul.md": None,
+            "tools.json": None,
+        }
+        for fname in profile_files:
+            dest = os.path.join(agents_dir, fname)
+            if not os.path.isfile(dest):
+                template_src = os.path.join(template_dir, fname)
+                if os.path.isfile(template_src):
+                    shutil.copy2(template_src, dest)
+                    # Patch profile.env with user's model
+                    if fname == "profile.env":
+                        model = self.config.get("model", "qwen3.5:0.8b")
+                        with open(dest, "r") as f:
+                            content = f.read()
+                        content = content.replace("DEFAULT_MODEL=qwen3.5:0.8b",
+                                                  f"DEFAULT_MODEL={model}")
+                        content = content.replace("AGENT_NAME=MyAgent",
+                                                  "AGENT_NAME=Sable")
+                        content = content.replace("WEBCHAT_PORT=8792",
+                                                  "WEBCHAT_PORT=8789")
+                        with open(dest, "w") as f:
+                            f.write(content)
+        self.log("  ✔ Agent profile initialized (agents/sable/)", "ok")
+
+        # ── Sandbox verification ──
+        sandbox_file = os.path.join(self.install_dir, "opensable", "core", "sandbox_runner.py")
+        if os.path.isfile(sandbox_file):
+            try:
+                result = subprocess.run(
+                    [self.venv_python, "-c",
+                     "from opensable.core.sandbox_runner import run_sandboxed_python; "
+                     "print(run_sandboxed_python('print(42)', cpu_seconds=2))"],
+                    capture_output=True, text=True, timeout=10,
+                    cwd=self.install_dir
+                )
+                if result.returncode == 0 and "42" in result.stdout:
+                    self.log("  ✔ Sandbox engine verified (process isolation)", "ok")
+                else:
+                    self.log("  ⚠ Sandbox test returned unexpected result", "warning")
+            except Exception:
+                self.log("  ⚠ Sandbox test skipped (will work at runtime)", "warning")
+        else:
+            self.log("  ⚠ Sandbox runner not found", "warning")
+
+        # ── Config/permissions ──
+        perms_file = os.path.join(self.install_dir, "config", "permissions.json")
+        if not os.path.isfile(perms_file):
+            perms_src = os.path.join(self.install_dir, "config", "permissions.json")
+            if not os.path.isfile(perms_src):
+                # Create default permissions
+                perms = {
+                    "default": {
+                        "browser_navigate": "always_allow",
+                        "file_read": "always_allow",
+                        "file_write": "ask",
+                        "system_command": "always_allow",
+                    }
+                }
+                with open(perms_file, "w") as f:
+                    json.dump(perms, f, indent=2)
+                self.log("  ✔ Default permissions created", "ok")
+        else:
+            self.log("  ✔ Permissions config exists", "ok")
 
     def _pull_model(self):
         model = self.config.get("model", "qwen3.5:0.8b")
@@ -1447,6 +1679,64 @@ class InstallerEngine:
         self.log(f"  Pulling {model}...", "dim")
         self._exec(["ollama", "pull", model], check=False)
         self.log(f"  ✔ Model {model} ready", "ok")
+
+    def _install_services(self):
+        """Install updater script + agent systemd/launchd service."""
+        self._install_updater()
+        self._install_agent_service()
+
+    def _install_agent_service(self):
+        """Create a systemd user service / launchd plist for opensable itself."""
+        if IS_LINUX:
+            user_dir = os.path.expanduser("~/.config/systemd/user")
+            os.makedirs(user_dir, exist_ok=True)
+            svc_path = os.path.join(user_dir, "opensable.service")
+            with open(svc_path, "w") as f:
+                f.write(f"[Unit]\nDescription=Open-Sable AI Agent\n")
+                f.write(f"After=network.target ollama.service\n\n")
+                f.write(f"[Service]\nType=simple\n")
+                f.write(f"WorkingDirectory={self.install_dir}\n")
+                f.write(f"ExecStart={self.install_dir}/venv/bin/python -m opensable\n")
+                f.write(f"Restart=on-failure\nRestartSec=10\n")
+                f.write(f"Environment=PYTHONUNBUFFERED=1\n\n")
+                f.write(f"[Install]\nWantedBy=default.target\n")
+            try:
+                subprocess.run(["systemctl", "--user", "daemon-reload"],
+                               capture_output=True, timeout=10)
+                self.log("  ✔ Agent service created (opensable.service)", "ok")
+                self.log("  ℹ  Start with: systemctl --user start opensable", "dim")
+                self.log("  ℹ  Auto-start: systemctl --user enable opensable", "dim")
+            except Exception:
+                self.log("  ✔ Agent service file created", "ok")
+        elif IS_MAC:
+            plist_dir = os.path.expanduser("~/Library/LaunchAgents")
+            os.makedirs(plist_dir, exist_ok=True)
+            plist = os.path.join(plist_dir, "com.ideoalabs.opensable.plist")
+            with open(plist, "w") as f:
+                f.write('<?xml version="1.0" encoding="UTF-8"?>\n')
+                f.write('<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
+                        '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n')
+                f.write('<plist version="1.0"><dict>\n')
+                f.write('<key>Label</key><string>com.ideoalabs.opensable</string>\n')
+                f.write('<key>ProgramArguments</key><array>\n')
+                f.write(f'  <string>{self.install_dir}/venv/bin/python</string>\n')
+                f.write(f'  <string>-m</string>\n')
+                f.write(f'  <string>opensable</string>\n')
+                f.write('</array>\n')
+                f.write(f'<key>WorkingDirectory</key><string>{self.install_dir}</string>\n')
+                f.write('<key>RunAtLoad</key><false/>\n')
+                f.write('<key>KeepAlive</key><false/>\n')
+                f.write('</dict></plist>\n')
+            self.log("  ✔ Agent plist created (com.ideoalabs.opensable)", "ok")
+            self.log("  ℹ  Start with: launchctl load ~/Library/LaunchAgents/com.ideoalabs.opensable.plist", "dim")
+        elif IS_WIN:
+            # Create a start script for Windows
+            start_bat = os.path.join(self.install_dir, "start-opensable.bat")
+            with open(start_bat, "w") as f:
+                f.write(f'@echo off\ncd /d "{self.install_dir}"\n')
+                f.write(f'call venv\\Scripts\\activate.bat\n')
+                f.write(f'python -m opensable %*\n')
+            self.log("  ✔ Start script created (start-opensable.bat)", "ok")
 
     def _install_updater(self):
         updater_path = os.path.join(self.install_dir, "opensable-update")
@@ -1657,10 +1947,30 @@ class InstallerEngine:
         os.chmod(cli, 0o755)
         self.log("  ✔ Desktop entry + CLI link created", "ok")
 
+    def _clear_sessions(self):
+        """Remove old chat sessions from ~/.opensable/ so install starts fresh."""
+        dot_opensable = os.path.join(os.path.expanduser("~"), ".opensable")
+        if not os.path.isdir(dot_opensable):
+            self.log("  No previous sessions found", "dim")
+            return
+        cleared = 0
+        for root, dirs, files in os.walk(dot_opensable):
+            if os.path.basename(root) == "sessions":
+                for f in files:
+                    if f.endswith(".json"):
+                        os.remove(os.path.join(root, f))
+                        cleared += 1
+        if cleared:
+            self.log(f"  ✔ Cleared {cleared} old chat sessions", "ok")
+        else:
+            self.log("  No previous sessions found", "dim")
+
     def _verify(self):
         errors = 0
+        checks = 0
         if os.path.isfile(self.venv_python):
             self.log("  ✔ Python environment OK", "ok")
+            checks += 1
         else:
             self.log("  ✘ Python environment missing", "error")
             errors += 1
@@ -1669,15 +1979,52 @@ class InstallerEngine:
                                capture_output=True, text=True, timeout=15, cwd=self.install_dir)
             if r.returncode == 0:
                 self.log(f"  ✔ opensable v{r.stdout.strip()}", "ok")
+                checks += 1
             else:
                 self.log("  ✘ opensable import failed", "error")
                 errors += 1
         except Exception:
             self.log("  ⚠ Could not verify import", "warning")
+        # Dashboard
+        dist_index = os.path.join(self.install_dir, "dashboard", "dist", "index.html")
+        if os.path.isfile(dist_index):
+            self.log("  ✔ Dashboard built", "ok")
+            checks += 1
+        else:
+            self.log("  ⚠ Dashboard not built", "warning")
+        # Desktop (Electron)
+        electron_bin = os.path.join(self.install_dir, "desktop", "node_modules", ".bin", "electron")
+        if os.path.isfile(electron_bin):
+            self.log("  ✔ Desktop app ready (Electron)", "ok")
+            checks += 1
+        else:
+            self.log("  ⚠ Desktop app not installed", "warning")
+        # .env
+        env_file = os.path.join(self.install_dir, ".env")
+        if os.path.isfile(env_file):
+            self.log("  ✔ Configuration (.env)", "ok")
+            checks += 1
+        else:
+            self.log("  ⚠ No .env file", "warning")
+        # Agent profile
+        profile_env = os.path.join(self.install_dir, "agents", "sable", "profile.env")
+        if os.path.isfile(profile_env):
+            self.log("  ✔ Agent profile (agents/sable/)", "ok")
+            checks += 1
+        else:
+            self.log("  ⚠ Agent profile not initialized", "warning")
+        # Sandbox
+        sandbox = os.path.join(self.install_dir, "opensable", "core", "sandbox_runner.py")
+        if os.path.isfile(sandbox):
+            self.log("  ✔ Sandbox engine present", "ok")
+            checks += 1
+        # Ollama
         if ollama_running():
             self.log("  ✔ Ollama API OK", "ok")
+            checks += 1
         else:
             self.log("  ⚠ Ollama not running", "warning")
+        self.log(f"\n  {checks} components verified, {errors} error(s)", "ok" if errors == 0 else "warning")
         if errors:
             raise Exception(f"{errors} verification error(s)")
 
