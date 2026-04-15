@@ -622,11 +622,18 @@ class Gateway:
         import re as _re
         env_path = self._profile_env_path()
         if not env_path.exists():
-            return web.Response(
-                status=404,
-                content_type="application/json",
-                text=json.dumps({"error": f"profile.env not found: {env_path}"}),
-            )
+            # Auto-create from EXAMPLE template if available
+            example = env_path.parent / "profile.EXAMPLE.env"
+            if example.exists():
+                import shutil
+                env_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(example, env_path)
+            else:
+                return web.Response(
+                    status=404,
+                    content_type="application/json",
+                    text=json.dumps({"error": f"profile.env not found: {env_path}"}),
+                )
         raw = env_path.read_text(encoding="utf-8")
         sections: list[dict] = []
         current_section: dict | None = None
