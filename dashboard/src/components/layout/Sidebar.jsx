@@ -3,6 +3,7 @@ import {
   MessageSquare, Activity, Terminal, BarChart3,
   QrCode, Settings, Cpu, Smartphone,
   TrendingUp, Sparkles, Clock, Brain, Orbit, Monitor, SlidersHorizontal, Wifi,
+  FileText, BookOpen, Users,
 } from 'lucide-react';
 
 const tabs = [
@@ -20,6 +21,9 @@ const tabs = [
   { id: 'devices',  icon: Smartphone,    label: 'Devices' },
   { id: 'display',  icon: Monitor,             label: 'Display' },
   { id: 'config',   icon: SlidersHorizontal,   label: 'Config' },
+  { id: 'soul',     icon: FileText,            label: 'Soul' },
+  { id: 'knowledge', icon: BookOpen,           label: 'Knowledge' },
+  { id: 'agents',   icon: Users,               label: 'Agents' },
   { id: 'wifi',     icon: Wifi,                label: 'WiFi' },
   { id: 'settings', icon: Settings,             label: 'Settings' },
 ];
@@ -51,7 +55,7 @@ export default function Sidebar({ tab, onTabChange, streaming }) {
     <div style={sidebarStyles.sidebar}>
       {tabs.map((t, i) => (
         <div key={t.id}>
-          {(i === 4 || i === 9) && <div style={sidebarStyles.sep} />}
+          {(i === 4 || i === 9 || i === 13) && <div style={sidebarStyles.sep} />}
           <button
             style={{ ...sidebarStyles.btn, ...(tab === t.id ? sidebarStyles.active : {}),
               color: tab === t.id ? 'var(--accent-light)' : 'rgba(255,255,255,0.7)' }}

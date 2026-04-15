@@ -45,6 +45,12 @@ def _launch_desktop():
     import subprocess
     import threading
 
+    # Skip if already running inside our Electron .app (profile.env may override DESKTOP_ENABLED)
+    if os.environ.get("_SABLE_ELECTRON_APP") == "1":
+        return
+    if os.environ.get("DESKTOP_ENABLED", "").lower() == "false":
+        return
+
     _log = logging.getLogger("opensable")
 
     def _open():
@@ -439,7 +445,10 @@ async def async_main():
         _launch_desktop()
 
         try:
-            await asyncio.gather(*[interface.start() for interface in interfaces])
+            await asyncio.gather(
+                *[interface.start() for interface in interfaces],
+                asyncio.Event().wait(),  # keep gateway alive even if interfaces exit
+            )
         finally:
             # Stop child agents first
             if _child_procs and '_agent_mgr' in dir():

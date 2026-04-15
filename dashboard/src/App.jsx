@@ -16,9 +16,12 @@ import DevicesPanel from './components/agent/DevicesPanel';
 import ThoughtsPanel from './components/agent/ThoughtsPanel';
 import BrainPanel from './components/agent/BrainPanel';
 import DisplayPanel from './components/agent/DisplayPanel';
+import AgentManagerPanel from './components/agent/AgentManagerPanel';
 import SettingsPanel from './components/settings/SettingsPanel';
 import AgentLogsPanel from './components/chat/AgentLogsPanel';
 import EnvEditorPanel from './components/settings/EnvEditorPanel';
+import SoulEditorPanel from './components/settings/SoulEditorPanel';
+import KnowledgeBasePanel from './components/settings/KnowledgeBasePanel';
 import WifiHuntPanel from './components/network/WifiHuntPanel';
 import PermissionDialog from './components/PermissionDialog';
 import LoadingOverlay from './components/LoadingOverlay';
@@ -39,6 +42,9 @@ const panels = {
   display: DisplayPanel,
   settings: SettingsPanel,
   config: EnvEditorPanel,
+  soul: SoulEditorPanel,
+  knowledge: KnowledgeBasePanel,
+  agents: AgentManagerPanel,
   wifi: WifiHuntPanel,
 };
 
@@ -105,6 +111,7 @@ export default function App() {
       devices:  {},
       display:  {},
       settings: { modelGroups: ws.modelGroups, switchModel: ws.switchModel, importGGUF: ws.importGGUF, ws: ws.wsRef, connected: ws.connected, agentProfile: null },
+      agents:   { onStartAgent: ma.startAgent, onStopAgent: ma.stopAgent },
     };
   } else {
     // Remote agent,  interactive view via proxy
@@ -134,6 +141,7 @@ export default function App() {
       devices:  {},
       display:  {},
       settings: { modelGroups: remoteModelGroups, switchModel: ws.switchModel, importGGUF: ws.importGGUF, ws: ws.wsRef, connected: ws.connected, agentProfile: ma.currentAgent },
+      agents:   { onStartAgent: ma.startAgent, onStopAgent: ma.stopAgent },
     };
   }
 

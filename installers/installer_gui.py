@@ -110,8 +110,18 @@ if (fs.existsSync(envPath)) {
 }
 process.env.WEBCHAT_PORT = process.env.WEBCHAT_PORT || '8789';
 process.env.WEBCHAT_HOST = process.env.WEBCHAT_HOST || 'localhost';
-// Prevent start.sh from launching a second Electron window
+// Prevent start.sh from launching a second Electron window.
+// start.sh reads DESKTOP_ENABLED from the .env *file*, not from env vars,
+// so we must patch the file itself.
 process.env.DESKTOP_ENABLED = 'false';
+process.env._SABLE_ELECTRON_APP = '1';
+if (fs.existsSync(envPath)) {
+  let envText = fs.readFileSync(envPath, 'utf8');
+  if (/^DESKTOP_ENABLED=true/m.test(envText)) {
+    envText = envText.replace(/^DESKTOP_ENABLED=true/m, 'DESKTOP_ENABLED=false');
+    try { fs.writeFileSync(envPath, envText); } catch (_) {}
+  }
+} 
 
 // Set dock icon to Sable logo
 const iconPath = path.join(__dirname, '..', 'opensable.icns');
@@ -132,13 +142,18 @@ function isBackendRunning() {
   return false;
 }
 
-if (!isBackendRunning()) {
+function startBackend() {
   try {
     spawn('bash', ['start.sh', 'start'], {
       cwd: DIR, detached: true, stdio: 'ignore', env: { ...process.env },
     }).unref();
   } catch (_) {}
 }
+
+if (!isBackendRunning()) { startBackend(); }
+
+// Watchdog: restart backend if it dies while the app is open
+setInterval(() => { if (!isBackendRunning()) startBackend(); }, 15000);
 
 const desktopDir = path.join(DIR, 'desktop');
 const realMain = path.join(desktopDir, 'electron', 'main.cjs');
@@ -309,16 +324,18 @@ def get_remote_version() -> Optional[str]:
 
 def default_install_dir() -> str:
     """Find existing install or return default."""
-    # Check if we're running from within a repo
-    check = os.path.dirname(os.path.abspath(__file__))
-    for _ in range(6):
-        if (os.path.isfile(os.path.join(check, "pyproject.toml"))
-                and os.path.isdir(os.path.join(check, "opensable"))):
-            return check
-        parent = os.path.dirname(check)
-        if parent == check:
-            break
-        check = parent
+    # Check if we're running from within a repo (only when not frozen/bundled)
+    if not getattr(sys, 'frozen', False):
+        check = os.path.dirname(os.path.abspath(__file__))
+        for _ in range(6):
+            if (os.path.isfile(os.path.join(check, "pyproject.toml"))
+                    and os.path.isdir(os.path.join(check, "opensable"))
+                    and os.path.isfile(os.path.join(check, ".installed"))):
+                return check
+            parent = os.path.dirname(check)
+            if parent == check:
+                break
+            check = parent
     # Check common locations
     for candidate in [
         os.path.expanduser("~/opensable"),
@@ -328,7 +345,8 @@ def default_install_dir() -> str:
     ]:
         if (os.path.isdir(candidate)
                 and os.path.isfile(os.path.join(candidate, "pyproject.toml"))
-                and os.path.isdir(os.path.join(candidate, "opensable"))):
+                and os.path.isdir(os.path.join(candidate, "opensable"))
+                and os.path.isfile(os.path.join(candidate, ".installed"))):
             return candidate
     return os.path.join(os.path.expanduser("~"), "opensable")
 
@@ -2398,7 +2416,9 @@ class InstallerApp(tk.Tk):
                    ).pack(side="right")
         _embed(btn_frame)
 
-        scroll_text.configure(state="disabled")
+        # Block direct text editing but keep embedded widgets interactive
+        scroll_text.bind("<Key>", lambda e: "break")
+        scroll_text.configure(insertwidth=0)
         return page
 
     # ── Page 2: Progress ─────────────────────────────────────────────
@@ -2742,7 +2762,9 @@ class InstallerApp(tk.Tk):
                    ).pack(side="right")
         _embed(btn_frame)
 
-        scroll_text.configure(state="disabled")
+        # Block direct text editing but keep embedded widgets interactive
+        scroll_text.bind("<Key>", lambda e: "break")
+        scroll_text.configure(insertwidth=0)
 
     def _cancel_install(self):
         if self.engine:

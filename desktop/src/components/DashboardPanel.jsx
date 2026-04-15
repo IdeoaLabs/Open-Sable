@@ -1,6 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, useCallback } from 'react'
 
 const api = typeof window !== 'undefined' && window.sable ? window.sable : null
+const MAX_RETRIES = 20
+const RETRY_DELAY = 3000
 
 export default function DashboardPanel({ config, onClose }) {
   const httpBase = (config?.wsUrl || 'ws://localhost:8789')
@@ -16,7 +18,31 @@ export default function DashboardPanel({ config, onClose }) {
   const dashUrl = authUrl('/dashboard')
   const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState(false)
+  const [retries, setRetries] = useState(0)
   const wvRef = useRef(null)
+  const retryTimer = useRef(null)
+
+  const reload = useCallback(() => {
+    setError(false)
+    setLoaded(false)
+    wvRef.current?.reload()
+  }, [])
+
+  // Auto-retry on failure (backend may still be starting)
+  useEffect(() => {
+    if (error && retries < MAX_RETRIES) {
+      retryTimer.current = setTimeout(() => {
+        setRetries(r => r + 1)
+        reload()
+      }, RETRY_DELAY)
+      return () => clearTimeout(retryTimer.current)
+    }
+  }, [error, retries, reload])
+
+  // Reset retries on successful load
+  useEffect(() => {
+    if (loaded) setRetries(0)
+  }, [loaded])
 
   // Attach webview events via ref (React doesn't support webview synthetic events)
   useEffect(() => {
@@ -35,6 +61,9 @@ export default function DashboardPanel({ config, onClose }) {
     }
   }, [])
 
+  // Cleanup timer on unmount
+  useEffect(() => () => clearTimeout(retryTimer.current), [])
+
   const openExternal = () => {
     if (api?.openExternal) {
       api.openExternal(dashUrl)
@@ -43,11 +72,7 @@ export default function DashboardPanel({ config, onClose }) {
     }
   }
 
-  const reload = () => {
-    setError(false)
-    setLoaded(false)
-    wvRef.current?.reload()
-  }
+  const gaveUp = error && retries >= MAX_RETRIES
 
   return (
     <div className="dashboard-panel">
@@ -74,13 +99,13 @@ export default function DashboardPanel({ config, onClose }) {
         </div>
       </div>
 
-      {error ? (
+      {gaveUp ? (
         <div className="dashboard-error">
           <div className="dashboard-error-icon">⚠</div>
           <div className="dashboard-error-title">Dashboard not reachable</div>
           <div className="dashboard-error-sub">Make sure SableCore is running at <code>{httpBase}</code></div>
           <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'center' }}>
-            <button className="btn btn-secondary" onClick={reload}>Retry</button>
+            <button className="btn btn-secondary" onClick={() => { setRetries(0); reload(); }}>Retry</button>
             <button className="btn btn-primary" onClick={openExternal}>Open in browser</button>
           </div>
         </div>
@@ -91,7 +116,7 @@ export default function DashboardPanel({ config, onClose }) {
               <div className="typing-indicator" style={{ margin: 'auto' }}>
                 <div className="typing-dot"/><div className="typing-dot"/><div className="typing-dot"/>
               </div>
-              <span>Loading dashboard…</span>
+              <span>{error ? 'Starting SableCore…' : 'Loading dashboard…'}</span>
             </div>
           )}
           <webview

@@ -1,11 +1,14 @@
 #!/bin/bash
 set -e
 echo "Updating Open-Sable..."
-cd "/home/nexland/SableCore_"
+cd "/Users/emreacar/Documents/Open-Sable"
 git fetch origin master
 git stash --include-untracked 2>/dev/null || true
-git reset --hard origin/master
+git pull --rebase origin master || true
+git stash pop 2>/dev/null || true
 source venv/bin/activate
 pip install -e ".[core]" -q
 [ -f requirements.txt ] && pip install -r requirements.txt -q
+[ -f dashboard/package.json ] && (cd dashboard && npm install --legacy-peer-deps -q && npm run build; cd ..)
+[ -f aggr/package.json ] && (cd aggr && npm install --legacy-peer-deps -q && npm run build; cd ..)
 echo "Update complete!"

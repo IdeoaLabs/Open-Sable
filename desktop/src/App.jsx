@@ -50,6 +50,7 @@ export default function App() {
     () => localStorage.getItem('sable-sidebar') === 'collapsed'
   )
   const [dashboardOpen, setDashboardOpen] = useState(false)
+  const [dashboardMounted, setDashboardMounted] = useState(false)
   const [devStudioOpen, setDevStudioOpen] = useState(false)
   const [brainOpen, setBrainOpen] = useState(false)
 
@@ -114,6 +115,7 @@ export default function App() {
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === 'd') {
       e.preventDefault()
       setDashboardOpen(v => !v)
+      setDashboardMounted(true)
       setDevStudioOpen(false)
       setBrainOpen(false)
     }
@@ -230,7 +232,7 @@ export default function App() {
           <button
             className={`titlebar-btn ${dashboardOpen ? 'active' : ''}`}
             title="Agent Dashboard (Ctrl+D)"
-            onClick={() => { setDashboardOpen(v => !v); setDevStudioOpen(false); setBrainOpen(false) }}
+            onClick={() => { setDashboardOpen(v => !v); setDashboardMounted(true); setDevStudioOpen(false); setBrainOpen(false) }}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" width="13" height="13">
               <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
@@ -255,10 +257,16 @@ export default function App() {
           ? <DevStudioPanel onClose={() => setDevStudioOpen(false)} />
           : brainOpen
             ? <BrainPanel onClose={() => setBrainOpen(false)} />
-            : dashboardOpen
-              ? <DashboardPanel config={config} onClose={() => setDashboardOpen(false)} />
-              : <ChatArea />
+            : !dashboardOpen
+              ? <ChatArea />
+              : null
         }
+        {/* Keep Dashboard webview mounted (hidden) so it reconnects instantly */}
+        {dashboardMounted && (
+          <div style={{ display: dashboardOpen && !devStudioOpen && !brainOpen ? 'contents' : 'none' }}>
+            <DashboardPanel config={config} onClose={() => setDashboardOpen(false)} />
+          </div>
+        )}
       </div>
 
       {/* ── Modals / overlays ────────────────────────────────────────────── */}

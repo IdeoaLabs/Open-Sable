@@ -316,6 +316,25 @@ class Gateway:
         app.router.add_get("/api/env", self._env_get_handler)
         app.router.add_post("/api/env", self._env_post_handler)
 
+        # Soul.md editor
+        app.router.add_get("/api/soul", self._soul_get_handler)
+        app.router.add_post("/api/soul", self._soul_post_handler)
+
+        # Knowledge base (shared learnings vault)
+        app.router.add_get("/api/knowledge-base", self._kb_get_handler)
+        app.router.add_post("/api/knowledge-base", self._kb_add_handler)
+        app.router.add_delete("/api/knowledge-base", self._kb_delete_handler)
+        app.router.add_post("/api/knowledge-base/upload", self._kb_upload_handler)
+
+        # Agent profile management
+        app.router.add_get("/api/agents", self._agents_list_handler)
+        app.router.add_post("/api/agents", self._agents_create_handler)
+        app.router.add_delete("/api/agents", self._agents_delete_handler)
+        app.router.add_get("/api/agents/soul", self._agents_soul_get_handler)
+        app.router.add_post("/api/agents/soul", self._agents_soul_post_handler)
+        app.router.add_get("/api/agents/tools", self._agents_tools_get_handler)
+        app.router.add_post("/api/agents/tools", self._agents_tools_post_handler)
+
         # WiFi survival skill
         app.router.add_get("/api/wifi", self._wifi_status_handler)
         app.router.add_post("/api/wifi", self._wifi_command_handler)
@@ -804,6 +823,547 @@ class Gateway:
             text=json.dumps({"ok": True, "applied": applied, "added": added,
                              "deleted": deleted, "missing": missing}),
         )
+
+    # ── Soul.md editor ────────────────────────────────────────────────────────
+
+    def _soul_md_path(self) -> Path:
+        """Return the absolute path to the active profile's soul.md file."""
+        return self._project_root / "agents" / _profile_name / "soul.md"
+
+    async def _soul_get_handler(self, request: web.Request) -> web.Response:
+        """GET /api/soul — return soul.md content as JSON."""
+        soul_path = self._soul_md_path()
+        if not soul_path.exists():
+            return web.Response(
+                content_type="application/json",
+                text=json.dumps({"profile": _profile_name, "content": "", "exists": False}),
+                headers={"Cache-Control": "no-store"},
+            )
+        content = soul_path.read_text(encoding="utf-8")
+        return web.Response(
+            content_type="application/json",
+            text=json.dumps({"profile": _profile_name, "content": content, "exists": True}),
+            headers={"Cache-Control": "no-store"},
+        )
+
+    async def _soul_post_handler(self, request: web.Request) -> web.Response:
+        """POST /api/soul — save soul.md content."""
+        try:
+            body = await request.json()
+            content = body.get("content")
+            if content is None:
+                return web.Response(status=400, content_type="application/json",
+                                    text='{"error":"content field required"}')
+        except Exception:
+            return web.Response(status=400, content_type="application/json",
+                                text='{"error":"invalid JSON body"}')
+
+        soul_path = self._soul_md_path()
+        soul_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Atomic write
+        import tempfile
+        tmp_fd, tmp_path = tempfile.mkstemp(
+            dir=str(soul_path.parent), prefix=".soul.md.tmp"
+        )
+        try:
+            with os.fdopen(tmp_fd, "w", encoding="utf-8") as fh:
+                fh.write(content)
+            os.replace(tmp_path, str(soul_path))
+        except OSError as exc:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            return web.Response(status=500, content_type="application/json",
+                                text=json.dumps({"error": str(exc)}))
+
+        return web.Response(
+            content_type="application/json",
+            text=json.dumps({"ok": True, "profile": _profile_name}),
+        )
+
+    # ── Knowledge base (shared learnings vault) ───────────────────────────────
+
+    def _vault_path(self) -> Path:
+        """Return the path to the shared learnings vault."""
+        return self._project_root / "data" / "shared_learnings" / "vault.jsonl"
+
+    async def _kb_get_handler(self, request: web.Request) -> web.Response:
+        """GET /api/knowledge-base — return all vault entries."""
+        vault_path = self._vault_path()
+        entries: list[dict] = []
+        if vault_path.exists():
+            for line in vault_path.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entries.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+        return web.Response(
+            content_type="application/json",
+            text=json.dumps({"entries": entries, "count": len(entries)}),
+            headers={"Cache-Control": "no-store"},
+        )
+
+    async def _kb_add_handler(self, request: web.Request) -> web.Response:
+        """POST /api/knowledge-base — add a new learning entry."""
+        import uuid
+        try:
+            body = await request.json()
+            title = str(body.get("title", "")).strip()
+            content = str(body.get("content", "")).strip()
+            category = str(body.get("category", "insight")).strip()
+            tags = body.get("tags", [])
+            if not isinstance(tags, list):
+                tags = []
+        except Exception:
+            return web.Response(status=400, content_type="application/json",
+                                text='{"error":"invalid JSON body"}')
+
+        if not title or not content:
+            return web.Response(status=400, content_type="application/json",
+                                text='{"error":"title and content are required"}')
+
+        entry = {
+            "learning_id": uuid.uuid4().hex[:16],
+            "source_agent": _profile_name,
+            "category": category,
+            "title": title,
+            "content": content,
+            "confidence": float(body.get("confidence", 0.7)),
+            "usefulness_score": 0.5,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "imported_by": [],
+            "tags": [str(t).strip() for t in tags if str(t).strip()],
+            "context": "manual",
+        }
+
+        vault_path = self._vault_path()
+        vault_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(vault_path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(entry) + "\n")
+
+        return web.Response(
+            content_type="application/json",
+            text=json.dumps({"ok": True, "entry": entry}),
+        )
+
+    async def _kb_delete_handler(self, request: web.Request) -> web.Response:
+        """DELETE /api/knowledge-base — delete a learning entry by ID."""
+        try:
+            body = await request.json()
+            learning_id = str(body.get("learning_id", "")).strip()
+        except Exception:
+            return web.Response(status=400, content_type="application/json",
+                                text='{"error":"invalid JSON body"}')
+
+        if not learning_id:
+            return web.Response(status=400, content_type="application/json",
+                                text='{"error":"learning_id required"}')
+
+        vault_path = self._vault_path()
+        if not vault_path.exists():
+            return web.Response(status=404, content_type="application/json",
+                                text='{"error":"vault not found"}')
+
+        lines = vault_path.read_text(encoding="utf-8").splitlines()
+        new_lines: list[str] = []
+        removed = False
+        for line in lines:
+            line_s = line.strip()
+            if not line_s:
+                continue
+            try:
+                entry = json.loads(line_s)
+                if entry.get("learning_id") == learning_id:
+                    removed = True
+                    continue
+            except json.JSONDecodeError:
+                pass
+            new_lines.append(line_s)
+
+        if not removed:
+            return web.Response(status=404, content_type="application/json",
+                                text='{"error":"entry not found"}')
+
+        # Atomic write
+        import tempfile
+        tmp_fd, tmp_path = tempfile.mkstemp(
+            dir=str(vault_path.parent), prefix=".vault.tmp"
+        )
+        try:
+            with os.fdopen(tmp_fd, "w", encoding="utf-8") as fh:
+                for line in new_lines:
+                    fh.write(line + "\n")
+            os.replace(tmp_path, str(vault_path))
+        except OSError as exc:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            return web.Response(status=500, content_type="application/json",
+                                text=json.dumps({"error": str(exc)}))
+
+        return web.Response(
+            content_type="application/json",
+            text=json.dumps({"ok": True, "deleted": learning_id}),
+        )
+
+    # ── Knowledge base file upload ────────────────────────────────────────────
+
+    @staticmethod
+    def _extract_text_from_file(filename: str, data: bytes) -> str:
+        """Extract text content from uploaded file bytes."""
+        ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+
+        if ext in ("txt", "md", "csv", "log", "json", "yaml", "yml", "toml", "ini", "cfg"):
+            return data.decode("utf-8", errors="replace")
+
+        if ext == "pdf":
+            try:
+                from PyPDF2 import PdfReader
+                import io
+                reader = PdfReader(io.BytesIO(data))
+                pages = []
+                for page in reader.pages:
+                    text = page.extract_text()
+                    if text:
+                        pages.append(text)
+                return "\n\n".join(pages)
+            except Exception as exc:
+                raise ValueError(f"Failed to extract PDF text: {exc}")
+
+        if ext == "docx":
+            try:
+                from docx import Document
+                import io
+                doc = Document(io.BytesIO(data))
+                return "\n\n".join(p.text for p in doc.paragraphs if p.text.strip())
+            except Exception as exc:
+                raise ValueError(f"Failed to extract DOCX text: {exc}")
+
+        if ext in ("xlsx", "xls"):
+            try:
+                from openpyxl import load_workbook
+                import io
+                wb = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
+                lines: list[str] = []
+                for ws in wb.worksheets:
+                    lines.append(f"## Sheet: {ws.title}")
+                    for row in ws.iter_rows(values_only=True):
+                        cells = [str(c) if c is not None else "" for c in row]
+                        if any(cells):
+                            lines.append("\t".join(cells))
+                wb.close()
+                return "\n".join(lines)
+            except Exception as exc:
+                raise ValueError(f"Failed to extract Excel text: {exc}")
+
+        raise ValueError(f"Unsupported file type: .{ext}")
+
+    async def _kb_upload_handler(self, request: web.Request) -> web.Response:
+        """POST /api/knowledge-base/upload — upload files and add as knowledge entries."""
+        import uuid
+
+        MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB per file
+        results: list[dict] = []
+
+        try:
+            reader = await request.multipart()
+        except Exception:
+            return web.Response(status=400, content_type="application/json",
+                                text='{"error":"expected multipart/form-data"}')
+
+        while True:
+            part = await reader.next()
+            if part is None:
+                break
+            if part.name != "files":
+                await part.read()
+                continue
+
+            filename = part.filename or "unknown.txt"
+            # Read file data with size limit
+            chunks: list[bytes] = []
+            total = 0
+            while True:
+                chunk = await part.read_chunk(65536)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > MAX_FILE_SIZE:
+                    results.append({"filename": filename, "ok": False,
+                                    "error": f"File exceeds {MAX_FILE_SIZE // (1024*1024)}MB limit"})
+                    break
+                chunks.append(chunk)
+            else:
+                # Loop completed without break → file is within limits
+                data = b"".join(chunks)
+                try:
+                    text = self._extract_text_from_file(filename, data)
+                    if not text.strip():
+                        results.append({"filename": filename, "ok": False,
+                                        "error": "No text content extracted"})
+                        continue
+
+                    entry = {
+                        "learning_id": uuid.uuid4().hex[:16],
+                        "source_agent": _profile_name,
+                        "category": "insight",
+                        "title": filename,
+                        "content": text[:50000],  # cap at 50k chars
+                        "confidence": 0.7,
+                        "usefulness_score": 0.5,
+                        "created_at": datetime.now(timezone.utc).isoformat(),
+                        "imported_by": [],
+                        "tags": ["uploaded", filename.rsplit(".", 1)[-1].lower()],
+                        "context": "file_upload",
+                    }
+                    vault_path = self._vault_path()
+                    vault_path.parent.mkdir(parents=True, exist_ok=True)
+                    with open(vault_path, "a", encoding="utf-8") as fh:
+                        fh.write(json.dumps(entry) + "\n")
+
+                    results.append({"filename": filename, "ok": True, "entry": entry})
+                except ValueError as exc:
+                    results.append({"filename": filename, "ok": False, "error": str(exc)})
+                except Exception as exc:
+                    results.append({"filename": filename, "ok": False,
+                                    "error": f"Unexpected error: {exc}"})
+
+        if not results:
+            return web.Response(status=400, content_type="application/json",
+                                text='{"error":"no files received"}')
+
+        return web.Response(
+            content_type="application/json",
+            text=json.dumps({
+                "ok": any(r["ok"] for r in results),
+                "results": results,
+            }),
+        )
+
+    # ── Agent profile management ──────────────────────────────────────────────
+
+    def _agents_dir(self) -> Path:
+        return self._project_root / "agents"
+
+    def _agent_profile_path(self, name: str) -> Path:
+        return self._agents_dir() / name
+
+    async def _agents_list_handler(self, request: web.Request) -> web.Response:
+        """GET /api/agents — list all agent profiles with details."""
+        agents_dir = self._agents_dir()
+        profiles: list[dict] = []
+        if agents_dir.is_dir():
+            for d in sorted(agents_dir.iterdir()):
+                if not d.is_dir() or d.name.startswith(("_", ".")):
+                    continue
+                soul_path = d / "soul.md"
+                tools_path = d / "tools.json"
+                env_path = d / "profile.env"
+                sock = Path(f"/tmp/sable-{d.name}.sock")
+                profiles.append({
+                    "name": d.name,
+                    "running": sock.exists(),
+                    "is_current": d.name == _profile_name,
+                    "has_soul": soul_path.exists(),
+                    "has_env": env_path.exists() or (d / "profile.EXAMPLE.env").exists(),
+                    "has_tools": tools_path.exists(),
+                })
+        return web.Response(
+            content_type="application/json",
+            text=json.dumps({"agents": profiles, "current": _profile_name}),
+            headers={"Cache-Control": "no-store"},
+        )
+
+    async def _agents_create_handler(self, request: web.Request) -> web.Response:
+        """POST /api/agents — create a new agent from template."""
+        import shutil
+        try:
+            body = await request.json()
+            name = str(body.get("name", "")).strip().lower()
+            soul_content = body.get("soul", "")
+        except Exception:
+            return web.Response(status=400, content_type="application/json",
+                                text='{"error":"invalid JSON body"}')
+
+        # Validate name: lowercase alphanumeric + hyphens
+        if not name or not re.match(r'^[a-z][a-z0-9\-]{0,30}$', name):
+            return web.Response(status=400, content_type="application/json",
+                                text='{"error":"Invalid name. Use lowercase letters, numbers, hyphens. Max 31 chars."}')
+
+        agents_dir = self._agents_dir()
+        target = agents_dir / name
+        template = agents_dir / "_template"
+
+        if target.exists():
+            return web.Response(status=409, content_type="application/json",
+                                text=json.dumps({"error": f"Agent '{name}' already exists"}))
+
+        if not template.is_dir():
+            return web.Response(status=500, content_type="application/json",
+                                text='{"error":"Template directory not found"}')
+
+        try:
+            shutil.copytree(str(template), str(target))
+            # Rename EXAMPLE env to profile.env
+            example_env = target / "profile.EXAMPLE.env"
+            real_env = target / "profile.env"
+            if example_env.exists() and not real_env.exists():
+                example_env.rename(real_env)
+            # Write custom soul if provided
+            if soul_content:
+                (target / "soul.md").write_text(soul_content, encoding="utf-8")
+        except OSError as exc:
+            return web.Response(status=500, content_type="application/json",
+                                text=json.dumps({"error": str(exc)}))
+
+        return web.Response(
+            content_type="application/json",
+            text=json.dumps({"ok": True, "name": name}),
+        )
+
+    async def _agents_delete_handler(self, request: web.Request) -> web.Response:
+        """DELETE /api/agents — delete an agent profile."""
+        import shutil
+        try:
+            body = await request.json()
+            name = str(body.get("name", "")).strip()
+        except Exception:
+            return web.Response(status=400, content_type="application/json",
+                                text='{"error":"invalid JSON body"}')
+
+        if not name:
+            return web.Response(status=400, content_type="application/json",
+                                text='{"error":"name required"}')
+
+        if name == _profile_name:
+            return web.Response(status=400, content_type="application/json",
+                                text='{"error":"Cannot delete the currently running agent"}')
+
+        if name in ("_template", "sable"):
+            return web.Response(status=400, content_type="application/json",
+                                text='{"error":"Cannot delete protected profiles"}')
+
+        target = self._agents_dir() / name
+        if not target.is_dir():
+            return web.Response(status=404, content_type="application/json",
+                                text=json.dumps({"error": f"Agent '{name}' not found"}))
+
+        # Check if running
+        sock = Path(f"/tmp/sable-{name}.sock")
+        if sock.exists():
+            return web.Response(status=409, content_type="application/json",
+                                text='{"error":"Stop the agent before deleting it"}')
+
+        try:
+            shutil.rmtree(str(target))
+        except OSError as exc:
+            return web.Response(status=500, content_type="application/json",
+                                text=json.dumps({"error": str(exc)}))
+
+        return web.Response(
+            content_type="application/json",
+            text=json.dumps({"ok": True, "deleted": name}),
+        )
+
+    async def _agents_soul_get_handler(self, request: web.Request) -> web.Response:
+        """GET /api/agents/soul?profile=name — read an agent's soul.md."""
+        name = request.query.get("profile", "").strip()
+        if not name:
+            name = _profile_name
+        soul_path = self._agents_dir() / name / "soul.md"
+        if not soul_path.exists():
+            return web.Response(content_type="application/json",
+                                text=json.dumps({"profile": name, "content": "", "exists": False}))
+        return web.Response(
+            content_type="application/json",
+            text=json.dumps({"profile": name, "content": soul_path.read_text(encoding="utf-8"), "exists": True}),
+            headers={"Cache-Control": "no-store"},
+        )
+
+    async def _agents_soul_post_handler(self, request: web.Request) -> web.Response:
+        """POST /api/agents/soul — update an agent's soul.md."""
+        try:
+            body = await request.json()
+            name = str(body.get("profile", "")).strip()
+            content = body.get("content")
+        except Exception:
+            return web.Response(status=400, content_type="application/json",
+                                text='{"error":"invalid JSON body"}')
+        if not name or content is None:
+            return web.Response(status=400, content_type="application/json",
+                                text='{"error":"profile and content required"}')
+        soul_path = self._agents_dir() / name / "soul.md"
+        if not soul_path.parent.is_dir():
+            return web.Response(status=404, content_type="application/json",
+                                text=json.dumps({"error": f"Agent '{name}' not found"}))
+        import tempfile
+        tmp_fd, tmp_path = tempfile.mkstemp(dir=str(soul_path.parent), prefix=".soul.md.tmp")
+        try:
+            with os.fdopen(tmp_fd, "w", encoding="utf-8") as fh:
+                fh.write(content)
+            os.replace(tmp_path, str(soul_path))
+        except OSError as exc:
+            try: os.unlink(tmp_path)
+            except OSError: pass
+            return web.Response(status=500, content_type="application/json",
+                                text=json.dumps({"error": str(exc)}))
+        return web.Response(content_type="application/json",
+                            text=json.dumps({"ok": True, "profile": name}))
+
+    async def _agents_tools_get_handler(self, request: web.Request) -> web.Response:
+        """GET /api/agents/tools?profile=name — read an agent's tools.json."""
+        name = request.query.get("profile", "").strip()
+        if not name:
+            name = _profile_name
+        tools_path = self._agents_dir() / name / "tools.json"
+        if not tools_path.exists():
+            return web.Response(content_type="application/json",
+                                text=json.dumps({"profile": name, "config": {"mode": "all", "tools": []}, "exists": False}))
+        try:
+            data = json.loads(tools_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            data = {"mode": "all", "tools": []}
+        return web.Response(
+            content_type="application/json",
+            text=json.dumps({"profile": name, "config": data, "exists": True}),
+            headers={"Cache-Control": "no-store"},
+        )
+
+    async def _agents_tools_post_handler(self, request: web.Request) -> web.Response:
+        """POST /api/agents/tools — update an agent's tools.json."""
+        try:
+            body = await request.json()
+            name = str(body.get("profile", "")).strip()
+            config = body.get("config")
+        except Exception:
+            return web.Response(status=400, content_type="application/json",
+                                text='{"error":"invalid JSON body"}')
+        if not name or not isinstance(config, dict):
+            return web.Response(status=400, content_type="application/json",
+                                text='{"error":"profile and config required"}')
+        tools_path = self._agents_dir() / name / "tools.json"
+        if not tools_path.parent.is_dir():
+            return web.Response(status=404, content_type="application/json",
+                                text=json.dumps({"error": f"Agent '{name}' not found"}))
+        import tempfile
+        tmp_fd, tmp_path = tempfile.mkstemp(dir=str(tools_path.parent), prefix=".tools.json.tmp")
+        try:
+            with os.fdopen(tmp_fd, "w", encoding="utf-8") as fh:
+                json.dump(config, fh, indent=2)
+            os.replace(tmp_path, str(tools_path))
+        except OSError as exc:
+            try: os.unlink(tmp_path)
+            except OSError: pass
+            return web.Response(status=500, content_type="application/json",
+                                text=json.dumps({"error": str(exc)}))
+        return web.Response(content_type="application/json",
+                            text=json.dumps({"ok": True, "profile": name}))
 
     # ── WiFi Survival handlers ────────────────────────────────────────────────
 
