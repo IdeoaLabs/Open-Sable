@@ -299,6 +299,45 @@ def find_node() -> Optional[str]:
     return None
 
 
+def find_npm() -> Optional[str]:
+    """Find npm, including common Windows paths when PATH hasn't refreshed."""
+    try:
+        r = subprocess.run(["npm", "--version"], capture_output=True, text=True, timeout=5,
+                           creationflags=_NO_WINDOW)
+        if r.returncode == 0:
+            return shutil.which("npm") or "npm"
+    except Exception:
+        pass
+    if IS_WIN:
+        candidates = [
+            os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"), "nodejs", "npm.cmd"),
+            os.path.join(os.environ.get("APPDATA", ""), "npm", "npm.cmd"),
+        ]
+        for p in candidates:
+            if os.path.isfile(p):
+                try:
+                    r = subprocess.run([p, "--version"], capture_output=True, text=True, timeout=5,
+                                       creationflags=_NO_WINDOW)
+                    if r.returncode == 0:
+                        return p
+                except Exception:
+                    pass
+        # Refresh PATH from registry
+        try:
+            r = subprocess.run(
+                ["powershell", "-NoProfile", "-Command",
+                 "[Environment]::GetEnvironmentVariable('Path','Machine')+';'+[Environment]::GetEnvironmentVariable('Path','User')"],
+                capture_output=True, text=True, timeout=5, creationflags=_NO_WINDOW)
+            if r.returncode == 0 and r.stdout.strip():
+                os.environ["PATH"] = r.stdout.strip()
+                npm_path = shutil.which("npm")
+                if npm_path:
+                    return npm_path
+        except Exception:
+            pass
+    return None
+
+
 def find_ollama() -> Optional[str]:
     try:
         r = subprocess.run(["ollama", "--version"], capture_output=True, text=True, timeout=5,
@@ -1601,13 +1640,17 @@ class InstallerEngine:
         if not find_node():
             self.log("  ⚠ Node.js not available — skipping frontends", "warning")
             return
+        npm = find_npm()
+        if not npm:
+            self.log("  ⚠ npm not found — skipping frontends. Install Node.js from nodejs.org", "warning")
+            return
         for project in ["dashboard", "desktop", "aggr"]:
             proj_dir = os.path.join(self.install_dir, project)
             pkg = os.path.join(proj_dir, "package.json")
             if not os.path.isfile(pkg):
                 continue
             self.log(f"  Building {project}...", "dim")
-            self._exec(["npm", "install", "--legacy-peer-deps"], cwd=proj_dir, check=False)
+            self._exec([npm, "install", "--legacy-peer-deps"], cwd=proj_dir, check=False)
             if project == "desktop":
                 # Desktop runs via electron, no build step
                 electron_bin = os.path.join(proj_dir, "node_modules", ".bin", "electron")
@@ -1616,7 +1659,7 @@ class InstallerEngine:
                 else:
                     self.log(f"  ⚠ {project} — electron binary not found", "warning")
             else:
-                self._exec(["npm", "run", "build"], cwd=proj_dir, check=False)
+                self._exec([npm, "run", "build"], cwd=proj_dir, check=False)
                 self.log(f"  ✔ {project} ready", "ok")
 
     def _init_environment(self):

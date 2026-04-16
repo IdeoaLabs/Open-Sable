@@ -128,6 +128,49 @@ function detectSystem() {
   return info
 }
 
+// ─── npm discovery (Windows PATH may not include npm after fresh install) ───
+let _npmPath = null
+function findNpm() {
+  if (_npmPath) return true
+  // Try plain npm first
+  try {
+    execSync('npm --version 2>&1', { encoding: 'utf-8', timeout: 5000 })
+    _npmPath = 'npm'
+    return true
+  } catch {}
+  if (IS_WIN) {
+    // Common Windows npm locations when PATH hasn't refreshed
+    const candidates = [
+      join(process.env.ProgramFiles || 'C:\\Program Files', 'nodejs', 'npm.cmd'),
+      join(process.env.APPDATA || '', 'npm', 'npm.cmd'),
+      join(homedir(), 'AppData', 'Roaming', 'npm', 'npm.cmd'),
+      join(process.env.ProgramFiles || 'C:\\Program Files', 'nodejs', 'npm'),
+    ]
+    for (const p of candidates) {
+      if (existsSync(p)) {
+        try {
+          execSync(`"${p}" --version 2>&1`, { encoding: 'utf-8', timeout: 5000 })
+          _npmPath = `"${p}"`
+          return true
+        } catch {}
+      }
+    }
+    // Try refreshing PATH from registry via PowerShell
+    try {
+      const freshPath = execSync(
+        'powershell -NoProfile -Command "[Environment]::GetEnvironmentVariable(\'Path\',\'Machine\')+\';\'+[Environment]::GetEnvironmentVariable(\'Path\',\'User\')"',
+        { encoding: 'utf-8', timeout: 5000 }
+      ).trim()
+      process.env.PATH = freshPath
+      execSync('npm --version 2>&1', { encoding: 'utf-8', timeout: 5000 })
+      _npmPath = 'npm'
+      return true
+    } catch {}
+  }
+  return false
+}
+function npmCmd() { return _npmPath || 'npm' }
+
 // ─── Shell Exec with Streaming ──────────────────────────────────────────────
 function run(cmd, opts = {}) {
   return new Promise((resolve, reject) => {
@@ -377,13 +420,14 @@ async function installOllama(config) {
 
 async function buildDashboard() {
   if (!systemInfo?.node) { log('Skipped (Node.js not found)', 'warn'); return }
+  if (!findNpm()) { log('Skipped (npm not found)', 'warn'); return }
   const dashDir = join(installDir, 'dashboard')
   if (!existsSync(join(dashDir, 'package.json'))) { log('No dashboard found', 'dim'); return }
   if (existsSync(join(dashDir, 'dist', 'index.html'))) { log('Dashboard already built', 'ok'); return }
   log('Installing npm dependencies...', 'info')
-  await run('npm install --legacy-peer-deps', { cwd: dashDir, check: false })
+  await run(`${npmCmd()} install --legacy-peer-deps`, { cwd: dashDir, check: false })
   log('Building dashboard...', 'info')
-  await run('npm run build', { cwd: dashDir, check: false })
+  await run(`${npmCmd()} run build`, { cwd: dashDir, check: false })
   if (existsSync(join(dashDir, 'dist', 'index.html'))) {
     log('Dashboard built', 'ok')
   } else {
@@ -393,12 +437,13 @@ async function buildDashboard() {
 
 async function buildDevStudio() {
   if (!systemInfo?.node) { log('Skipped (Node.js not found)', 'warn'); return }
+  if (!findNpm()) { log('Skipped (npm not found)', 'warn'); return }
   const devDir = join(installDir, 'sable_dev')
   if (!existsSync(join(devDir, 'package.json'))) { log('No Dev Studio found', 'dim'); return }
   log('Installing Dev Studio dependencies...', 'info')
-  await run('npm install --legacy-peer-deps', { cwd: devDir, check: false })
+  await run(`${npmCmd()} install --legacy-peer-deps`, { cwd: devDir, check: false })
   log('Building Dev Studio...', 'info')
-  await run('npm run build', { cwd: devDir, check: false })
+  await run(`${npmCmd()} run build`, { cwd: devDir, check: false })
   log('Dev Studio ready', 'ok')
 }
 
