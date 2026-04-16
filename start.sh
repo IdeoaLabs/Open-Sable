@@ -546,7 +546,67 @@ run_for_profile() {
     PROFILE_DIR="$DIR/agents/$PROFILE"
 }
 
+do_run() {
+    # ── Foreground mode: everything stops when this process dies ──
+    # Same setup as do_start, but the agent runs in the foreground.
+    # When agent exits (Ctrl+C / terminal close / kill), cleanup trap fires.
+
+    if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+        echo "⚠️  Already running [$PROFILE] (PID $(cat "$PIDFILE"))"
+        echo "   Stop it first: ./start.sh stop --profile $PROFILE"
+        return 1
+    fi
+
+    if [[ ! -d "$PROFILE_DIR" ]]; then
+        echo "❌ Profile '$PROFILE' not found at $PROFILE_DIR"
+        return 1
+    fi
+
+    echo "👤 Profile: $PROFILE (foreground mode)"
+
+    # Build dependencies for default profile
+    if [[ "$PROFILE" == "$DEFAULT_PROFILE" ]]; then
+        ensure_aggr
+        ensure_dashboard
+        ensure_marketplace
+    fi
+
+    mkdir -p "$DIR/logs"
+
+    # Start background services for default profile
+    if [[ "$PROFILE" == "$DEFAULT_PROFILE" ]]; then
+        start_desktop
+        start_dev_studio
+    fi
+
+    # Cleanup trap — kills everything when this process exits
+    _foreground_cleanup() {
+        echo ""
+        echo "🛑 Shutting down all services..."
+        if [[ "$PROFILE" == "$DEFAULT_PROFILE" ]]; then
+            stop_desktop
+            stop_dev_studio
+        fi
+        _kill_orphans
+        rm -f "$PIDFILE"
+        # Kill any remaining children of this shell
+        jobs -p 2>/dev/null | xargs -r kill 2>/dev/null
+        echo "✅ Stopped"
+    }
+    trap _foreground_cleanup EXIT INT TERM HUP
+
+    echo "🚀 Starting Open-Sable [profile: $PROFILE]..."
+
+    # Run agent in foreground — blocks until Ctrl+C / SIGTERM / terminal close
+    SABLE_PROFILE="$PROFILE" python -m opensable --profile "$PROFILE" 2>&1 | tee -a "$LOGFILE"
+
+    # When agent exits, trap fires and cleans up everything
+}
+
 case "$ACTION" in
+    run)
+        do_run
+        ;;
     start)
         if [[ "$ALL_PROFILES" == "1" ]]; then
             echo "🚀 Starting ALL agents..."
@@ -621,10 +681,11 @@ case "$ACTION" in
         fi
         ;;
     *)
-        echo "Usage: ./start.sh [start|stop|restart|status|logs|profiles] [--profile NAME] [--all]"
+        echo "Usage: ./start.sh [run|start|stop|restart|status|logs|profiles] [--profile NAME] [--all]"
         echo ""
         echo "Commands:"
-        echo "  start              Start the agent (default: $DEFAULT_PROFILE)"
+        echo "  run                Run in foreground (stops everything on exit)"
+        echo "  start              Start the agent as daemon (default: $DEFAULT_PROFILE)"
         echo "  stop               Stop the agent"
         echo "  restart            Restart the agent"
         echo "  status             Check if the agent is running"

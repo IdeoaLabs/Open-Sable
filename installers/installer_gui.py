@@ -2015,10 +2015,23 @@ class InstallerEngine:
         apps = os.path.expanduser("~/.local/share/applications")
         os.makedirs(apps, exist_ok=True)
         icon_dest = os.path.join(self.install_dir, "opensable.png")
-        try:
-            if os.path.isfile(ICON_PNG):
-                shutil.copy2(ICON_PNG, icon_dest)
-        except Exception:
+        icon_copied = False
+        # Try multiple icon sources: bundled assets, then repo's copy
+        icon_candidates = [
+            ICON_PNG,
+            os.path.join(ASSETS_DIR, "icon_source.png"),
+            os.path.join(self.install_dir, "installers", "assets", "icon_source.png"),
+            os.path.join(self.install_dir, "installers", "assets", "logo.png"),
+        ]
+        for src in icon_candidates:
+            try:
+                if os.path.isfile(src):
+                    shutil.copy2(src, icon_dest)
+                    icon_copied = True
+                    break
+            except Exception:
+                continue
+        if not icon_copied:
             icon_dest = ""
         with open(os.path.join(apps, "opensable.desktop"), "w") as f:
             f.write(f"[Desktop Entry]\nName=Open-Sable\nComment={APP_TAGLINE}\n")
