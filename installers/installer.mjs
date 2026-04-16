@@ -145,13 +145,21 @@ function run(cmd, opts = {}) {
     shell.stdout.on('data', d => {
       const s = d.toString()
       stdout += s
-      s.split('\n').filter(Boolean).forEach(line => log(line, 'dim'))
+      s.split('\n').filter(Boolean).forEach(line => {
+        // Skip noisy progress lines (git checkout %, pip download, npm timing)
+        if (/^\s*(Updating files|Receiving objects|Resolving deltas|remote: Counting|remote: Compressing|\[notice\])/.test(line)) return
+        log(line, 'dim')
+      })
     })
     shell.stderr.on('data', d => {
       const s = d.toString()
       stderr += s
-      // Only show non-trivial stderr
-      s.split('\n').filter(l => l.trim() && !l.includes('WARNING') && !l.includes('npm warn')).forEach(line => log(line, 'dim'))
+      s.split('\n').filter(l => {
+        if (!l.trim()) return false
+        // Filter noise: git progress, pip notices, npm warnings
+        if (/WARNING|npm warn|Updating files|Receiving objects|Resolving deltas|remote: Counting|remote: Compressing|\[notice\]/.test(l)) return false
+        return true
+      }).forEach(line => log(line, 'dim'))
     })
 
     shell.on('close', code => {
@@ -248,13 +256,15 @@ async function cloneRepo() {
     mkdirSync(dirname(installDir), { recursive: true })
     try {
       // Disable SSL verify as fallback for corporate/broken cert chains
-      const gitCmd = `git clone --branch ${REPO_BRANCH} --depth 1 ${REPO_URL} "${installDir}"`
+      const gitCmd = `git clone --branch ${REPO_BRANCH} --depth 1 --no-checkout ${REPO_URL} "${installDir}"`
       try {
         await run(gitCmd, { cwd: dirname(installDir) })
       } catch (e1) {
         log('git clone failed, retrying with SSL verify disabled...', 'warn')
-        await run(`git -c http.sslVerify=false clone --branch ${REPO_BRANCH} --depth 1 ${REPO_URL} "${installDir}"`, { cwd: dirname(installDir) })
+        await run(`git -c http.sslVerify=false clone --branch ${REPO_BRANCH} --depth 1 --no-checkout ${REPO_URL} "${installDir}"`, { cwd: dirname(installDir) })
       }
+      // Checkout files quietly (avoids "Updating files: XX%" spam)
+      await run('git checkout', { check: false })
       log('Repository cloned', 'ok')
       return
     } catch (e) {
@@ -325,13 +335,15 @@ async function createVenv() {
 }
 
 async function installPythonDeps() {
-  const pip = IS_WIN ? join(installDir, 'venv', 'Scripts', 'pip.exe') : join(installDir, 'venv', 'bin', 'pip')
-  await run(`"${pip}" install --upgrade pip setuptools wheel -q`, { check: false })
+  // Use "python -m pip" on Windows — pip.exe can't upgrade itself directly
+  const venvPy = IS_WIN ? join(installDir, 'venv', 'Scripts', 'python.exe') : join(installDir, 'venv', 'bin', 'python')
+  const pip = IS_WIN ? `"${venvPy}" -m pip` : `"${join(installDir, 'venv', 'bin', 'pip')}"`
+  await run(`${pip} install --upgrade pip setuptools wheel -q`, { check: false })
   if (existsSync(join(installDir, 'pyproject.toml'))) {
-    await run(`"${pip}" install -e ".[core]" -q`, { check: false })
+    await run(`${pip} install -e ".[core]" -q`, { check: false })
   }
   if (existsSync(join(installDir, 'requirements.txt'))) {
-    await run(`"${pip}" install -r requirements.txt -q`, { check: false })
+    await run(`${pip} install -r requirements.txt -q`, { check: false })
   }
   log('Python dependencies installed', 'ok')
 }
