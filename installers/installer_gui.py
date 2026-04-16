@@ -440,7 +440,7 @@ class UpdateEngine:
         try:
             proc = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                cwd=cwd or self.install_dir, text=True, shell=shell,
+                cwd=cwd or self.install_dir, encoding='utf-8', errors='replace', shell=shell,
                 env={**os.environ, "PYTHONUNBUFFERED": "1"},
                 creationflags=_NO_WINDOW,
             )
@@ -583,7 +583,7 @@ class ReinstallEngine:
         try:
             proc = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                cwd=cwd or self.install_dir, text=True, shell=shell,
+                cwd=cwd or self.install_dir, encoding='utf-8', errors='replace', shell=shell,
                 env={**os.environ, "PYTHONUNBUFFERED": "1"},
                 creationflags=_NO_WINDOW,
             )
@@ -1205,7 +1205,7 @@ class InstallerEngine:
         try:
             proc = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                cwd=cwd or self.install_dir, text=True, shell=shell,
+                cwd=cwd or self.install_dir, encoding='utf-8', errors='replace', shell=shell,
                 env={**os.environ, "PYTHONUNBUFFERED": "1"},
                 creationflags=_NO_WINDOW,
             )
