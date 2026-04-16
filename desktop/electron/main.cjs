@@ -4,10 +4,13 @@ const { app, BrowserWindow, ipcMain, shell, nativeTheme } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const dotenv = require('dotenv');
+const { execFileSync } = require('child_process');
 
 // ─── Load SableCore .env ─────────────────────────────────────────────────────
 const envPath = path.join(__dirname, '../../.env');
 if (fs.existsSync(envPath)) dotenv.config({ path: envPath });
+
+const PROJECT_ROOT = path.join(__dirname, '../..');
 
 const WEBCHAT_PORT = process.env.WEBCHAT_PORT || '8789';
 const WEBCHAT_HOST = process.env.WEBCHAT_HOST || 'localhost';
@@ -63,6 +66,22 @@ app.whenReady().then(createWindow);
 
 app.on('window-all-closed', () => {
   app.quit();
+});
+
+// ─── Cleanup backend processes on quit ────────────────────────────────────────
+app.on('before-quit', () => {
+  try {
+    const startSh = path.join(PROJECT_ROOT, 'start.sh');
+    if (fs.existsSync(startSh)) {
+      execFileSync(startSh, ['stop', '--all'], {
+        cwd: PROJECT_ROOT,
+        timeout: 10000,
+        stdio: 'ignore',
+      });
+    }
+  } catch (_) {
+    // Best-effort cleanup — don't block quit
+  }
 });
 
 app.on('activate', () => {

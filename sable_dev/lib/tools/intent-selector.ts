@@ -38,8 +38,8 @@ const INTENT_TOOL_MAP: Record<IntentCategory, string[]> = {
   read:    ['file_read', 'list_files', 'glob'],
   edit:    ['file_read', 'file_edit', 'file_write', 'grep', 'list_files'],
   create:  ['file_write', 'list_files', 'glob', 'bash'],
-  debug:   ['file_read', 'file_edit', 'grep', 'bash', 'list_files', 'agent_spawn'],
-  search:  ['grep', 'glob', 'list_files', 'file_read', 'web_fetch', 'tool_search'],
+  debug:   ['file_read', 'file_edit', 'grep', 'bash', 'list_files', 'agent_spawn', 'web_search'],
+  search:  ['grep', 'glob', 'list_files', 'file_read', 'web_fetch', 'web_search', 'tool_search'],
   run:     ['bash', 'file_read', 'list_files'],
   general: [], // All tools
 };

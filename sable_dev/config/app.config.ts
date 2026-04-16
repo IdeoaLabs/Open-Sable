@@ -51,20 +51,24 @@ export const appConfig = {
   // AI Model Configuration
   ai: {
     // Default AI model
-    defaultModel: 'ollama/vaultbox/qwen3.5-uncensored:4b',
+    defaultModel: 'meta-llama/llama-4-scout-17b-16e-instruct',
     
     // Available models (static list - Ollama/OpenWebUI models are fetched dynamically)
     availableModels: [
+      'meta-llama/llama-4-scout-17b-16e-instruct',
+      'llama-3.3-70b-versatile',
+      'qwen/qwen3-32b',
       'openai/gpt-5',
-      'moonshotai/kimi-k2-instruct-0905',
       'anthropic/claude-sonnet-4-20250514',
       'google/gemini-3-pro-preview'
     ],
     
     // Model display names
     modelDisplayNames: {
+      'meta-llama/llama-4-scout-17b-16e-instruct': 'Llama 4 Scout 17B (Groq)',
+      'llama-3.3-70b-versatile': 'Llama 3.3 70B (Groq)',
+      'qwen/qwen3-32b': 'Qwen3 32B (Groq)',
       'openai/gpt-5': 'GPT-5',
-      'moonshotai/kimi-k2-instruct-0905': 'Kimi K2 (Groq)',
       'anthropic/claude-sonnet-4-20250514': 'Sonnet 4',
       'google/gemini-3-pro-preview': 'Gemini 3 Pro (Preview)',
       'ollama/vaultbox/qwen3.5-uncensored:4b': 'Qwen 3.5 Uncensored (4B)'
@@ -72,9 +76,17 @@ export const appConfig = {
     
     // Model API configuration
     modelApiConfig: {
-      'moonshotai/kimi-k2-instruct-0905': {
+      'meta-llama/llama-4-scout-17b-16e-instruct': {
         provider: 'groq',
-        model: 'moonshotai/kimi-k2-instruct-0905'
+        model: 'meta-llama/llama-4-scout-17b-16e-instruct'
+      },
+      'llama-3.3-70b-versatile': {
+        provider: 'groq',
+        model: 'llama-3.3-70b-versatile'
+      },
+      'qwen/qwen3-32b': {
+        provider: 'groq',
+        model: 'qwen/qwen3-32b'
       }
     },
 

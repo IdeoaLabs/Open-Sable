@@ -270,6 +270,64 @@ function getBuiltinCommands(): SlashCommand[] {
         };
       },
     },
+    {
+      name: 'undo',
+      aliases: ['u', 'revert'],
+      description: 'Undo the last AI change (restore previous file snapshot)',
+      usage: '/undo',
+      handler: () => {
+        return {
+          handled: true,
+          message: 'Reverting to previous snapshot...',
+          data: { action: 'undo' },
+        };
+      },
+    },
+    {
+      name: 'redo',
+      aliases: [],
+      description: 'Redo the last undone change',
+      usage: '/redo',
+      handler: () => {
+        return {
+          handled: true,
+          message: 'Reapplying next snapshot...',
+          data: { action: 'redo' },
+        };
+      },
+    },
+    {
+      name: 'review',
+      aliases: ['rv'],
+      description: 'Ask the AI to review your current code for issues',
+      usage: '/review [focus area]',
+      handler: (args) => {
+        const focus = args.trim();
+        return {
+          handled: false, // Don't consume — let it go to AI with a special prompt
+          message: '',
+          data: {
+            action: 'review',
+            prompt: focus
+              ? `Please review the current project code, focusing on: ${focus}. Check for bugs, security issues, performance problems, and suggest improvements.`
+              : `Please review all the current project code. Check for bugs, security issues, performance problems, missing error handling, and suggest improvements. Be specific about file names and line numbers.`,
+          },
+        };
+      },
+    },
+    {
+      name: 'download',
+      aliases: ['export', 'zip'],
+      description: 'Download the project as a zip file',
+      usage: '/download',
+      handler: () => {
+        return {
+          handled: true,
+          message: 'Preparing download...',
+          data: { action: 'download' },
+        };
+      },
+    },
   ];
 }
 

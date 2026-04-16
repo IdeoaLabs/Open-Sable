@@ -15,13 +15,30 @@ export default function DevStudioPanel({ onClose }) {
   const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState(false)
   const wvRef = useRef(null)
+  const retryCountRef = useRef(0)
+  const maxRetries = 5
 
   useEffect(() => {
     const wv = wvRef.current
     if (!wv) return
-    const onFinish = () => setLoaded(true)
+    const onFinish = () => {
+      retryCountRef.current = 0
+      setLoaded(true)
+      setError(false)
+    }
     const onFail = (e) => {
-      if (e.errorCode && e.errorCode !== -3) setError(true)
+      // -3 = ERR_ABORTED (normal), -6 = ERR_FILE_NOT_FOUND (HMR), -2 = ERR_FAILED (transient)
+      const ignoreCodes = [-3, -6, -2, -501]
+      if (e.errorCode && !ignoreCodes.includes(e.errorCode)) {
+        // Auto-retry a few times before showing error — server may still be starting
+        if (retryCountRef.current < maxRetries) {
+          retryCountRef.current++
+          console.log(`[DevStudio] Load failed (code ${e.errorCode}), retry ${retryCountRef.current}/${maxRetries}...`)
+          setTimeout(() => wv.reload(), 2000)
+        } else {
+          setError(true)
+        }
+      }
     }
     wv.addEventListener('did-finish-load', onFinish)
     wv.addEventListener('did-fail-load', onFail)

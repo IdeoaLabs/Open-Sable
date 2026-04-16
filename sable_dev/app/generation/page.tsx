@@ -469,8 +469,23 @@ function AISandboxPage() {
 
       // Check if sandbox ID is in URL
       const sandboxIdParam = searchParams.get('sandbox');
-      const restoreSandboxId = sessionStorage.getItem('restoreSandboxId');
+      let restoreSandboxId = sessionStorage.getItem('restoreSandboxId');
       sessionStorage.removeItem('restoreSandboxId');
+      
+      // Auto-restore: if no sandbox ID from URL or sessionStorage,
+      // check server-side persisted session for last active sandbox
+      if (!sandboxIdParam && !restoreSandboxId && !isNewProject) {
+        try {
+          const sessionRes = await fetch('/api/persistence?type=session');
+          const sessionData = await sessionRes.json();
+          if (sessionData.hasSession && sessionData.session?.sandboxData?.sandboxId) {
+            restoreSandboxId = sessionData.session.sandboxData.sandboxId;
+            console.log('[home] Auto-restoring previous session sandbox:', restoreSandboxId);
+          }
+        } catch (e) {
+          console.log('[home] Could not check persisted session:', e);
+        }
+      }
       
       setLoading(true);
       try {
@@ -1393,6 +1408,9 @@ Tip: I automatically detect and install npm packages from your code imports (lik
           
           // Fetch updated file structure
           await fetchSandboxFiles();
+          
+          // Auto-save project to history after successful code application
+          saveCurrentProjectToHistory();
           
           // Skip automatic package check - it's not needed here and can cause false "no sandbox" messages
           // Packages are already installed during the apply-ai-code-stream process
@@ -2639,13 +2657,14 @@ Tip: I automatically detect and install npm packages from your code imports (lik
                   }));
                 } else if (data.type === 'tool-call') {
                   // AI is calling a tool to explore/modify the project
-                  const toolLabel = data.name === 'file_read' ? `Reading ${data.args?.path || 'file'}` :
-                                    data.name === 'file_edit' ? `Editing ${data.args?.path || 'file'}` :
-                                    data.name === 'file_write' ? `Writing ${data.args?.path || 'file'}` :
-                                    data.name === 'grep' ? `Searching for "${(data.args?.pattern || '').substring(0, 30)}"` :
-                                    data.name === 'glob' ? `Finding files: ${data.args?.pattern || ''}` :
-                                    data.name === 'list_files' ? `Listing ${data.args?.path || 'files'}` :
-                                    data.name === 'bash' ? `Running: ${(data.args?.command || '').substring(0, 40)}` :
+                  const args = data.args || {};
+                  const toolLabel = data.name === 'file_read' ? `Reading ${args.path || 'file'}` :
+                                    data.name === 'file_edit' ? `Editing ${args.path || 'file'}` :
+                                    data.name === 'file_write' ? `Writing ${args.path || 'file'}` :
+                                    data.name === 'grep' ? `Searching for "${String(args.pattern || '').substring(0, 30)}"` :
+                                    data.name === 'glob' ? `Finding files: ${args.pattern || ''}` :
+                                    data.name === 'list_files' ? `Listing ${args.path || 'files'}` :
+                                    data.name === 'bash' ? `Running: ${String(args.command || '').substring(0, 40)}` :
                                     `Tool: ${data.name}`;
                   setGenerationProgress(prev => ({
                     ...prev,
@@ -2715,8 +2734,42 @@ Tip: I automatically detect and install npm packages from your code imports (lik
                     // Keep the files that were already parsed during streaming
                     files: prev.files.length > 0 ? prev.files : parsedFiles
                   }));
+                } else if (data.type === 'command') {
+                  // Handle slash command actions from the backend
+                  if (data.action === 'undo') {
+                    handleUndo();
+                  } else if (data.action === 'redo') {
+                    handleRedo();
+                  } else if (data.action === 'download') {
+                    // Trigger project download via download-zip API
+                    try {
+                      const zipResp = await fetch('/api/download-zip', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ files: sandboxFiles }),
+                      });
+                      if (zipResp.ok) {
+                        const blob = await zipResp.blob();
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = 'project.zip';
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                        addChatMessage('Project downloaded as project.zip', 'system');
+                      } else {
+                        addChatMessage('Failed to create zip file', 'error');
+                      }
+                    } catch (e) {
+                      addChatMessage('Failed to download project', 'error');
+                    }
+                  } else if (data.action === 'review') {
+                    // /review returns handled: false, so the AI gets the review prompt — nothing extra needed here
+                  }
                 } else if (data.type === 'error') {
-                  throw new Error(data.error);
+                  throw new Error(data.error || 'Unknown stream error');
                 }
               } catch (e) {
                 console.error('Failed to parse SSE data:', e);
@@ -2988,36 +3041,35 @@ Tip: I automatically detect and install npm packages from your code imports (lik
   }, [pendingCreationPrompt, sandboxData]);
 
   const downloadZip = async () => {
-    if (!sandboxData) {
+    if (!sandboxData && Object.keys(sandboxFiles).length === 0) {
       addChatMessage('Please wait for the sandbox to be created before downloading.', 'system');
       return;
     }
     
     setLoading(true);
     log('Creating zip file...');
-    addChatMessage('Creating ZIP file of your Vite app...', 'system');
+    addChatMessage('Creating ZIP file of your project...', 'system');
     
     try {
-      const response = await fetch('/api/create-zip', {
+      const response = await fetch('/api/download-zip', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ files: sandboxFiles }),
       });
       
-      const data = await response.json();
-      
-      if (data.success) {
-        log('Zip file created!');
-        addChatMessage('ZIP file created! Download starting...', 'system');
-        
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
-        link.href = data.dataUrl;
-        link.download = data.fileName || 'e2b-project.zip';
+        link.href = url;
+        link.download = 'project.zip';
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+        URL.revokeObjectURL(url);
         
         addChatMessage(
-          'Your Vite app has been downloaded! To run it locally:\n' +
+          'Your project has been downloaded! To run it locally:\n' +
           '1. Unzip the file\n' +
           '2. Run: npm install\n' +
           '3. Run: npm run dev\n' +
@@ -3025,7 +3077,8 @@ Tip: I automatically detect and install npm packages from your code imports (lik
           'system'
         );
       } else {
-        throw new Error(data.error);
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to create zip');
       }
     } catch (error: any) {
       log(`Failed to create zip: ${error.message}`, 'error');
@@ -3101,28 +3154,39 @@ Tip: I automatically detect and install npm packages from your code imports (lik
     }
   }, []);
 
+  // Write snapshot files back to the sandbox on disk so the Vite preview stays in sync
+  const syncSnapshotToSandbox = useCallback(async (files: Record<string, string>) => {
+    setSandboxFiles(files);
+    // Write each file back to the sandbox provider
+    const writes = Object.entries(files).map(([path, content]) =>
+      fetch('/api/save-file', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, content }),
+      }).catch(() => {/* best-effort */})
+    );
+    await Promise.all(writes);
+    // Refresh preview after files are written
+    setTimeout(() => {
+      if (iframeRef.current) iframeRef.current.src = iframeRef.current.src;
+    }, 400);
+  }, []);
+
   // Undo handler
   const handleUndo = useCallback(() => {
     const snapshot = undo();
     if (snapshot) {
-      setSandboxFiles(snapshot.files);
-      // Refresh preview
-      setTimeout(() => {
-        if (iframeRef.current) iframeRef.current.src = iframeRef.current.src;
-      }, 300);
+      syncSnapshotToSandbox(snapshot.files);
     }
-  }, [undo]);
+  }, [undo, syncSnapshotToSandbox]);
 
   // Redo handler
   const handleRedo = useCallback(() => {
     const snapshot = redo();
     if (snapshot) {
-      setSandboxFiles(snapshot.files);
-      setTimeout(() => {
-        if (iframeRef.current) iframeRef.current.src = iframeRef.current.src;
-      }, 300);
+      syncSnapshotToSandbox(snapshot.files);
     }
-  }, [redo]);
+  }, [redo, syncSnapshotToSandbox]);
 
   // Keyboard shortcut: Ctrl+Z undo, Ctrl+Shift+Z / Ctrl+Y redo (project-level)
   useEffect(() => {
@@ -3146,13 +3210,10 @@ Tip: I automatically detect and install npm packages from your code imports (lik
   const handleRestoreVersion = useCallback((id: string) => {
     const snapshot = restoreTo(id);
     if (snapshot) {
-      setSandboxFiles(snapshot.files);
       setShowVersionHistory(false);
-      setTimeout(() => {
-        if (iframeRef.current) iframeRef.current.src = iframeRef.current.src;
-      }, 300);
+      syncSnapshotToSandbox(snapshot.files);
     }
-  }, [restoreTo]);
+  }, [restoreTo, syncSnapshotToSandbox]);
 
   // Import project handler
   const handleImportProject = useCallback((files: Record<string, string>) => {

@@ -139,7 +139,7 @@ declare global {
 
 export async function POST(request: NextRequest) {
   try {
-    const { prompt, model = 'openai/gpt-oss-20b', context, isEdit = false, isErrorFix = false, template } = await request.json();
+    let { prompt, model = 'openai/gpt-oss-20b', context, isEdit = false, isErrorFix = false, template } = await request.json();
     
     // Store the active template from the frontend
     if (template) {
@@ -355,6 +355,9 @@ export async function POST(request: NextRequest) {
         return new Response(stream.readable, {
           headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' },
         });
+      } else if (cmdResult && !cmdResult.handled && cmdResult.data?.prompt) {
+        // Unhandled command with a prompt override (e.g. /review) — replace the prompt and fall through to AI
+        prompt = cmdResult.data.prompt as string;
       }
     }
     
@@ -401,9 +404,11 @@ export async function POST(request: NextRequest) {
     const encoder = new TextEncoder();
     const stream = new TransformStream();
     const writer = stream.writable.getWriter();
+    let streamAborted = false;
     
     // Function to send progress updates with flushing
     const sendProgress = async (data: any) => {
+      if (streamAborted) return; // Client disconnected, stop writing
       const message = `data: ${JSON.stringify(data)}\n\n`;
       try {
         await writer.write(encoder.encode(message));
@@ -412,7 +417,10 @@ export async function POST(request: NextRequest) {
           await writer.write(encoder.encode(': keepalive\n\n'));
         }
       } catch (error) {
-        console.error('[generate-ai-code-stream] Error writing to stream:', error);
+        if (!streamAborted) {
+          streamAborted = true;
+          console.warn('[generate-ai-code-stream] Client disconnected, stopping stream writes');
+        }
       }
     };
     
@@ -427,8 +435,11 @@ export async function POST(request: NextRequest) {
         // Check if we have a file manifest for edit mode (skip for error fixes,  they're fast path)
         let editContext = null;
         let enhancedSystemPrompt = '';
+
+        // Detect truncation recovery prompts — skip heavy agentic search for these
+        const isTruncationRecovery = isEdit && /truncat|continue.*where.*left/i.test(prompt);
         
-        if (isEdit && !isErrorFix) {
+        if (isEdit && !isErrorFix && !isTruncationRecovery) {
           console.log('[generate-ai-code-stream] Edit mode detected - starting agentic search workflow');
           console.log('[generate-ai-code-stream] Has fileCache:', !!global.sandboxState?.fileCache);
           console.log('[generate-ai-code-stream] Has manifest:', !!global.sandboxState?.fileCache?.manifest);
@@ -772,7 +783,9 @@ Remember: You are a SURGEON making a precise incision, not an artist repainting 
           const recentlyCreatedFiles: string[] = [];
           recentMsgs.forEach(msg => {
             if (msg.metadata?.editedFiles) {
-              recentlyCreatedFiles.push(...msg.metadata.editedFiles);
+              recentlyCreatedFiles.push(
+                ...msg.metadata.editedFiles.filter((f: string) => !f.includes('node_modules'))
+              );
             }
           });
           
@@ -1367,13 +1380,13 @@ Common fixes:
         const isOpenAI = effectiveModel.startsWith('openai/');
         const isOllama = effectiveModel.startsWith('ollama/');
         const isOpenWebUI = effectiveModel.startsWith('openwebui/');
-        const isKimiGroq = effectiveModel === 'moonshotai/kimi-k2-instruct-0905';
+        const groqModelConfig = appConfig.ai.modelApiConfig[effectiveModel];
+        const isGroqModel = groqModelConfig?.provider === 'groq';
         const modelProvider = isOllama ? ollamaProvider :
                               (isOpenWebUI ? openWebUIProvider :
                               (isAnthropic ? anthropic : 
                               (isOpenAI ? openai : 
-                              (isGoogle ? googleGenerativeAI : 
-                              (isKimiGroq ? groq : groq)))));
+                              (isGoogle ? googleGenerativeAI : groq))));
         
         // Fix model name transformation for different providers
         let actualModel: string;
@@ -1385,12 +1398,11 @@ Common fixes:
           actualModel = effectiveModel.replace('anthropic/', '');
         } else if (isOpenAI) {
           actualModel = effectiveModel.replace('openai/', '');
-        } else if (isKimiGroq) {
-          // Kimi on Groq - use full model string
-          actualModel = 'moonshotai/kimi-k2-instruct-0905';
         } else if (isGoogle) {
           // Google uses specific model names - convert our naming to theirs  
           actualModel = effectiveModel.replace('google/', '');
+        } else if (isGroqModel) {
+          actualModel = groqModelConfig.model;
         } else {
           actualModel = effectiveModel;
         }
@@ -1418,7 +1430,8 @@ Common fixes:
           aiTools = buildAISDKTools(toolContext);
           console.log(`[generate-ai-code-stream] Intent filter: ${intentTools.map(t => t.name).join(', ')}`);
         }
-        const useTools = isEdit && aiTools && Object.keys(aiTools).length > 0;
+        // Disable tool calling for Groq models — their tool call API is unreliable
+        const useTools = isEdit && aiTools && Object.keys(aiTools).length > 0 && !isGroqModel;
         
         // Gather context pipeline data (git, recent edits, deps) for edit mode
         let pipelineContextStr = '';
@@ -1539,7 +1552,7 @@ Common fixes:
         // ─── Effort Mode: resolve and apply ───────────────────
         const autoEffort = resolveEffortFromPrompt(prompt);
         const effortLevel = autoEffort || global.sableEffortLevel || 'medium';
-        const effortConfig = getEffortConfig(effortLevel);
+        let effortConfig = getEffortConfig(effortLevel);
         if (effortConfig.systemPromptSuffix) {
           systemPrompt += `\n\n${effortConfig.systemPromptSuffix}`;
         }
@@ -1629,6 +1642,54 @@ Common fixes:
         // Track generation start time for cost tracking
         const generationStartTime = Date.now();
         
+        // ─── Groq Free-Tier Optimization ──────────────────────
+        // Groq free tier TPM limits vary by model:
+        //   llama-4-scout: 30,000  |  llama-3.3-70b: 12,000
+        //   qwen3-32b: 6,000      |  llama-3.1-8b: 6,000
+        if (isGroqModel) {
+          // For qwen3 models: disable thinking mode to save output tokens
+          const isQwen3 = actualModel.includes('qwen');
+          const isLowTPM = isQwen3 || actualModel.includes('llama-3.1-8b');
+          
+          if (isQwen3) {
+            systemPrompt = '/no_think\n' + systemPrompt;
+            console.log('[generate-ai-code-stream] Qwen3 detected: disabled thinking mode');
+          }
+          
+          // Only slim the prompt for low-TPM models (qwen3, llama-3.1-8b)
+          if (isLowTPM) {
+            const groqMaxOutputTokens = Math.min(effortConfig.maxTokens, 4096);
+            effortConfig = { ...effortConfig, maxTokens: groqMaxOutputTokens };
+            
+            if (!isEdit && !isErrorFix) {
+              const slimPrompt = `You are a code generator. Output ONLY <file path="...">code</file> tags.
+NO explanations, NO markdown, NO conversation. Start immediately with <file.
+
+${creationModeInstructions}
+
+RULES:
+1. Output ONLY <file> tags. Each file must be COMPLETE — no truncation.
+2. Use Tailwind CSS classes (bg-white, text-black — NOT bg-background, text-foreground).
+3. Files are .jsx NOT .tsx. No TypeScript.
+4. NEVER create tailwind.config.js, vite.config.js, or package.json.
+5. If you run low on space, close the current file properly and STOP. Do NOT start a file you can't finish.
+6. For icons use lucide-react or @heroicons/react.
+
+${conversationContext}`;
+              systemPrompt = isQwen3 ? '/no_think\n' + slimPrompt : slimPrompt;
+              console.log(`[generate-ai-code-stream] Groq slim prompt (low TPM): ${systemPrompt.length} chars`);
+            }
+            
+            if (isTruncationRecovery) {
+              const miniPrompt = `${isQwen3 ? '/no_think\n' : ''}You are a code generator. Continue the truncated output.
+Output ONLY <file path="...">code</file> tags. Complete files that were cut off. Do NOT repeat files already output.`;
+              systemPrompt = miniPrompt;
+              conversationContext = '';
+              console.log('[generate-ai-code-stream] Truncation recovery: ultra-minimal prompt');
+            }
+          }
+        }
+        
         // Conversation recovery: detect if we're resuming from an interruption
         let recoveryPrefix = '';
         if (global.conversationState?.context?.messages && global.conversationState.context.messages.length > 0) {
@@ -1714,24 +1775,31 @@ Common fixes:
             }
             
             // Check if this is a Groq service unavailable error
-            const isGroqServiceError = isKimiGroq && streamError.message?.includes('Service unavailable');
+            const isGroqServiceError = isGroqModel && streamError.message?.includes('Service unavailable');
+            
+            // Check if this is a Groq TPM rate limit error
+            const isGroqTPMLimit = isGroqModel && errorCategory === 'rate_limit' && /tokens per minute/i.test(streamError?.responseBody || streamError?.message || '');
             
             if (retryCount < maxRetries && (errorCategory === 'retryable' || errorCategory === 'rate_limit')) {
               retryCount++;
               
-              // Rate limit: respect retry-after header
+              // Rate limit: respect retry-after header, use 61s for Groq TPM limits
               let delay = retryCount * 2000;
-              if (errorCategory === 'rate_limit' && streamError?.headers?.['retry-after']) {
-                const retryAfter = parseInt(streamError.headers['retry-after'], 10);
-                if (!isNaN(retryAfter)) delay = retryAfter * 1000;
+              if (errorCategory === 'rate_limit') {
+                if (streamError?.headers?.['retry-after']) {
+                  const retryAfter = parseInt(streamError.headers['retry-after'], 10);
+                  if (!isNaN(retryAfter)) delay = retryAfter * 1000;
+                } else if (isGroqTPMLimit) {
+                  delay = 61000; // TPM resets every 60s, wait just over
+                }
               }
               
-              console.log(`[generate-ai-code-stream] Retrying in ${delay}ms (${errorCategory})...`);
+              console.log(`[generate-ai-code-stream] Retrying in ${delay}ms (${errorCategory}${isGroqTPMLimit ? ', TPM limit' : ''})...`);
               
               // Send progress update about retry
               await sendProgress({ 
                 type: 'info', 
-                message: `${errorCategory === 'rate_limit' ? 'Rate limited' : 'Service temporarily unavailable'}, retrying (attempt ${retryCount + 1}/${maxRetries + 1})...` 
+                message: `${isGroqTPMLimit ? 'Groq token limit reached — waiting ~60s for reset' : errorCategory === 'rate_limit' ? 'Rate limited' : 'Service temporarily unavailable'}, retrying (attempt ${retryCount + 1}/${maxRetries + 1})...` 
               });
               
               // Wait before retry with exponential backoff
@@ -1747,7 +1815,7 @@ Common fixes:
               // Final error, send to user
               await sendProgress({ 
                 type: 'error', 
-                message: `Failed to initialize ${isGoogle ? 'Gemini' : isAnthropic ? 'Claude' : isOpenAI ? 'GPT-5' : isKimiGroq ? 'Kimi (Groq)' : 'Groq'} streaming: ${streamError.message}` 
+                message: `Failed to initialize ${isGoogle ? 'Gemini' : isAnthropic ? 'Claude' : isOpenAI ? 'GPT-5' : isGroqModel ? 'Groq' : 'AI'} streaming: ${streamError.message}` 
               });
               
               // If this is a Google model error, provide helpful info
@@ -1832,7 +1900,7 @@ Common fixes:
             } else if (part.type === 'tool-call') {
               toolCallCount++;
               reportPiState('executing', '', part.toolName);
-              console.log(`[generate-ai-code-stream] Tool call #${toolCallCount}: ${part.toolName}(${JSON.stringify(part.args).substring(0, 100)})`);
+              console.log(`[generate-ai-code-stream] Tool call #${toolCallCount}: ${part.toolName}(${(JSON.stringify(part.args) || '').substring(0, 100)})`);
               // Track tool call start time for fitness duration
               (part as any)._startTime = Date.now();
               
@@ -1853,7 +1921,8 @@ Common fixes:
                 });
               }
             } else if (part.type === 'tool-result') {
-              const output = typeof part.result === 'string' ? part.result : JSON.stringify(part.result);
+              const raw = part.result;
+              const output = typeof raw === 'string' ? raw : (JSON.stringify(raw) || '');
               const truncated = output.length > 500 ? output.substring(0, 500) + '...' : output;
               console.log(`[generate-ai-code-stream] Tool result for ${part.toolName}: ${truncated.substring(0, 100)}`);
               

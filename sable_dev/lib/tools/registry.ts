@@ -15,6 +15,7 @@ import { GrepTool } from './grep';
 import { GlobTool } from './glob';
 import { ListFilesTool } from './list-files';
 import { WebFetchTool } from './web-fetch';
+import { WebSearchTool } from './web-search';
 import { AgentSpawnTool } from './agent-spawn';
 import { ToolSearchTool } from './tool-search';
 import { ThinkTool } from './think';
@@ -32,6 +33,7 @@ export const ALL_TOOLS: ToolDefinition[] = [
   GlobTool,
   ListFilesTool,
   WebFetchTool,
+  WebSearchTool,
   AgentSpawnTool,
   ToolSearchTool,
 ];
