@@ -283,16 +283,29 @@ async function installNode() {
   log(`${action} Node.js 20 LTS...`, 'info')
   try {
     if (IS_WIN) {
+      let installed = false
+      const NODE_MSI_URL = 'https://nodejs.org/dist/v20.19.2/node-v20.19.2-x64.msi'
       if (systemInfo?.winget) {
+        // Try upgrade first (works if originally installed via winget)
         if (systemInfo.nodeOld) {
-          await run('winget upgrade --id OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements -e', { check: false })
+          const r = await run('winget upgrade --id OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements -e', { check: false })
+          if (r.code !== 0) {
+            log('winget upgrade not applicable — trying fresh install...', 'info')
+            const r2 = await run('winget install --id OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements -e', { check: false })
+            installed = r2.code === 0
+          } else {
+            installed = true
+          }
         } else {
-          await run('winget install --id OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements -e', { check: false })
+          const r = await run('winget install --id OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements -e', { check: false })
+          installed = r.code === 0
         }
-      } else {
-        log('winget not available — downloading Node.js installer...', 'info')
+      }
+      // Fallback: download MSI directly
+      if (!installed) {
+        log('Downloading Node.js 20 LTS installer...', 'info')
         const dl = join(process.env.TEMP || 'C:\\Temp', 'node-v20-setup.msi')
-        await run(`powershell -NoProfile -Command "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; $ProgressPreference='SilentlyContinue'; Invoke-WebRequest -Uri 'https://nodejs.org/dist/v20.19.2/node-v20.19.2-x64.msi' -OutFile '${dl}'"`)
+        await run(`powershell -NoProfile -Command "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; $ProgressPreference='SilentlyContinue'; Invoke-WebRequest -Uri '${NODE_MSI_URL}' -OutFile '${dl}'"`, { check: false })
         await run(`msiexec /i "${dl}" /qn /norestart`, { check: false })
       }
     } else {

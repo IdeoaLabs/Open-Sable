@@ -1640,13 +1640,31 @@ class InstallerEngine:
                 self._exec(["sudo", "pacman", "-S", "--noconfirm", "nodejs", "npm"])
         elif IS_MAC and shutil.which("brew"):
             self._exec(["brew", "install", "node"])
-        elif IS_WIN and shutil.which("winget"):
-            if _old_node:
-                self._exec(["winget", "upgrade", "--id", "OpenJS.NodeJS.LTS",
-                            "--accept-source-agreements", "--accept-package-agreements", "-e"])
-            else:
-                self._exec(["winget", "install", "--id", "OpenJS.NodeJS.LTS",
-                            "--accept-source-agreements", "--accept-package-agreements", "-e"])
+        elif IS_WIN:
+            _win_ok = False
+            if shutil.which("winget"):
+                if _old_node:
+                    # Try upgrade first; may fail if not originally installed via winget
+                    rc = self._exec(["winget", "upgrade", "--id", "OpenJS.NodeJS.LTS",
+                                     "--accept-source-agreements", "--accept-package-agreements", "-e"],
+                                    check=False)
+                    if not find_node():
+                        self.log("  winget upgrade not applicable — trying fresh install...", "dim")
+                        self._exec(["winget", "install", "--id", "OpenJS.NodeJS.LTS",
+                                    "--accept-source-agreements", "--accept-package-agreements", "-e"],
+                                   check=False)
+                else:
+                    self._exec(["winget", "install", "--id", "OpenJS.NodeJS.LTS",
+                                "--accept-source-agreements", "--accept-package-agreements", "-e"],
+                               check=False)
+                _win_ok = bool(find_node())
+            if not _win_ok:
+                # Fallback: download MSI directly
+                self.log("  Downloading Node.js 20 LTS installer...", "dim")
+                msi = os.path.join(tempfile.gettempdir(), "node-v20-setup.msi")
+                urllib.request.urlretrieve(
+                    "https://nodejs.org/dist/v20.19.2/node-v20.19.2-x64.msi", msi)
+                self._exec(["msiexec", "/i", msi, "/qn", "/norestart"], check=False)
         if find_node():
             self.log("  ✔ Node.js installed", "ok")
         else:
