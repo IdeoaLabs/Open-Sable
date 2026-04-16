@@ -108,7 +108,8 @@ function detectSystem() {
   // Node
   try {
     const nv = execSync('node --version 2>&1', { encoding: 'utf-8', timeout: 5000 }).trim().replace('v', '')
-    if (parseInt(nv) >= 18) info.node = nv
+    if (parseInt(nv) >= 20) info.node = nv
+    else info.nodeOld = nv   // found but too old
   } catch {}
 
   // Ollama
@@ -225,6 +226,7 @@ async function doInstall(config) {
 
   const steps = [
     ['Checking prerequisites', checkPrereqs],
+    ['Installing / upgrading Node.js', installNode],
     ['Downloading Open-Sable', cloneRepo],
     ['Creating Python environment', createVenv],
     ['Installing Python dependencies', installPythonDeps],
@@ -265,10 +267,65 @@ async function checkPrereqs() {
   if (info.python) log(`Python ${info.python.ver} ✓`, 'ok')
   if (info.git) log(`Git ${info.git} ✓`, 'ok')
   if (info.node) log(`Node.js ${info.node} ✓`, 'ok')
-  else log('Node.js not found — dashboard/desktop/dev-studio will be skipped', 'warn')
+  else if (info.nodeOld) log(`Node.js ${info.nodeOld} found but too old (need 20+) — will upgrade`, 'warn')
+  else log('Node.js not found — will install', 'info')
   if (info.ollama) log(`Ollama ${info.ollama} ✓`, 'ok')
   else log('Ollama not found — will install', 'info')
   if (info.errors.length) throw new Error(info.errors.join('\n'))
+}
+
+async function installNode() {
+  if (systemInfo?.node) {
+    log('Node.js already up to date', 'ok')
+    return
+  }
+  const action = systemInfo?.nodeOld ? 'Upgrading' : 'Installing'
+  log(`${action} Node.js 20 LTS...`, 'info')
+  try {
+    if (IS_WIN) {
+      if (systemInfo?.winget) {
+        if (systemInfo.nodeOld) {
+          await run('winget upgrade --id OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements -e', { check: false })
+        } else {
+          await run('winget install --id OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements -e', { check: false })
+        }
+      } else {
+        log('winget not available — downloading Node.js installer...', 'info')
+        const dl = join(process.env.TEMP || 'C:\\Temp', 'node-v20-setup.msi')
+        await run(`powershell -NoProfile -Command "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; $ProgressPreference='SilentlyContinue'; Invoke-WebRequest -Uri 'https://nodejs.org/dist/v20.19.2/node-v20.19.2-x64.msi' -OutFile '${dl}'"`)
+        await run(`msiexec /i "${dl}" /qn /norestart`, { check: false })
+      }
+    } else {
+      // Linux — use nodesource
+      if (execSync('which apt-get 2>/dev/null || true', { encoding: 'utf-8' }).trim()) {
+        await run('curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -', { check: false })
+        await run('sudo apt-get install -y nodejs', { check: false })
+      } else if (execSync('which dnf 2>/dev/null || true', { encoding: 'utf-8' }).trim()) {
+        await run('sudo dnf install -y nodejs npm', { check: false })
+      } else if (execSync('which pacman 2>/dev/null || true', { encoding: 'utf-8' }).trim()) {
+        await run('sudo pacman -S --noconfirm nodejs npm', { check: false })
+      }
+    }
+    // Refresh PATH on Windows and re-check
+    if (IS_WIN) {
+      try {
+        const freshPath = execSync('powershell -NoProfile -Command "[Environment]::GetEnvironmentVariable(\'Path\',\'Machine\')+\';\'+[Environment]::GetEnvironmentVariable(\'Path\',\'User\')"', { encoding: 'utf-8', timeout: 5000 }).trim()
+        if (freshPath) process.env.PATH = freshPath
+      } catch {}
+    }
+    try {
+      const nv = execSync('node --version 2>&1', { encoding: 'utf-8', timeout: 5000 }).trim().replace('v', '')
+      if (parseInt(nv) >= 20) {
+        systemInfo.node = nv
+        delete systemInfo.nodeOld
+        log(`Node.js ${nv} ✓`, 'ok')
+        return
+      }
+    } catch {}
+    log('Node.js install/upgrade may require reopening terminal — will try to continue', 'warn')
+  } catch (e) {
+    log(`Node.js ${action.toLowerCase()} failed — install manually from nodejs.org (v20+)`, 'warn')
+  }
 }
 
 async function cloneRepo() {

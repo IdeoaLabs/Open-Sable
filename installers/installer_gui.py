@@ -292,7 +292,7 @@ def find_node() -> Optional[str]:
                            creationflags=_NO_WINDOW)
         if r.returncode == 0:
             ver = r.stdout.strip().lstrip("v")
-            if int(ver.split(".")[0]) >= 18:
+            if int(ver.split(".")[0]) >= 20:
                 return ver
     except Exception:
         pass
@@ -718,7 +718,7 @@ class ReinstallEngine:
 
     def _check_node(self):
         if find_node():
-            self.log("  ✔ Node.js 18+ found", "ok")
+            self.log("  ✔ Node.js 20+ found", "ok")
             return
         self.log("  Installing Node.js...", "dim")
         if IS_LINUX:
@@ -731,12 +731,12 @@ class ReinstallEngine:
         elif IS_MAC and shutil.which("brew"):
             self._exec(["brew", "install", "node"])
         elif IS_WIN and shutil.which("winget"):
-            self._exec(["winget", "install", "--id", "OpenJS.NodeJS.LTS",
+            self._exec(["winget", "upgrade", "--id", "OpenJS.NodeJS.LTS",
                         "--accept-source-agreements", "--accept-package-agreements", "-e"])
         if find_node():
             self.log("  ✔ Node.js installed", "ok")
         else:
-            self.log("  ⚠ Install Node.js 18+ manually: nodejs.org", "warning")
+            self.log("  ⚠ Install Node.js 20+ manually: nodejs.org", "warning")
 
     def _rebuild_node(self):
         if not find_node():
@@ -1616,7 +1616,19 @@ class InstallerEngine:
         if find_node():
             self.log(f"  ✔ Node.js already installed", "ok")
             return
-        self.log("  Installing Node.js 20 LTS...", "dim")
+        # Check if an older version exists (needs upgrade, not fresh install)
+        _old_node = None
+        try:
+            r = subprocess.run(["node", "--version"], capture_output=True, text=True, timeout=5,
+                               creationflags=_NO_WINDOW)
+            if r.returncode == 0:
+                _old_node = r.stdout.strip().lstrip("v")
+        except Exception:
+            pass
+        if _old_node:
+            self.log(f"  Node.js {_old_node} is too old (need 20+) — upgrading...", "dim")
+        else:
+            self.log("  Installing Node.js 20 LTS...", "dim")
         if IS_LINUX:
             if shutil.which("apt-get"):
                 self._exec("curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -",
@@ -1629,12 +1641,16 @@ class InstallerEngine:
         elif IS_MAC and shutil.which("brew"):
             self._exec(["brew", "install", "node"])
         elif IS_WIN and shutil.which("winget"):
-            self._exec(["winget", "install", "--id", "OpenJS.NodeJS.LTS",
-                        "--accept-source-agreements", "--accept-package-agreements", "-e"])
+            if _old_node:
+                self._exec(["winget", "upgrade", "--id", "OpenJS.NodeJS.LTS",
+                            "--accept-source-agreements", "--accept-package-agreements", "-e"])
+            else:
+                self._exec(["winget", "install", "--id", "OpenJS.NodeJS.LTS",
+                            "--accept-source-agreements", "--accept-package-agreements", "-e"])
         if find_node():
             self.log("  ✔ Node.js installed", "ok")
         else:
-            self.log("  ⚠ Install Node.js 18+ manually: nodejs.org", "warning")
+            self.log("  ⚠ Install Node.js 20+ manually: nodejs.org", "warning")
 
     def _setup_node(self):
         if not find_node():
