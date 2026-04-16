@@ -153,7 +153,32 @@ function startBackend() {
 if (!isBackendRunning()) { startBackend(); }
 
 // Watchdog: restart backend if it dies while the app is open
-setInterval(() => { if (!isBackendRunning()) startBackend(); }, 15000);
+const watchdog = setInterval(() => { if (!isBackendRunning()) startBackend(); }, 15000);
+
+function stopBackend() {
+  try {
+    const pidFiles = fs.readdirSync(DIR).filter(f => /^\.sable-.*\.pid$/.test(f));
+    for (const pf of pidFiles) {
+      const pid = parseInt(fs.readFileSync(path.join(DIR, pf), 'utf8').trim(), 10);
+      if (pid) {
+        try { process.kill(-pid, 'SIGTERM'); } catch (_) {}   // kill process group
+        try { process.kill(pid, 'SIGTERM'); } catch (_) {}     // kill process directly
+      }
+      try { fs.unlinkSync(path.join(DIR, pf)); } catch (_) {}
+    }
+  } catch (_) {}
+  // Also run start.sh stop as a fallback
+  try { spawn('bash', ['start.sh', 'stop'], { cwd: DIR, stdio: 'ignore' }); } catch (_) {}
+}
+
+// Kill backend and clear watchdog when the app is quitting
+app.on('before-quit', () => {
+  clearInterval(watchdog);
+  stopBackend();
+});
+
+// On macOS, quit the app when all windows are closed (not a document editor)
+app.on('window-all-closed', () => { app.quit(); });
 
 const desktopDir = path.join(DIR, 'desktop');
 const realMain = path.join(desktopDir, 'electron', 'main.cjs');
