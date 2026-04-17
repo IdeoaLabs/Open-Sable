@@ -47,5 +47,5 @@ app = BUNDLE(
     coll,
     name='OpenSable-Installer.app',
     icon='assets/icon.icns',
-    bundle_identifier=None,
+    bundle_identifier='com.ideoalabs.opensable.installer',
 )

@@ -752,14 +752,11 @@ class ReinstallEngine:
             if os.path.isdir(nm):
                 shutil.rmtree(nm, ignore_errors=True)
             self._exec(["npm", "install", "--legacy-peer-deps"], cwd=proj_dir, check=False)
-            # Desktop runs via electron, no build step needed
             if project == "desktop":
+                # Desktop needs both electron AND a vite build (dist/index.html)
                 electron_bin = os.path.join(nm, ".bin", "electron")
-                if os.path.isfile(electron_bin):
-                    self.log(f"  ✔ {project} ready (electron installed)", "ok")
-                else:
+                if not os.path.isfile(electron_bin):
                     self.log(f"  ⚠ {project} — electron binary missing", "warning")
-                continue
             result = self._exec(["npm", "run", "build"], cwd=proj_dir, check=False)
             # Retry on build failure: wipe node_modules and reinstall
             dist_check = os.path.join(proj_dir, "dist", "index.html")
@@ -898,11 +895,24 @@ class ReinstallEngine:
                 else:
                     self.log("  ⚠ Dashboard repair failed — build manually", "warning")
         # Desktop (Electron)
-        electron_bin = os.path.join(self.install_dir, "desktop", "node_modules", ".bin", "electron")
+        desktop_dir = os.path.join(self.install_dir, "desktop")
+        electron_bin = os.path.join(desktop_dir, "node_modules", ".bin", "electron")
+        desktop_dist = os.path.join(desktop_dir, "dist", "index.html")
         if os.path.isfile(electron_bin):
             self.log("  ✔ Desktop app ready (Electron)", "ok")
         else:
             self.log("  ⚠ Desktop app not installed", "warning")
+        if os.path.isfile(desktop_dist):
+            self.log("  ✔ Desktop UI built", "ok")
+        else:
+            self.log("  ⚠ Desktop UI not built — attempting repair...", "warning")
+            if os.path.isfile(os.path.join(desktop_dir, "package.json")) and find_node():
+                self._exec(["npm", "install", "--legacy-peer-deps"], cwd=desktop_dir, check=False)
+                self._exec(["npm", "run", "build"], cwd=desktop_dir, check=False)
+                if os.path.isfile(desktop_dist):
+                    self.log("  ✔ Desktop UI repaired", "ok")
+                else:
+                    self.log("  ⚠ Desktop UI repair failed — build manually", "warning")
         # .env & agent profile
         if os.path.isfile(os.path.join(self.install_dir, ".env")):
             self.log("  ✔ Configuration (.env)", "ok")
@@ -1686,12 +1696,16 @@ class InstallerEngine:
             self.log(f"  Building {project}...", "dim")
             self._exec([npm, "install", "--legacy-peer-deps"], cwd=proj_dir, check=False)
             if project == "desktop":
-                # Desktop runs via electron, no build step
+                # Desktop needs both electron AND a vite build (dist/index.html)
                 electron_bin = os.path.join(proj_dir, "node_modules", ".bin", "electron")
-                if os.path.isfile(electron_bin):
-                    self.log(f"  ✔ {project} ready (electron installed)", "ok")
-                else:
+                if not os.path.isfile(electron_bin):
                     self.log(f"  ⚠ {project} — electron binary not found", "warning")
+                self._exec([npm, "run", "build"], cwd=proj_dir, check=False)
+                dist_check = os.path.join(proj_dir, "dist", "index.html")
+                if os.path.isfile(dist_check):
+                    self.log(f"  ✔ {project} ready", "ok")
+                else:
+                    self.log(f"  ⚠ {project} — dist/index.html missing, UI may not load", "warning")
             else:
                 self._exec([npm, "run", "build"], cwd=proj_dir, check=False)
                 self.log(f"  ✔ {project} ready", "ok")
