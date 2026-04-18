@@ -16,6 +16,9 @@ cohere>=5.0.0        # Cohere Command
 # Memory & Vector DB
 chromadb>=0.4.22,<1
 tiktoken>=0.5.2,<1
+# Knowledge Graph & Search
+faiss-cpu>=1.7.4
+networkx>=3.1
 # HTTP & Networking
 aiohttp>=3.9.0,<4
 httpx>=0.26.0,<1

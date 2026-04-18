@@ -546,6 +546,11 @@ class SableAgent:
             ("NL automation", self._init_nl_automation),
             ("Video understanding", self._init_video_understanding),
             ("Knowledge graph", self._init_knowledge_graph),
+            ("Knowledge graph v2", self._init_knowledge_graph_v2),
+            ("Dream engine v2", self._init_dream_engine_v2),
+            ("Shell safety", self._init_shell_safety),
+            ("Document extractor", self._init_document_extractor),
+            ("Wiki vault", self._init_wiki_vault),
             ("IoT controller", self._init_iot_controller),
             ("Distributed task queue", self._init_distributed_task_queue),
         ]:
@@ -996,6 +1001,48 @@ class SableAgent:
         self.knowledge_graph = KnowledgeGraphEngine(data_dir=Path(self._data_dir) / "knowledge_graph")
         if self.llm:
             self.knowledge_graph.set_llm(self.llm)
+
+    async def _init_knowledge_graph_v2(self):
+        from .knowledge_graph_v2 import KnowledgeGraphV2
+        self.knowledge_graph_v2 = KnowledgeGraphV2(data_dir=Path(self._data_dir) / "knowledge_graph_v2")
+        if self.llm:
+            self.knowledge_graph_v2.set_llm(self.llm)
+
+    async def _init_dream_engine_v2(self):
+        from .dream_engine_v2 import DreamEngineV2
+        kg_v2 = getattr(self, "knowledge_graph_v2", None)
+        if kg_v2:
+            self.dream_engine_v2 = DreamEngineV2(
+                data_dir=Path(self._data_dir) / "dream_engine_v2",
+                kg=kg_v2,
+            )
+            if self.llm:
+                self.dream_engine_v2.set_llm(self.llm)
+        else:
+            logger.warning("Dream Engine v2 requires Knowledge Graph v2 — skipped")
+
+    async def _init_shell_safety(self):
+        from .shell_safety import ShellSafety
+        self.shell_safety = ShellSafety()
+
+    async def _init_document_extractor(self):
+        from .document_extraction import DocumentExtractor
+        kg_v2 = getattr(self, "knowledge_graph_v2", None)
+        if kg_v2:
+            self.document_extractor = DocumentExtractor(kg=kg_v2)
+            if self.llm:
+                self.document_extractor.set_llm(self.llm)
+        else:
+            logger.warning("Document extractor requires Knowledge Graph v2 — skipped")
+
+    async def _init_wiki_vault(self):
+        from .wiki_vault import WikiVault
+        kg_v2 = getattr(self, "knowledge_graph_v2", None)
+        if kg_v2:
+            vault_dir = Path(self._data_dir) / "wiki_vault"
+            self.wiki_vault = WikiVault(kg=kg_v2, vault_dir=vault_dir)
+        else:
+            logger.warning("Wiki vault requires Knowledge Graph v2 — skipped")
 
     async def _init_iot_controller(self):
         from .iot_controller import IoTController
@@ -1549,6 +1596,26 @@ class SableAgent:
         except Exception:
             pass
 
+        # Knowledge Graph v2 auto-recall
+        kg_v2 = getattr(self, "knowledge_graph_v2", None)
+        if kg_v2:
+            try:
+                recalled = kg_v2.auto_recall(task, max_entities=5)
+                if recalled:
+                    kg_lines = []
+                    for entity, relations in recalled:
+                        rel_str = "; ".join(
+                            f"{r['relation']} → {r['entity']}" for r in relations[:3]
+                        )
+                        line = f"- {entity.name} ({entity.entity_type})"
+                        if rel_str:
+                            line += f": {rel_str}"
+                        kg_lines.append(line)
+                    if kg_lines:
+                        parts.append(f"[Knowledge graph]\n" + "\n".join(kg_lines))
+            except Exception as e:
+                logger.debug(f"KG v2 auto-recall failed: {e}")
+
         return "\n\n".join(parts) if parts else ""
 
     # ------------------------------------------------------------------
@@ -1703,6 +1770,16 @@ class SableAgent:
     async def _execute_tool(self, name: str, arguments: dict, user_id: str = "default") -> str:
         emoji = self._TOOL_EMOJIS.get(name, "🔧")
         label = self._TOOL_LABELS.get(name, name.replace("_", " ").title())
+
+        # ── Shell Safety: 3-tier command gating ──
+        if name == "execute_command" and hasattr(self, "shell_safety") and self.shell_safety:
+            cmd = arguments.get("command", "")
+            if cmd:
+                from .shell_safety import Tier
+                tier, reason = self.shell_safety.classify(cmd)
+                if tier == Tier.BLOCKED:
+                    logger.warning(f"Shell command BLOCKED: {cmd!r} — {reason}")
+                    return f"**{name}:** 🚫 Command blocked for safety: {reason}"
 
         # ── HITL: approval gate (skip for benchmark users) ──
         if not user_id.startswith("benchmark_"):
@@ -3138,6 +3215,25 @@ class SableAgent:
             except Exception as e:
                 logger.debug(f"Advanced memory store failed: {e}")
 
+        # Knowledge Graph v2: extract entities from conversation
+        kg_v2 = getattr(self, "knowledge_graph_v2", None)
+        if kg_v2:
+            try:
+                combined = f"{task}\n{response[:500]}"
+                entities = await kg_v2.extract_entities(combined)
+                for ent in entities[:5]:
+                    kg_v2.add_entity(
+                        name=ent.get("name", ""),
+                        entity_type=ent.get("type", "concept"),
+                        description=ent.get("description", ""),
+                        source="conversation",
+                    )
+                # Auto-save periodically (every 10 new entities)
+                if len(kg_v2.entities) % 10 == 0:
+                    kg_v2.save()
+            except Exception as e:
+                logger.debug(f"KG v2 entity extraction failed: {e}")
+
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
@@ -3666,10 +3762,26 @@ class SableAgent:
             self._progress_callback = old_cb
 
     async def _heartbeat_loop(self):
+        _idle_ticks = 0
+        _dream_interval = 20  # run dream cycle every ~20 heartbeats of idle
         while True:
             try:
                 await asyncio.sleep(self.config.heartbeat_interval)
+                _idle_ticks += 1
                 logger.debug("Heartbeat: checking for scheduled tasks...")
+
+                # Dream Engine v2: run graph refinement during idle
+                if _idle_ticks >= _dream_interval:
+                    dream_v2 = getattr(self, "dream_engine_v2", None)
+                    if dream_v2:
+                        try:
+                            result = await dream_v2.run_cycle(llm=self.llm)
+                            if result.total_actions > 0:
+                                logger.info(f"Dream cycle {result.cycle_id}: "
+                                            f"{result.total_actions} actions")
+                        except Exception as e:
+                            logger.debug(f"Dream cycle failed: {e}")
+                    _idle_ticks = 0
             except asyncio.CancelledError:
                 break
             except Exception as e:

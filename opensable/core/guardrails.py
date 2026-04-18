@@ -110,44 +110,130 @@ class OutputGuardrail(ABC):
 # ── Built-in input guardrails ────────────────────────────────
 
 class PromptInjectionGuardrail(InputGuardrail):
-    """Detects common prompt injection patterns."""
+    """
+    5-Layer prompt injection defense:
+      Layer 1 — Instruction override detection
+      Layer 2 — Role impersonation
+      Layer 3 — Data exfiltration attempts
+      Layer 4 — Encoding evasion (base64, hex, unicode, rot13)
+      Layer 5 — Social engineering patterns
+    """
 
     name = "prompt_injection"
 
-    _INJECTION_PATTERNS = [
+    # Layer 1: Instruction override
+    _LAYER1_OVERRIDE = [
         r"ignore (?:all )?(?:previous|above|prior) (?:instructions|prompts|rules)",
-        r"you are now (?:a |an )?(?:different|new|evil)",
         r"disregard (?:everything|all|your)",
         r"forget (?:everything|all|your)",
         r"system\s*prompt\s*:",
         r"<\|(?:im_start|im_end|system)\|>",
         r"\[INST\]|\[/INST\]|<<SYS>>|<</SYS>>",
+        r"do anything now|bypass (?:filter|safety|restriction)",
+        r"jailbreak|DAN\s*mode|developer\s*mode",
+        r"override (?:your |all |the )?(?:instructions|rules|guidelines|constraints)",
+        r"new (?:instructions|rules|prompt)\s*:",
+        r"(?:from now on|henceforth),?\s*(?:you|ignore|forget|disregard)",
+        r"(?:rewrite|replace|update)\s+(?:your|the)\s+(?:system|initial)\s+(?:prompt|instructions)",
+    ]
+
+    # Layer 2: Role impersonation
+    _LAYER2_IMPERSONATION = [
+        r"you are now (?:a |an )?(?:different|new|evil)",
         r"pretend (?:you are|to be|you're)",
         r"act as (?:if )?(?:you are|you're|a|an)",
-        r"jailbreak|DAN\s*mode|developer\s*mode",
-        r"do anything now|bypass (?:filter|safety|restriction)",
+        r"roleplay as (?:a |an )?(?:hacker|admin|root|superuser)",
+        r"you(?:'re| are) (?:a |an )?(?:unrestricted|uncensored|unfiltered) AI",
+        r"respond as (?:a |an )?(?:different|evil|malicious)",
+        r"(?:simulate|emulate|impersonate)\s+(?:another|a different)\s+(?:AI|assistant|system)",
+        r"enter\s+(?:god|admin|sudo|root|debug|maintenance)\s+mode",
+    ]
+
+    # Layer 3: Data exfiltration
+    _LAYER3_EXFILTRATION = [
+        r"(?:show|reveal|display|output|print|repeat|echo)\s+(?:your |the )?(?:system|initial|original|full)\s+prompt",
+        r"what (?:are|is|were) your (?:system |initial |original )?(?:instructions|prompt|rules|guidelines)",
+        r"(?:list|enumerate|dump|show)\s+(?:all |your )?(?:tools|functions|capabilities|api|endpoints)",
+        r"(?:exfiltrate|extract|leak|expose)\s+(?:data|information|secrets|keys|tokens|credentials)",
+        r"send (?:this|the|my) (?:data|conversation|info) to",
+        r"(?:curl|wget|fetch|post)\s+https?://",  # URL injection in prompts
+    ]
+
+    # Layer 4: Encoding evasion
+    _LAYER4_ENCODING = [
+        r"(?:base64|b64)\s*(?:decode|encode)\s*[:(]",
+        r"\\x[0-9a-fA-F]{2}(?:\\x[0-9a-fA-F]{2}){3,}",  # hex byte sequences
+        r"\\u[0-9a-fA-F]{4}(?:\\u[0-9a-fA-F]{4}){3,}",   # unicode escapes
+        r"(?:rot13|caesar)\s*(?:decode|cipher|transform)",
+        r"(?:eval|exec|execute)\s*\(",
+        r"&#x?[0-9a-fA-F]+;(?:&#x?[0-9a-fA-F]+;){3,}",  # HTML entities
+        r"%[0-9a-fA-F]{2}(?:%[0-9a-fA-F]{2}){3,}",       # URL-encoded sequences
+    ]
+
+    # Layer 5: Social engineering
+    _LAYER5_SOCIAL = [
+        r"(?:the |your )?(?:developer|creator|admin|owner)\s+(?:said|told|wants|asked|instructed)",
+        r"(?:this is|i am)\s+(?:an? )?(?:admin|administrator|developer|engineer|tester)",
+        r"(?:special|secret|hidden)\s+(?:command|code|password|phrase)\s*:",
+        r"(?:for )?(?:testing|debugging|development)\s+(?:purposes?|only),?\s+(?:please |now )?(?:disable|turn off|remove)",
+        r"(?:urgent|emergency|critical)\s*[!:]\s*(?:override|bypass|disable)",
+        r"(?:i have|i've got)\s+(?:permission|authorization|clearance)\s+(?:to|from)",
     ]
 
     def __init__(self, custom_patterns: Optional[List[str]] = None):
-        self._compiled = [
-            re.compile(p, re.IGNORECASE) for p in self._INJECTION_PATTERNS
-        ]
+        self._layers = {
+            "instruction_override": [re.compile(p, re.IGNORECASE) for p in self._LAYER1_OVERRIDE],
+            "role_impersonation": [re.compile(p, re.IGNORECASE) for p in self._LAYER2_IMPERSONATION],
+            "data_exfiltration": [re.compile(p, re.IGNORECASE) for p in self._LAYER3_EXFILTRATION],
+            "encoding_evasion": [re.compile(p, re.IGNORECASE) for p in self._LAYER4_ENCODING],
+            "social_engineering": [re.compile(p, re.IGNORECASE) for p in self._LAYER5_SOCIAL],
+        }
         if custom_patterns:
-            self._compiled.extend(re.compile(p, re.IGNORECASE) for p in custom_patterns)
+            self._layers.setdefault("custom", [])
+            self._layers["custom"] = [re.compile(p, re.IGNORECASE) for p in custom_patterns]
 
     def check(self, content: str, context: Optional[Dict[str, Any]] = None) -> GuardrailResult:
-        for pattern in self._compiled:
-            match = pattern.search(content)
-            if match:
-                logger.warning(f"Prompt injection detected: {match.group()!r}")
-                return GuardrailResult(
-                    passed=False,
-                    guardrail_name=self.name,
-                    action=GuardrailAction.BLOCK,
-                    rejection_message="I can't process that request,  it looks like a prompt injection attempt.",
-                    details={"matched_pattern": match.group()},
-                )
+        # Also check decoded content for encoding evasion
+        texts_to_check = [content]
+        decoded = self._try_decode_obfuscation(content)
+        if decoded and decoded != content:
+            texts_to_check.append(decoded)
+
+        for text in texts_to_check:
+            for layer_name, patterns in self._layers.items():
+                for pattern in patterns:
+                    match = pattern.search(text)
+                    if match:
+                        logger.warning(f"Prompt injection [{layer_name}]: {match.group()!r}")
+                        return GuardrailResult(
+                            passed=False,
+                            guardrail_name=self.name,
+                            action=GuardrailAction.BLOCK,
+                            rejection_message="I can't process that request — it looks like a prompt injection attempt.",
+                            details={
+                                "layer": layer_name,
+                                "matched_pattern": match.group(),
+                                "was_decoded": text != content,
+                            },
+                        )
         return GuardrailResult(passed=True, guardrail_name=self.name)
+
+    @staticmethod
+    def _try_decode_obfuscation(content: str) -> Optional[str]:
+        """Attempt to decode base64 or other obfuscation in user input."""
+        import base64
+        # Look for base64-like strings (>20 chars of base64 alphabet)
+        b64_match = re.search(r'[A-Za-z0-9+/]{20,}={0,2}', content)
+        if b64_match:
+            try:
+                decoded_bytes = base64.b64decode(b64_match.group(), validate=True)
+                decoded_str = decoded_bytes.decode("utf-8", errors="replace")
+                # Only consider it if it looks like text
+                if decoded_str.isprintable() and len(decoded_str) > 10:
+                    return content[:b64_match.start()] + decoded_str + content[b64_match.end():]
+            except Exception:
+                pass
+        return None
 
 
 class ContentPolicyGuardrail(InputGuardrail):

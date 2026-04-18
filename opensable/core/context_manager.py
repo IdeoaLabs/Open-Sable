@@ -3,6 +3,12 @@ Open-Sable Context Manager
 
 Advanced context window management with intelligent compression,
 summarization, and context retrieval for large conversations.
+
+v2 upgrades:
+  - tiktoken-based token counting (cl100k_base) with char/4 fallback
+  - Auto-shrink tool output when approaching capacity (proportional)
+  - Dynamic tool budget based on remaining headroom
+  - Per-segment token accounting (system, memory, history, tools)
 """
 
 import asyncio
@@ -15,9 +21,30 @@ from opensable.core.config import Config
 
 logger = logging.getLogger(__name__)
 
+# tiktoken with graceful fallback
+_tiktoken_enc = None
+try:
+    import tiktoken
+    _tiktoken_enc = tiktoken.get_encoding("cl100k_base")
+except Exception:
+    pass
+
+
+def count_tokens(text: str) -> int:
+    """Count tokens using tiktoken or char/4 fallback."""
+    if _tiktoken_enc is not None:
+        return len(_tiktoken_enc.encode(text, disallowed_special=()))
+    return len(text) // 4
+
 
 class ContextWindow:
     """Manages conversation context and token limits"""
+
+    # Budget ratios for context segments
+    SYSTEM_RATIO = 0.20
+    MEMORY_RATIO = 0.15
+    TOOL_RATIO = 0.25
+    HISTORY_RATIO = 0.40   # remaining goes to conversation
 
     def __init__(self, config: Config):
         self.config = config
@@ -35,9 +62,8 @@ class ContextWindow:
         self.compressions_count = 0
 
     def estimate_tokens(self, text: str) -> int:
-        """Estimate token count (rough approximation)"""
-        # Simple heuristic: ~4 characters per token for English
-        return len(text) // 4
+        """Count tokens using tiktoken (cl100k_base) or char/4 fallback."""
+        return count_tokens(text)
 
     def get_total_tokens(self) -> int:
         """Get estimated total tokens in context"""
@@ -174,6 +200,44 @@ Summary:"""
         context.total_messages = data.get("total_messages", 0)
         context.compressions_count = data.get("compressions_count", 0)
         return context
+
+    # ── Dynamic Budget ────────────────────────────────────────────────
+
+    def get_tool_budget(self) -> int:
+        """Dynamic token budget for tool output based on remaining headroom."""
+        used = self.get_total_tokens()
+        remaining = self.max_tokens - used
+        # Reserve at least 512 tokens for the LLM reply
+        return max(200, remaining - 512)
+
+    def shrink_tool_output(self, text: str, budget: Optional[int] = None) -> str:
+        """Proportionally shrink tool output to fit within budget."""
+        if budget is None:
+            budget = self.get_tool_budget()
+        tokens = count_tokens(text)
+        if tokens <= budget:
+            return text
+        # Calculate ratio and truncate proportionally
+        ratio = budget / max(tokens, 1)
+        char_limit = max(100, int(len(text) * ratio))
+        return text[:char_limit] + f"\n... [truncated — {tokens} tokens → ~{budget}]"
+
+    def get_segment_usage(self) -> Dict[str, Any]:
+        """Detailed per-segment token accounting."""
+        sys_tokens = count_tokens(self.system_prompt)
+        hist_tokens = count_tokens(self.compressed_history)
+        msg_tokens = sum(count_tokens(m.get("content", "")) for m in self.recent_messages)
+        total = sys_tokens + hist_tokens + msg_tokens
+        return {
+            "system_prompt_tokens": sys_tokens,
+            "compressed_history_tokens": hist_tokens,
+            "recent_messages_tokens": msg_tokens,
+            "total_used": total,
+            "max_tokens": self.max_tokens,
+            "remaining": self.max_tokens - total,
+            "utilization_pct": round(total / max(self.max_tokens, 1) * 100, 1),
+            "tiktoken_available": _tiktoken_enc is not None,
+        }
 
 
 class SemanticMemory:
