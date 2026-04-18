@@ -1,13 +1,13 @@
 {
   "version": "1.0.0",
-  "created": "2026-03-31T17:22:58.126301+00:00",
+  "created": "2026-04-18T15:45:29.288160+00:00",
   "lockfiles": {
     "npm": "package-lock.json",
     "pip": "requirements.txt"
   },
   "lockfile_hashes": {
     "npm": "fe7dff7a4a97b64461d2f39e3dc868c5b07854e33ef55e446b37842f5563845e",
-    "pip": "b2534c10fb2d265855dddb2ab5300de745ae519a5d1aa4ac15beeeedf57f32db"
+    "pip": "ac268061ed476991a38a762ffc1e50e4efcdfd474c11fafd40d5a952974d007d"
   },
   "dependencies": [
     {
@@ -94,6 +94,24 @@
     {
       "name": "tiktoken",
       "version": "0.5.2,<1",
+      "ecosystem": "pip",
+      "integrity": "",
+      "resolved_url": "",
+      "has_install_script": false,
+      "direct": true
+    },
+    {
+      "name": "faiss-cpu",
+      "version": "1.7.4",
+      "ecosystem": "pip",
+      "integrity": "",
+      "resolved_url": "",
+      "has_install_script": false,
+      "direct": true
+    },
+    {
+      "name": "networkx",
+      "version": "3.1",
       "ecosystem": "pip",
       "integrity": "",
       "resolved_url": "",
