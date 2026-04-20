@@ -55,17 +55,34 @@ def _launch_sable_dev():
             if not next_build.exists():
                 return  # not built yet, skip silently
             _log = logging.getLogger("opensable")
-            npm_cmd = "npm.cmd" if sys.platform == "win32" else "npm"
+
+            # Log stderr to a file for diagnostics
+            log_dir = Path(os.environ.get("APPDATA", base)) / "opensable" / "logs"
+            log_dir.mkdir(parents=True, exist_ok=True)
+            log_file = open(log_dir / "sable_dev.log", "w", encoding="utf-8", errors="replace")
+
+            # Prefer calling next directly (more reliable arg passing on Windows)
+            if sys.platform == "win32":
+                next_bin = sable_dev_dir / "node_modules" / ".bin" / "next.cmd"
+                cmd = [str(next_bin), "start", "-p", "5700", "-H", "0.0.0.0"] if next_bin.exists() else [
+                    "npm.cmd", "start", "--", "-p", "5700", "-H", "0.0.0.0"
+                ]
+            else:
+                next_bin = sable_dev_dir / "node_modules" / ".bin" / "next"
+                cmd = [str(next_bin), "start", "-p", "5700", "-H", "0.0.0.0"] if next_bin.exists() else [
+                    "npm", "start", "--", "-p", "5700", "-H", "0.0.0.0"
+                ]
+
             subprocess.Popen(
-                [npm_cmd, "start", "--", "-p", "5700"],
+                cmd,
                 cwd=str(sable_dev_dir),
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stdout=log_file,
+                stderr=log_file,
                 creationflags=0x08000000 if sys.platform == "win32" else 0,
             )
-            _log.info("🛠️  Sable Dev started on http://localhost:5700")
+            _log.info(f"🛠️  Sable Dev started on http://localhost:5700 (log: {log_dir / 'sable_dev.log'})")
         except Exception as e:
-            logging.getLogger("opensable").debug(f"Sable Dev launch skipped: {e}")
+            logging.getLogger("opensable").warning(f"Sable Dev launch failed: {e}")
 
     threading.Thread(target=_start, daemon=True).start()
 

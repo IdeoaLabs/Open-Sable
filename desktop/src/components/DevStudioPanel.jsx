@@ -16,7 +16,7 @@ export default function DevStudioPanel({ onClose }) {
   const [error, setError] = useState(false)
   const wvRef = useRef(null)
   const retryCountRef = useRef(0)
-  const maxRetries = 5
+  const maxRetries = 20  // Next.js can take up to 60s to start on Windows cold boot
 
   useEffect(() => {
     const wv = wvRef.current
@@ -30,11 +30,12 @@ export default function DevStudioPanel({ onClose }) {
       // -3 = ERR_ABORTED (normal), -6 = ERR_FILE_NOT_FOUND (HMR), -2 = ERR_FAILED (transient)
       const ignoreCodes = [-3, -6, -2, -501]
       if (e.errorCode && !ignoreCodes.includes(e.errorCode)) {
-        // Auto-retry a few times before showing error — server may still be starting
+        // Auto-retry — Next.js cold start on Windows can take 20-60s
         if (retryCountRef.current < maxRetries) {
           retryCountRef.current++
-          console.log(`[DevStudio] Load failed (code ${e.errorCode}), retry ${retryCountRef.current}/${maxRetries}...`)
-          setTimeout(() => wv.reload(), 2000)
+          const delay = retryCountRef.current <= 5 ? 3000 : 5000
+          console.log(`[DevStudio] Load failed (code ${e.errorCode}), retry ${retryCountRef.current}/${maxRetries} in ${delay/1000}s...`)
+          setTimeout(() => wv.reload(), delay)
         } else {
           setError(true)
         }
