@@ -7,8 +7,8 @@ Supports: Ollama (local), OpenAI, Anthropic, DeepSeek, Groq, Together AI,
 """
 
 import asyncio
-import fcntl
 import logging
+import sys
 import json
 import os
 import re
@@ -34,39 +34,48 @@ logger = logging.getLogger(__name__)
 _OLLAMA_LOCK_PATH = os.environ.get("SABLE_OLLAMA_LOCK", "/tmp/sable-ollama.lock")
 
 
+if sys.platform != "win32":
+    import fcntl as _fcntl  # Unix only
+else:
+    _fcntl = None  # type: ignore[assignment]
+
+
 @asynccontextmanager
 async def _ollama_lock():
     """Async context-manager that acquires an inter-process file lock.
 
-    Uses fcntl.flock (non-blocking) with a short timeout so a stale lock
-    from a crashed process never hangs the agent indefinitely.
-    On macOS a single agent runs alone, so the lock is almost never contended;
-    if it is, we log a warning and proceed anyway after the timeout.
+    Uses fcntl.flock on Unix/Mac. On Windows, file locking via fcntl is not
+    available so this becomes a no-op (single-agent use is the norm on Windows).
     """
+    if _fcntl is None:
+        # Windows: no fcntl, just yield without locking
+        yield
+        return
+
     loop = asyncio.get_running_loop()
     fd = os.open(_OLLAMA_LOCK_PATH, os.O_CREAT | os.O_RDWR, 0o666)
     acquired = False
     try:
         # Try non-blocking first
         try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            _fcntl.flock(fd, _fcntl.LOCK_EX | _fcntl.LOCK_NB)
             acquired = True
         except BlockingIOError:
-            # Another process holds the lock,  wait up to 10 s then proceed anyway
-            logger.warning("Ollama lock contended,  waiting up to 10s...")
+            # Another process holds the lock, wait up to 10 s then proceed anyway
+            logger.warning("Ollama lock contended, waiting up to 10s...")
             try:
                 await asyncio.wait_for(
-                    loop.run_in_executor(None, fcntl.flock, fd, fcntl.LOCK_EX),
+                    loop.run_in_executor(None, _fcntl.flock, fd, _fcntl.LOCK_EX),
                     timeout=10,
                 )
                 acquired = True
             except asyncio.TimeoutError:
-                logger.warning("Ollama lock wait timed out,  proceeding without lock")
+                logger.warning("Ollama lock wait timed out, proceeding without lock")
         logger.debug("Ollama lock acquired" if acquired else "Ollama lock skipped")
         yield
     finally:
         if acquired:
-            fcntl.flock(fd, fcntl.LOCK_UN)
+            _fcntl.flock(fd, _fcntl.LOCK_UN)
         os.close(fd)
         logger.debug("Ollama lock released")
 
