@@ -14,7 +14,7 @@ bits = struct.calcsize("P") * 8
 arch_tag = "x64" if bits == 64 else "x86"
 
 a = Analysis(
-    [str(HERE / 'installer_gui.py')],
+    [str(HERE / 'installer_gui_winlinux.py')],
     pathex=[str(HERE)],
     binaries=[],
     datas=[(str(HERE / 'assets'), 'assets')],

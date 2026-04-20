@@ -7,7 +7,7 @@ block_cipher = None
 HERE = Path(SPECPATH)
 
 a = Analysis(
-    [str(HERE / 'installer_gui.py')],
+    [str(HERE / 'installer_gui_winlinux.py')],
     pathex=[str(HERE)],
     binaries=[],
     datas=[(str(HERE / 'assets'), 'assets')],
