@@ -57,8 +57,17 @@ def _launch_desktop():
         try:
             base = Path(__file__).resolve().parent.parent
             desktop_dir = base / "desktop"
-            electron = desktop_dir / "node_modules" / ".bin" / "electron"
-            if electron.exists():
+            # On Windows, .bin/electron is a Unix symlink — use .cmd or the .exe instead
+            if sys.platform == "win32":
+                electron_candidates = [
+                    desktop_dir / "node_modules" / ".bin" / "electron.cmd",
+                    desktop_dir / "node_modules" / "electron" / "dist" / "electron.exe",
+                ]
+                electron = next((p for p in electron_candidates if p.exists()), None)
+            else:
+                _e = desktop_dir / "node_modules" / ".bin" / "electron"
+                electron = _e if _e.exists() else None
+            if electron:
                 subprocess.Popen(
                     [str(electron), str(desktop_dir)],
                     cwd=str(base),

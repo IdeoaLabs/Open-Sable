@@ -57,6 +57,7 @@ import logging
 import os
 import re
 import stat
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -1938,14 +1939,15 @@ class Gateway:
                                      access_log_class=_FilteredAccessLogger)
         await self._runner.setup()
 
-        # Unix socket
-        if SOCKET_PATH.exists():
-            SOCKET_PATH.unlink()
+        # Unix socket (Linux/macOS only — Windows doesn't support AF_UNIX in aiohttp)
+        if sys.platform != "win32":
+            if SOCKET_PATH.exists():
+                SOCKET_PATH.unlink()
 
-        unix_site = web.UnixSite(self._runner, str(SOCKET_PATH))
-        await unix_site.start()
-        self._sites.append(unix_site)
-        os.chmod(SOCKET_PATH, stat.S_IRUSR | stat.S_IWUSR)
+            unix_site = web.UnixSite(self._runner, str(SOCKET_PATH))
+            await unix_site.start()
+            self._sites.append(unix_site)
+            os.chmod(SOCKET_PATH, stat.S_IRUSR | stat.S_IWUSR)
 
         # TCP listener(s)
         bind_hosts = [self._webchat_host]
