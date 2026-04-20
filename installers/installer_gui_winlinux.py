@@ -404,13 +404,13 @@ def ollama_running() -> bool:
 def get_local_version(install_dir: str) -> str:
     pyproject = os.path.join(install_dir, "pyproject.toml")
     if os.path.isfile(pyproject):
-        with open(pyproject) as f:
+        with open(pyproject, encoding="utf-8") as f:
             for line in f:
                 if line.strip().startswith("version"):
                     return line.split("=")[1].strip().strip('"').strip("'")
     init = os.path.join(install_dir, "opensable", "__init__.py")
     if os.path.isfile(init):
-        with open(init) as f:
+        with open(init, encoding="utf-8") as f:
             for line in f:
                 if "__version__" in line:
                     return line.split("=")[1].strip().strip('"').strip("'")
@@ -525,7 +525,7 @@ class UpdateEngine:
 
             self.progress(100, "Update complete!")
             meta = os.path.join(self.install_dir, ".sable-update.json")
-            with open(meta, "w") as f:
+            with open(meta, "w", encoding="utf-8") as f:
                 json.dump({
                     "last_update": datetime.now().isoformat(),
                     "version": get_local_version(self.install_dir),
@@ -676,7 +676,7 @@ class ReinstallEngine:
 
             self.progress(100, "Reinstall complete!")
             meta = os.path.join(self.install_dir, ".sable-update.json")
-            with open(meta, "w") as f:
+            with open(meta, "w", encoding="utf-8") as f:
                 json.dump({
                     "last_update": datetime.now().isoformat(),
                     "version": get_local_version(self.install_dir),
@@ -831,16 +831,16 @@ class ReinstallEngine:
             env_example = os.path.join(self.install_dir, ".env.example")
             model = self.config.get("model", "qwen3.5:0.8b")
             if os.path.isfile(env_example):
-                with open(env_example, "r") as f:
+                with open(env_example, "r", encoding="utf-8") as f:
                     content = f.read()
                 content = content.replace("DEFAULT_MODEL=llama3.1:8b", f"DEFAULT_MODEL={model}")
                 content = content.replace("GATEWAY_ENABLED=false", "GATEWAY_ENABLED=true")
                 # Disable auto-select so the user's chosen model sticks
                 content = content.replace("AUTO_SELECT_MODEL=true", "AUTO_SELECT_MODEL=false")
-                with open(env_file, "w") as f:
+                with open(env_file, "w", encoding="utf-8") as f:
                     f.write(content)
             else:
-                with open(env_file, "w") as f:
+                with open(env_file, "w", encoding="utf-8") as f:
                     f.write(f"DEFAULT_MODEL={model}\nAUTO_SELECT_MODEL=false\nGATEWAY_ENABLED=true\nWEBCHAT_PORT=8789\n")
             self.log("  ✔ .env created", "ok")
         else:
@@ -858,12 +858,12 @@ class ReinstallEngine:
                     shutil.copy2(src, dest)
                     if fname == "profile.env":
                         model = self.config.get("model", "qwen3.5:0.8b")
-                        with open(dest, "r") as f:
+                        with open(dest, "r", encoding="utf-8") as f:
                             c = f.read()
                         c = c.replace("DEFAULT_MODEL=qwen3.5:0.8b", f"DEFAULT_MODEL={model}")
                         c = c.replace("AGENT_NAME=MyAgent", "AGENT_NAME=Sable")
                         c = c.replace("WEBCHAT_PORT=8792", "WEBCHAT_PORT=8789")
-                        with open(dest, "w") as f:
+                        with open(dest, "w", encoding="utf-8") as f:
                             f.write(c)
         self.log("  ✔ Agent profile verified (agents/sable/)", "ok")
 
@@ -1363,7 +1363,7 @@ class InstallerEngine:
                 os.unlink(marker)
 
             script_path = os.path.join(tempfile.gettempdir(), "opensable-bootstrap.sh")
-            with open(script_path, "w") as f:
+            with open(script_path, "w", encoding="utf-8") as f:
                 f.write("#!/bin/bash\n")
                 f.write("set -e\n")
                 f.write('clear\n')
@@ -1783,7 +1783,7 @@ class InstallerEngine:
             env_example = os.path.join(self.install_dir, ".env.example")
             model = self.config.get("model", "qwen3.5:0.8b")
             if os.path.isfile(env_example):
-                with open(env_example, "r") as f:
+                with open(env_example, "r", encoding="utf-8") as f:
                     content = f.read()
                 # Apply user's chosen model
                 content = content.replace("DEFAULT_MODEL=llama3.1:8b", f"DEFAULT_MODEL={model}")
@@ -1791,11 +1791,11 @@ class InstallerEngine:
                 content = content.replace("AUTO_SELECT_MODEL=true", "AUTO_SELECT_MODEL=false")
                 # Enable gateway by default
                 content = content.replace("GATEWAY_ENABLED=false", "GATEWAY_ENABLED=true")
-                with open(env_file, "w") as f:
+                with open(env_file, "w", encoding="utf-8") as f:
                     f.write(content)
             else:
                 # Minimal .env if no example found
-                with open(env_file, "w") as f:
+                with open(env_file, "w", encoding="utf-8") as f:
                     f.write(f"# Open-Sable Configuration\n")
                     f.write(f"DEFAULT_MODEL={model}\n")
                     f.write(f"AUTO_SELECT_MODEL=false\n")
@@ -1829,7 +1829,7 @@ class InstallerEngine:
                     # Patch profile.env with user's model
                     if fname == "profile.env":
                         model = self.config.get("model", "qwen3.5:0.8b")
-                        with open(dest, "r") as f:
+                        with open(dest, "r", encoding="utf-8") as f:
                             content = f.read()
                         content = content.replace("DEFAULT_MODEL=qwen3.5:0.8b",
                                                   f"DEFAULT_MODEL={model}")
@@ -1837,7 +1837,7 @@ class InstallerEngine:
                                                   "AGENT_NAME=Sable")
                         content = content.replace("WEBCHAT_PORT=8792",
                                                   "WEBCHAT_PORT=8789")
-                        with open(dest, "w") as f:
+                        with open(dest, "w", encoding="utf-8") as f:
                             f.write(content)
         self.log("  ✔ Agent profile initialized (agents/sable/)", "ok")
 
@@ -1875,7 +1875,7 @@ class InstallerEngine:
                         "system_command": "always_allow",
                     }
                 }
-                with open(perms_file, "w") as f:
+                with open(perms_file, "w", encoding="utf-8") as f:
                     json.dump(perms, f, indent=2)
                 self.log("  ✔ Default permissions created", "ok")
         else:
@@ -1921,7 +1921,7 @@ class InstallerEngine:
             user_dir = os.path.expanduser("~/.config/systemd/user")
             os.makedirs(user_dir, exist_ok=True)
             svc_path = os.path.join(user_dir, "opensable.service")
-            with open(svc_path, "w") as f:
+            with open(svc_path, "w", encoding="utf-8") as f:
                 f.write(f"[Unit]\nDescription=Open-Sable AI Agent\n")
                 f.write(f"After=network.target ollama.service\n\n")
                 f.write(f"[Service]\nType=simple\n")
@@ -1942,7 +1942,7 @@ class InstallerEngine:
             plist_dir = os.path.expanduser("~/Library/LaunchAgents")
             os.makedirs(plist_dir, exist_ok=True)
             plist = os.path.join(plist_dir, "com.ideoalabs.opensable.plist")
-            with open(plist, "w") as f:
+            with open(plist, "w", encoding="utf-8") as f:
                 f.write('<?xml version="1.0" encoding="UTF-8"?>\n')
                 f.write('<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
                         '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n')
@@ -1986,7 +1986,7 @@ class InstallerEngine:
                 f.write(f'if exist aggr\\package.json (\n  cd aggr && npm install --legacy-peer-deps -q && npm run build && cd ..\n)\n')
                 f.write(f'echo Update complete!\npause\n')
         else:
-            with open(updater_path, "w") as f:
+            with open(updater_path, "w", encoding="utf-8") as f:
                 f.write(f'#!/bin/bash\nset -e\necho "Updating Open-Sable..."\n')
                 f.write(f'cd "{self.install_dir}"\n')
                 f.write(f'git fetch origin {REPO_BRANCH}\n')
@@ -2026,7 +2026,7 @@ class InstallerEngine:
             plist_dir = os.path.expanduser("~/Library/LaunchAgents")
             os.makedirs(plist_dir, exist_ok=True)
             plist = os.path.join(plist_dir, "com.ideoalabs.opensable-update.plist")
-            with open(plist, "w") as f:
+            with open(plist, "w", encoding="utf-8") as f:
                 f.write('<?xml version="1.0" encoding="UTF-8"?>\n')
                 f.write('<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
                         '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n')
@@ -2196,7 +2196,7 @@ class InstallerEngine:
         local_bin = os.path.expanduser("~/.local/bin")
         os.makedirs(local_bin, exist_ok=True)
         cli = os.path.join(local_bin, "opensable")
-        with open(cli, "w") as f:
+        with open(cli, "w", encoding="utf-8") as f:
             f.write(f'#!/bin/bash\ncd "{self.install_dir}" && source venv/bin/activate && python -m opensable "$@"\n')
         os.chmod(cli, 0o755)
         self.log("  ✔ Desktop entry + CLI link created", "ok")
