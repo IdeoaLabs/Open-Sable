@@ -265,11 +265,12 @@ class _GatewayBridge:
         self._gw_ws: Optional[_WS] = None
 
     async def connect_gateway(self) -> bool:
-        """Open a connection to the local Unix socket Gateway."""
-        from opensable.core.gateway import SOCKET_PATH
+        """Open a connection to the Gateway (Unix socket on Linux/Mac, TCP on Windows)."""
+        import sys
+        from opensable.core.nodes import _open_gateway_connection, _GATEWAY_TCP_HOST, _GATEWAY_TCP_PORT
 
         try:
-            self._gw_reader, self._gw_writer = await asyncio.open_unix_connection(str(SOCKET_PATH))
+            self._gw_reader, self._gw_writer = await _open_gateway_connection()
             # Do client-side WS handshake with the gateway
             key = base64.b64encode(os.urandom(16)).decode()
             request = (

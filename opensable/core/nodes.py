@@ -61,6 +61,20 @@ logger = logging.getLogger(__name__)
 SOCKET_PATH = Path(os.environ.get("_SABLE_SOCKET_PATH", "/tmp/sable-sable.sock"))
 MAX_FILE_READ = 1024 * 512  # 512 KB safety limit for fs.read
 
+# Gateway TCP port for Windows fallback (Unix sockets not available on Windows)
+_GATEWAY_TCP_HOST = os.environ.get("_SABLE_WEBCHAT_HOST", "127.0.0.1")
+_GATEWAY_TCP_PORT = int(os.environ.get("_SABLE_WEBCHAT_PORT", "8789"))
+
+
+async def _open_gateway_connection():
+    """Open a connection to the Gateway.
+    On Linux/macOS: uses the Unix socket for security.
+    On Windows: falls back to TCP (Unix sockets not supported by asyncio on Windows).
+    """
+    if sys.platform == "win32":
+        return await asyncio.open_connection(_GATEWAY_TCP_HOST, _GATEWAY_TCP_PORT)
+    return await asyncio.open_unix_connection(str(SOCKET_PATH))
+
 
 # ─── Node Client SDK ──────────────────────────────────────────────────────────
 
@@ -108,7 +122,7 @@ class GatewayNodeClient:
     # ── Internal ──────────────────────────────────────────────────────────────
 
     async def _connect_and_serve(self):
-        reader, writer = await asyncio.open_unix_connection(str(SOCKET_PATH))
+        reader, writer = await _open_gateway_connection()
         ws = await self._handshake(reader, writer)
 
         # Register
