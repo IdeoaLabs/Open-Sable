@@ -789,7 +789,7 @@ class ReinstallEngine:
             self.log("  ⚠ Node.js not available — skipping", "warning")
             return
         npm = find_npm() or "npm"
-        for project in ["dashboard", "desktop", "aggr"]:
+        for project in ["dashboard", "sable_dev", "desktop", "aggr"]:
             pkg = os.path.join(self.install_dir, project, "package.json")
             if not os.path.isfile(pkg):
                 continue
@@ -1747,7 +1747,7 @@ class InstallerEngine:
         if not npm:
             self.log("  ⚠ npm not found — skipping frontends. Install Node.js from nodejs.org", "warning")
             return
-        for project in ["dashboard", "desktop", "aggr"]:
+        for project in ["dashboard", "sable_dev", "desktop", "aggr"]:
             proj_dir = os.path.join(self.install_dir, project)
             pkg = os.path.join(proj_dir, "package.json")
             if not os.path.isfile(pkg):
@@ -1765,6 +1765,14 @@ class InstallerEngine:
                     self.log(f"  ✔ {project} ready", "ok")
                 else:
                     self.log(f"  ⚠ {project} — dist/index.html missing, UI may not load", "warning")
+            elif project == "sable_dev":
+                # sable_dev is a Next.js app — build with 'next build'
+                self._exec([npm, "run", "build"], cwd=proj_dir, check=False)
+                next_build = os.path.join(proj_dir, ".next")
+                if os.path.isdir(next_build):
+                    self.log(f"  ✔ {project} ready", "ok")
+                else:
+                    self.log(f"  ⚠ {project} build incomplete — .next dir missing", "warning")
             else:
                 self._exec([npm, "run", "build"], cwd=proj_dir, check=False)
                 self.log(f"  ✔ {project} ready", "ok")
@@ -1964,6 +1972,9 @@ class InstallerEngine:
             start_bat = os.path.join(self.install_dir, "start-opensable.bat")
             with open(start_bat, "w", encoding="mbcs" if IS_WIN else "utf-8") as f:
                 f.write(f'@echo off\ncd /d "{self.install_dir}"\n')
+                f.write(f'if exist sable_dev\\package.json (\n')
+                f.write(f'  start "Sable Dev" /B cmd /c "cd sable_dev && npm start -- -p 5700 > ..\\logs\\sable_dev.log 2>&1"\n')
+                f.write(f')\n')
                 f.write(f'call venv\\Scripts\\activate.bat\n')
                 f.write(f'python -m opensable %*\n')
             self.log("  ✔ Start script created (start-opensable.bat)", "ok")
@@ -1983,6 +1994,7 @@ class InstallerEngine:
                 f.write(f'pip install -e ".[core]" -q\n')
                 f.write(f'if exist requirements.txt pip install -r requirements.txt -q\n')
                 f.write(f'if exist dashboard\\package.json (\n  cd dashboard && npm install --legacy-peer-deps -q && npm run build && cd ..\n)\n')
+                f.write(f'if exist sable_dev\\package.json (\n  cd sable_dev && npm install --legacy-peer-deps -q && npm run build && cd ..\n)\n')
                 f.write(f'if exist aggr\\package.json (\n  cd aggr && npm install --legacy-peer-deps -q && npm run build && cd ..\n)\n')
                 f.write(f'echo Update complete!\npause\n')
         else:
@@ -1997,6 +2009,7 @@ class InstallerEngine:
                 f.write(f'pip install -e ".[core]" -q\n')
                 f.write(f'[ -f requirements.txt ] && pip install -r requirements.txt -q\n')
                 f.write(f'[ -f dashboard/package.json ] && (cd dashboard && npm install --legacy-peer-deps -q && npm run build; cd ..)\n')
+                f.write(f'[ -f sable_dev/package.json ] && (cd sable_dev && npm install --legacy-peer-deps -q && npm run build; cd ..)\n')
                 f.write(f'[ -f aggr/package.json ] && (cd aggr && npm install --legacy-peer-deps -q && npm run build; cd ..)\n')
                 f.write(f'echo "Update complete!"\n')
             os.chmod(updater_path, 0o755)

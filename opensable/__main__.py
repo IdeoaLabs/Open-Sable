@@ -40,6 +40,36 @@ def setup_logging(log_level: str = "INFO"):
     )
 
 
+def _launch_sable_dev():
+    """Start the Sable Dev Next.js server (port 5700) as a background process."""
+    import subprocess
+    import threading
+
+    def _start():
+        try:
+            base = Path(__file__).resolve().parent.parent
+            sable_dev_dir = base / "sable_dev"
+            if not (sable_dev_dir / "package.json").exists():
+                return  # not installed, skip silently
+            next_build = sable_dev_dir / ".next"
+            if not next_build.exists():
+                return  # not built yet, skip silently
+            _log = logging.getLogger("opensable")
+            npm_cmd = "npm.cmd" if sys.platform == "win32" else "npm"
+            subprocess.Popen(
+                [npm_cmd, "start", "--", "-p", "5700"],
+                cwd=str(sable_dev_dir),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=0x08000000 if sys.platform == "win32" else 0,
+            )
+            _log.info("🛠️  Sable Dev started on http://localhost:5700")
+        except Exception as e:
+            logging.getLogger("opensable").debug(f"Sable Dev launch skipped: {e}")
+
+    threading.Thread(target=_start, daemon=True).start()
+
+
 def _launch_desktop():
     """Launch Electron desktop app if available, otherwise open browser."""
     import subprocess
@@ -431,6 +461,7 @@ async def async_main():
             )
             console.print("[dim]Add tokens to .env for Telegram, Discord, WhatsApp, Slack[/dim]")
             console.print("[dim]Type Ctrl+C to stop[/dim]")
+            _launch_sable_dev()
             _launch_desktop()
             try:
                 await asyncio.Event().wait()
@@ -451,6 +482,7 @@ async def async_main():
             f"[dim]Agent: {config.agent_name} | Personality: {config.agent_personality}[/dim]"
         )
         console.print("[dim]Type Ctrl+C to stop[/dim]")
+        _launch_sable_dev()
         _launch_desktop()
 
         try:
