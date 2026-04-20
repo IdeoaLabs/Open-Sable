@@ -280,7 +280,7 @@ def _refresh_windows_path():
             ["powershell", "-NoProfile", "-Command",
              "[Environment]::GetEnvironmentVariable('Path','Machine')+';'+"
              "[Environment]::GetEnvironmentVariable('Path','User')"],
-            capture_output=True, text=True, timeout=5, creationflags=_NO_WINDOW)
+            capture_output=True, encoding="utf-8", errors="replace", timeout=5, creationflags=_NO_WINDOW)
         if r.returncode == 0 and r.stdout.strip():
             os.environ["PATH"] = r.stdout.strip()
     except Exception:
@@ -308,7 +308,7 @@ def _download_with_timeout(url: str, dest: str, timeout: int = 120):
 def find_python() -> Tuple[Optional[List[str]], Optional[str]]:
     for cmd in [["python3.13"], ["python3.12"], ["python3"], ["python"]]:
         try:
-            r = subprocess.run(cmd + ["--version"], capture_output=True, text=True, timeout=5,
+            r = subprocess.run(cmd + ["--version"], capture_output=True, encoding="utf-8", errors="replace", timeout=5,
                                creationflags=_NO_WINDOW)
             if r.returncode == 0:
                 ver = r.stdout.strip().split()[-1]
@@ -322,7 +322,7 @@ def find_python() -> Tuple[Optional[List[str]], Optional[str]]:
 
 def find_git() -> Optional[str]:
     try:
-        r = subprocess.run(["git", "--version"], capture_output=True, text=True, timeout=5,
+        r = subprocess.run(["git", "--version"], capture_output=True, encoding="utf-8", errors="replace", timeout=5,
                            creationflags=_NO_WINDOW)
         return r.stdout.strip().split()[-1] if r.returncode == 0 else None
     except Exception:
@@ -331,7 +331,7 @@ def find_git() -> Optional[str]:
 
 def find_node() -> Optional[str]:
     try:
-        r = subprocess.run(["node", "--version"], capture_output=True, text=True, timeout=5,
+        r = subprocess.run(["node", "--version"], capture_output=True, encoding="utf-8", errors="replace", timeout=5,
                            creationflags=_NO_WINDOW)
         if r.returncode == 0:
             ver = r.stdout.strip().lstrip("v")
@@ -345,7 +345,7 @@ def find_node() -> Optional[str]:
 def find_npm() -> Optional[str]:
     """Find npm, including common Windows paths when PATH hasn't refreshed."""
     try:
-        r = subprocess.run(["npm", "--version"], capture_output=True, text=True, timeout=5,
+        r = subprocess.run(["npm", "--version"], capture_output=True, encoding="utf-8", errors="replace", timeout=5,
                            creationflags=_NO_WINDOW)
         if r.returncode == 0:
             return shutil.which("npm") or "npm"
@@ -359,7 +359,7 @@ def find_npm() -> Optional[str]:
         for p in candidates:
             if os.path.isfile(p):
                 try:
-                    r = subprocess.run([p, "--version"], capture_output=True, text=True, timeout=5,
+                    r = subprocess.run([p, "--version"], capture_output=True, encoding="utf-8", errors="replace", timeout=5,
                                        creationflags=_NO_WINDOW)
                     if r.returncode == 0:
                         return p
@@ -370,7 +370,7 @@ def find_npm() -> Optional[str]:
             r = subprocess.run(
                 ["powershell", "-NoProfile", "-Command",
                  "[Environment]::GetEnvironmentVariable('Path','Machine')+';'+[Environment]::GetEnvironmentVariable('Path','User')"],
-                capture_output=True, text=True, timeout=5, creationflags=_NO_WINDOW)
+                capture_output=True, encoding="utf-8", errors="replace", timeout=5, creationflags=_NO_WINDOW)
             if r.returncode == 0 and r.stdout.strip():
                 os.environ["PATH"] = r.stdout.strip()
                 npm_path = shutil.which("npm")
@@ -383,7 +383,7 @@ def find_npm() -> Optional[str]:
 
 def find_ollama() -> Optional[str]:
     try:
-        r = subprocess.run(["ollama", "--version"], capture_output=True, text=True, timeout=5,
+        r = subprocess.run(["ollama", "--version"], capture_output=True, encoding="utf-8", errors="replace", timeout=5,
                            creationflags=_NO_WINDOW)
         if r.returncode == 0:
             return r.stdout.strip().split()[-1]
@@ -883,7 +883,7 @@ class ReinstallEngine:
                         break
         if ollama_running():
             try:
-                r = subprocess.run(["ollama", "list"], capture_output=True, text=True, timeout=10,
+                r = subprocess.run(["ollama", "list"], capture_output=True, encoding="utf-8", errors="replace", timeout=10,
                                    creationflags=_NO_WINDOW)
                 if model.split(":")[0] in r.stdout:
                     self.log(f"  ✔ Model {model} available", "ok")
@@ -923,7 +923,7 @@ class ReinstallEngine:
         try:
             r = subprocess.run(
                 [self.venv_python, "-c", "import opensable; print(opensable.__version__)"],
-                capture_output=True, text=True, timeout=15, cwd=self.install_dir
+                capture_output=True, encoding="utf-8", errors="replace", timeout=15, cwd=self.install_dir
             )
             if r.returncode == 0:
                 self.log(f"  ✔ opensable v{r.stdout.strip()} verified", "ok")
@@ -1682,7 +1682,7 @@ class InstallerEngine:
         # Check if an older version exists (needs upgrade, not fresh install)
         _old_node = None
         try:
-            r = subprocess.run(["node", "--version"], capture_output=True, text=True, timeout=5,
+            r = subprocess.run(["node", "--version"], capture_output=True, encoding="utf-8", errors="replace", timeout=5,
                                creationflags=_NO_WINDOW)
             if r.returncode == 0:
                 _old_node = r.stdout.strip().lstrip("v")
@@ -1849,7 +1849,7 @@ class InstallerEngine:
                     [self.venv_python, "-c",
                      "from opensable.core.sandbox_runner import run_sandboxed_python; "
                      "print(run_sandboxed_python('print(42)', cpu_seconds=2))"],
-                    capture_output=True, text=True, timeout=10,
+                    capture_output=True, encoding="utf-8", errors="replace", timeout=10,
                     cwd=self.install_dir, creationflags=_NO_WINDOW
                 )
                 if result.returncode == 0 and "42" in result.stdout:
@@ -1899,7 +1899,7 @@ class InstallerEngine:
             self.log(f"  ⚠ Ollama not running. Run: ollama pull {model}", "warning")
             return
         try:
-            r = subprocess.run(["ollama", "list"], capture_output=True, text=True, timeout=10,
+            r = subprocess.run(["ollama", "list"], capture_output=True, encoding="utf-8", errors="replace", timeout=10,
                                creationflags=_NO_WINDOW)
             if model.split(":")[0] in r.stdout:
                 self.log(f"  ✔ Model {model} already available", "ok")
@@ -2230,7 +2230,7 @@ class InstallerEngine:
             errors += 1
         try:
             r = subprocess.run([self.venv_python, "-c", "import opensable; print(opensable.__version__)"],
-                               capture_output=True, text=True, timeout=15, cwd=self.install_dir)
+                               capture_output=True, encoding="utf-8", errors="replace", timeout=15, cwd=self.install_dir)
             if r.returncode == 0:
                 self.log(f"  ✔ opensable v{r.stdout.strip()}", "ok")
                 checks += 1
