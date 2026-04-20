@@ -818,6 +818,42 @@ class Gateway:
                                 text=json.dumps({"error": str(exc)}))
 
         missing = [k for k in updates if k not in applied]
+
+        # Apply changed env vars to os.environ and agent.config immediately
+        # so that /api/llm/switch works without a restart.
+        _API_ENV_MAP = {
+            "OPENAI_API_KEY": "openai_api_key",
+            "ANTHROPIC_API_KEY": "anthropic_api_key",
+            "DEEPSEEK_API_KEY": "deepseek_api_key",
+            "GROQ_API_KEY": "groq_api_key",
+            "TOGETHER_API_KEY": "together_api_key",
+            "XAI_API_KEY": "xai_api_key",
+            "MISTRAL_API_KEY": "mistral_api_key",
+            "GEMINI_API_KEY": "gemini_api_key",
+            "COHERE_API_KEY": "cohere_api_key",
+            "KIMI_API_KEY": "kimi_api_key",
+            "MOONSHOT_API_KEY": "kimi_api_key",
+            "QWEN_API_KEY": "qwen_api_key",
+            "DASHSCOPE_API_KEY": "qwen_api_key",
+            "OPENROUTER_API_KEY": "openrouter_api_key",
+            "OPENWEBUI_API_KEY": "openwebui_api_key",
+            "OPENWEBUI_API_URL": "openwebui_api_url",
+            "OPENWEBUI_MODEL": "openwebui_model",
+        }
+        all_changed: dict[str, str] = {}
+        all_changed.update({k: v for k, v in updates.items() if k in applied})
+        all_changed.update({a["key"]: a["value"] for a in adds if a.get("key") in added})
+        all_changed.update({k: "" for k in deleted})
+        for env_key, val in all_changed.items():
+            upper = env_key.upper()
+            if val:
+                os.environ[upper] = val
+            elif upper in os.environ:
+                del os.environ[upper]
+            config_field = _API_ENV_MAP.get(upper)
+            if config_field and hasattr(self.agent.config, config_field):
+                setattr(self.agent.config, config_field, val or None)
+
         return web.Response(
             content_type="application/json",
             text=json.dumps({"ok": True, "applied": applied, "added": added,

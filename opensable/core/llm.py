@@ -1973,8 +1973,10 @@ def switch_llm(agent, provider: str, model: str | None = None) -> dict:
         dict with status info
     """
     config = agent.config
-    old_provider = "ollama" if isinstance(agent.llm, AdaptiveLLM) else getattr(agent.llm, "provider", "unknown")
-    old_model = agent.llm.current_model
+    old_provider = "none" if agent.llm is None else (
+        "ollama" if isinstance(agent.llm, AdaptiveLLM) else getattr(agent.llm, "provider", "unknown")
+    )
+    old_model = None if agent.llm is None else agent.llm.current_model
 
     try:
         if provider == "ollama":
@@ -1986,8 +1988,9 @@ def switch_llm(agent, provider: str, model: str | None = None) -> dict:
             if model:
                 new_llm.current_model = model
 
-        # Preserve token tracker history
-        new_llm.token_tracker = agent.llm.token_tracker
+        # Preserve token tracker history if previous LLM existed
+        if agent.llm is not None:
+            new_llm.token_tracker = agent.llm.token_tracker
 
         agent.llm = new_llm
         logger.info(f"LLM switched: {old_provider}/{old_model} → {provider}/{new_llm.current_model}")

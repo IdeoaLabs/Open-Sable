@@ -322,7 +322,16 @@ class SableAgent:
     async def initialize(self):
         """Initialize agent components"""
         logger.info("Initializing Open-Sable agent...")
-        self.llm = get_llm(self.config)
+        try:
+            self.llm = get_llm(self.config)
+        except Exception as _llm_err:
+            logger.warning(f"No LLM available: {_llm_err}")
+            logger.warning(
+                "Open-Sable is starting WITHOUT an LLM. "
+                "Open the dashboard, go to Settings → API Keys, "
+                "add your key, then use LLM → Switch Provider to activate it."
+            )
+            self.llm = None
         self.memory = MemoryManager(self.config)
         await self.memory.initialize()
         self.tools = ToolRegistry(self.config)
