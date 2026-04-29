@@ -200,6 +200,70 @@ def run_cmd(cmd: List[str], cwd: Optional[str] = None, timeout: int = 1800) -> T
     return proc.returncode, out or ""
 
 
+def run_cmd_live(
+    cmd: List[str],
+    cwd: Optional[str] = None,
+    timeout: int = 1800,
+    on_line: Optional[Callable[[str], None]] = None,
+) -> Tuple[int, str]:
+    env = {**os.environ, "PYTHONUNBUFFERED": "1"}
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            cwd=cwd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            creationflags=_NO_WINDOW,
+            env=env,
+            bufsize=1,
+        )
+    except FileNotFoundError:
+        exe = cmd[0] if cmd else "<empty>"
+        return 127, f"Executable not found: {exe}"
+    except OSError as e:
+        exe = cmd[0] if cmd else "<empty>"
+        return 127, f"Failed to launch command ({exe}): {e}"
+
+    started = time.time()
+    lines: List[str] = []
+
+    while True:
+        if timeout > 0 and (time.time() - started) > timeout:
+            proc.kill()
+            lines.append("[timeout]")
+            break
+
+        if proc.stdout is None:
+            break
+
+        line = proc.stdout.readline()
+        if line:
+            clean = line.rstrip("\r\n")
+            lines.append(clean)
+            if on_line is not None:
+                on_line(clean)
+            continue
+
+        if proc.poll() is not None:
+            break
+
+        time.sleep(0.05)
+
+    if proc.stdout is not None:
+        rest = proc.stdout.read()
+        if rest:
+            for line in rest.splitlines():
+                lines.append(line)
+                if on_line is not None:
+                    on_line(line)
+
+    return_code = proc.wait() if proc.poll() is None else proc.returncode
+    return return_code, "\n".join(lines)
+
+
 def command_exists(name: str) -> bool:
     return shutil.which(name) is not None
 
@@ -543,19 +607,43 @@ class SmartWindowsInstallerEngine:
         return any(cmd.startswith(a) for a in allowed)
 
     def _run_logged(self, cmd: List[str], cwd: Optional[str] = None, check: bool = True,
-                    timeout: int = 3600) -> str:
+                    timeout: int = 3600, log_path: Optional[str] = None,
+                    context_label: Optional[str] = None) -> str:
         self.log("  $ " + " ".join(cmd), "dim")
-        code, out = run_cmd(cmd, cwd=cwd, timeout=timeout)
-        for line in out.splitlines():
+        streamed: List[str] = []
+
+        def _on_line(line: str):
             if line.strip():
                 self.log("    " + line, "dim")
+            streamed.append(line)
+
+        code, out = run_cmd_live(cmd, cwd=cwd, timeout=timeout, on_line=_on_line)
+        if not out and streamed:
+            out = "\n".join(streamed)
+        if log_path:
+            try:
+                safe_mkdir(os.path.dirname(log_path))
+                with open(log_path, "w", encoding="utf-8", errors="replace") as f:
+                    f.write(out)
+            except Exception:
+                pass
         if check and code == 127:
             raise RuntimeError(
                 f"Executable not found for command: {' '.join(cmd)}. "
                 "Please verify PATH or install the missing dependency."
             )
         if check and code != 0:
-            raise RuntimeError(f"Command failed ({code}): {' '.join(cmd)}")
+            non_empty = [ln for ln in out.splitlines() if ln.strip()]
+            tail = "\n".join(non_empty[-40:]) if non_empty else "(no output)"
+            label = context_label or "Command"
+            where = cwd or os.getcwd()
+            details = (
+                f"{label} failed ({code}) in {where}: {' '.join(cmd)}\n"
+                f"Last output lines:\n{tail}"
+            )
+            if log_path:
+                details += f"\nFull log: {log_path}"
+            raise RuntimeError(details)
         return out
 
     def _prepare_dirs(self):
@@ -709,15 +797,73 @@ class SmartWindowsInstallerEngine:
 
         self._run_logged(npm_cmd + ["--version"], check=False)
 
+        logs_root = os.path.join(self.install_dir, "logs", "node-build")
+        safe_mkdir(logs_root)
+
         for project in REQUIRED_WEB_PROJECTS.keys():
             pkg = os.path.join(self.install_dir, project, "package.json")
             if not os.path.isfile(pkg):
                 raise RuntimeError(f"Required project missing: {project}")
 
+            try:
+                with open(pkg, "r", encoding="utf-8") as f:
+                    pkg_data = json.load(f)
+                scripts = pkg_data.get("scripts") or {}
+                if "build" not in scripts:
+                    raise RuntimeError(f"Missing build script in {project}/package.json")
+            except json.JSONDecodeError as e:
+                raise RuntimeError(f"Invalid package.json in {project}: {e}")
+
             self.log(f"  Building {project}...", "dim")
             project_dir = os.path.join(self.install_dir, project)
-            self._run_logged(npm_cmd + ["install", "--legacy-peer-deps"], cwd=project_dir)
-            self._run_logged(npm_cmd + ["run", "build"], cwd=project_dir)
+            install_log = os.path.join(logs_root, f"{project}-npm-install.log")
+            build_log = os.path.join(logs_root, f"{project}-npm-build.log")
+
+            try:
+                self._run_logged(
+                    npm_cmd + ["install", "--legacy-peer-deps"],
+                    cwd=project_dir,
+                    log_path=install_log,
+                    context_label=f"npm install for {project}",
+                )
+                self._run_logged(
+                    npm_cmd + ["run", "build"],
+                    cwd=project_dir,
+                    log_path=build_log,
+                    context_label=f"npm run build for {project}",
+                )
+            except Exception as first_err:
+                self.log(f"  Build failed for {project}. Running auto-fix and retry...", "warning")
+                self._run_logged(npm_cmd + ["cache", "verify"], cwd=project_dir, check=False)
+
+                node_modules = os.path.join(project_dir, "node_modules")
+                if os.path.isdir(node_modules):
+                    shutil.rmtree(node_modules, ignore_errors=True)
+
+                for lock_name in ("package-lock.json", "npm-shrinkwrap.json"):
+                    lock_file = os.path.join(project_dir, lock_name)
+                    if os.path.isfile(lock_file):
+                        try:
+                            os.remove(lock_file)
+                        except OSError:
+                            pass
+
+                self._run_logged(
+                    npm_cmd + ["install", "--legacy-peer-deps", "--no-audit", "--no-fund"],
+                    cwd=project_dir,
+                    log_path=install_log,
+                    context_label=f"npm install retry for {project}",
+                )
+                self._run_logged(
+                    npm_cmd + ["run", "build"],
+                    cwd=project_dir,
+                    log_path=build_log,
+                    context_label=f"npm run build retry for {project}",
+                )
+                self.log(f"  ✔ Auto-fix retry succeeded for {project}", "ok")
+
+                if isinstance(first_err, Exception):
+                    _ = first_err
             self._verify_project_build_output(project, project_dir)
 
         self.log("  ✔ Required web and desktop assets built successfully.", "ok")
