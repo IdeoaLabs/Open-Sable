@@ -16,6 +16,10 @@ on:
         description: 'Tag to build from (example: 1.7.0 or v1.7.0)'
         required: true
         default: '1.7.0'
+      build_ref:
+        description: 'Source ref to build (branch, tag, or commit SHA). Example: master'
+        required: true
+        default: 'master'
 
 permissions:
   contents: write
@@ -24,8 +28,6 @@ jobs:
   build-windows-x64:
     name: Build Smart Installer x64
     runs-on: windows-latest
-    outputs:
-      resolved_tag: ${{ steps.resolve_tag.outputs.resolved_tag }}
     if: |
       github.event_name == 'workflow_dispatch' ||
       startsWith(github.ref, 'refs/tags/1.7.0') ||
@@ -36,54 +38,22 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.build_ref || github.ref }}
           fetch-depth: 0
 
-      - name: Resolve and checkout tag
-        id: resolve_tag
+      - name: Validate required installer files
         shell: pwsh
-        env:
-          REQUESTED_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag || github.event_name == 'release' && github.event.release.tag_name || github.ref_name }}
         run: |
-          $requested = "$env:REQUESTED_TAG".Trim()
-          if ([string]::IsNullOrWhiteSpace($requested)) {
-            throw "No tag value was provided by the event context."
-          }
-
-          $candidates = New-Object System.Collections.Generic.List[string]
-          $candidates.Add($requested)
-          if ($requested.StartsWith("v")) {
-            $withoutV = $requested.Substring(1)
-            if (-not [string]::IsNullOrWhiteSpace($withoutV)) {
-              $candidates.Add($withoutV)
-            }
-          } else {
-            $candidates.Add("v$requested")
-          }
-
-          $resolved = $null
-          foreach ($tag in $candidates) {
-            git rev-parse -q --verify "refs/tags/$tag" *> $null
-            if ($LASTEXITCODE -eq 0) {
-              $resolved = $tag
-              break
+          $required = @(
+            "installers/installer_gui_windows_smart.py",
+            "installers/opensable-installer-windows-smart.spec",
+            "installers/assets/icon.ico"
+          )
+          foreach ($f in $required) {
+            if (-not (Test-Path $f)) {
+              throw "Missing required file in selected ref: $f"
             }
           }
-
-          if (-not $resolved) {
-            Write-Host "Requested tag: $requested"
-            Write-Host "Tried candidates: $($candidates -join ', ')"
-            Write-Host "Available related tags:"
-            git tag --list "*1.7.0*"
-            throw "Could not resolve a valid tag."
-          }
-
-          git checkout "refs/tags/$resolved"
-          if ($LASTEXITCODE -ne 0) {
-            throw "Failed to checkout resolved tag: $resolved"
-          }
-
-          "resolved_tag=$resolved" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          Write-Host "Resolved tag: $resolved"
 
       - name: Set up Python 3.12 x64
         uses: actions/setup-python@v6
@@ -98,15 +68,16 @@ jobs:
         shell: pwsh
         working-directory: installers
         run: |
-          $ErrorActionPreference = 'Continue'
+          $ErrorActionPreference = 'Stop'
           Write-Host "Python:"; python --version
           Write-Host "Pip:"; python -m pip --version
           Write-Host "PyInstaller:"; pyinstaller --version
-          pyinstaller opensable-installer-windows-smart.spec --clean --noconfirm 2>&1 | Tee-Object -FilePath pyinstaller-x64.log
-          if ($LASTEXITCODE -ne 0) {
+          cmd /c "pyinstaller opensable-installer-windows-smart.spec --clean --noconfirm > pyinstaller-x64.log 2>&1"
+          $buildExit = $LASTEXITCODE
+          if ($buildExit -ne 0) {
             Write-Host "--- Last 200 lines of pyinstaller-x64.log ---"
             Get-Content pyinstaller-x64.log -Tail 200
-            throw "PyInstaller failed for x64 with exit code $LASTEXITCODE"
+            throw "PyInstaller failed for x64 with exit code $buildExit"
           }
 
       - name: Verify generated file
@@ -117,14 +88,14 @@ jobs:
           }
 
       - name: Upload x64 artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: OpenSable-SmartInstaller-Windows-x64
           path: installers/dist/OpenSable-SmartInstaller-Windows-x64.exe
 
       - name: Upload x64 build log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: OpenSable-SmartInstaller-Windows-x64-log
           path: installers/pyinstaller-x64.log
@@ -142,52 +113,22 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.build_ref || github.ref }}
           fetch-depth: 0
 
-      - name: Resolve and checkout tag
+      - name: Validate required installer files
         shell: pwsh
-        env:
-          REQUESTED_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag || github.event_name == 'release' && github.event.release.tag_name || github.ref_name }}
         run: |
-          $requested = "$env:REQUESTED_TAG".Trim()
-          if ([string]::IsNullOrWhiteSpace($requested)) {
-            throw "No tag value was provided by the event context."
-          }
-
-          $candidates = New-Object System.Collections.Generic.List[string]
-          $candidates.Add($requested)
-          if ($requested.StartsWith("v")) {
-            $withoutV = $requested.Substring(1)
-            if (-not [string]::IsNullOrWhiteSpace($withoutV)) {
-              $candidates.Add($withoutV)
-            }
-          } else {
-            $candidates.Add("v$requested")
-          }
-
-          $resolved = $null
-          foreach ($tag in $candidates) {
-            git rev-parse -q --verify "refs/tags/$tag" *> $null
-            if ($LASTEXITCODE -eq 0) {
-              $resolved = $tag
-              break
+          $required = @(
+            "installers/installer_gui_windows_smart.py",
+            "installers/opensable-installer-windows-smart.spec",
+            "installers/assets/icon.ico"
+          )
+          foreach ($f in $required) {
+            if (-not (Test-Path $f)) {
+              throw "Missing required file in selected ref: $f"
             }
           }
-
-          if (-not $resolved) {
-            Write-Host "Requested tag: $requested"
-            Write-Host "Tried candidates: $($candidates -join ', ')"
-            Write-Host "Available related tags:"
-            git tag --list "*1.7.0*"
-            throw "Could not resolve a valid tag."
-          }
-
-          git checkout "refs/tags/$resolved"
-          if ($LASTEXITCODE -ne 0) {
-            throw "Failed to checkout resolved tag: $resolved"
-          }
-
-          Write-Host "Resolved tag: $resolved"
 
       - name: Set up Python 3.12 x86
         uses: actions/setup-python@v6
@@ -202,15 +143,16 @@ jobs:
         shell: pwsh
         working-directory: installers
         run: |
-          $ErrorActionPreference = 'Continue'
+          $ErrorActionPreference = 'Stop'
           Write-Host "Python:"; python --version
           Write-Host "Pip:"; python -m pip --version
           Write-Host "PyInstaller:"; pyinstaller --version
-          pyinstaller opensable-installer-windows-smart.spec --clean --noconfirm 2>&1 | Tee-Object -FilePath pyinstaller-x86.log
-          if ($LASTEXITCODE -ne 0) {
+          cmd /c "pyinstaller opensable-installer-windows-smart.spec --clean --noconfirm > pyinstaller-x86.log 2>&1"
+          $buildExit = $LASTEXITCODE
+          if ($buildExit -ne 0) {
             Write-Host "--- Last 200 lines of pyinstaller-x86.log ---"
             Get-Content pyinstaller-x86.log -Tail 200
-            throw "PyInstaller failed for x86 with exit code $LASTEXITCODE"
+            throw "PyInstaller failed for x86 with exit code $buildExit"
           }
 
       - name: Verify generated file
@@ -221,14 +163,14 @@ jobs:
           }
 
       - name: Upload x86 artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: OpenSable-SmartInstaller-Windows-x86
           path: installers/dist/OpenSable-SmartInstaller-Windows-x86.exe
 
       - name: Upload x86 build log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: OpenSable-SmartInstaller-Windows-x86-log
           path: installers/pyinstaller-x86.log
@@ -244,7 +186,7 @@ jobs:
       github.event.release.tag_name == '1.7.0' ||
       github.event.release.tag_name == 'v1.7.0'
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           path: artifacts
 
@@ -252,7 +194,7 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ needs.build-windows-x64.outputs.resolved_tag }}
+          tag_name: ${{ github.event.inputs.release_tag }}
           files: |
             artifacts/OpenSable-SmartInstaller-Windows-x64/OpenSable-SmartInstaller-Windows-x64.exe
             artifacts/OpenSable-SmartInstaller-Windows-x86/OpenSable-SmartInstaller-Windows-x86.exe
