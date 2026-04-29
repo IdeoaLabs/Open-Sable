@@ -86,7 +86,7 @@ jobs:
           Write-Host "Resolved tag: $resolved"
 
       - name: Set up Python 3.12 x64
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
           architecture: 'x64'
@@ -95,8 +95,19 @@ jobs:
         run: python -m pip install --upgrade pip pyinstaller
 
       - name: Build Smart Windows x64 installer
+        shell: pwsh
         working-directory: installers
-        run: pyinstaller opensable-installer-windows-smart.spec --clean --noconfirm
+        run: |
+          $ErrorActionPreference = 'Continue'
+          Write-Host "Python:"; python --version
+          Write-Host "Pip:"; python -m pip --version
+          Write-Host "PyInstaller:"; pyinstaller --version
+          pyinstaller opensable-installer-windows-smart.spec --clean --noconfirm 2>&1 | Tee-Object -FilePath pyinstaller-x64.log
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "--- Last 200 lines of pyinstaller-x64.log ---"
+            Get-Content pyinstaller-x64.log -Tail 200
+            throw "PyInstaller failed for x64 with exit code $LASTEXITCODE"
+          }
 
       - name: Verify generated file
         shell: powershell
@@ -110,6 +121,13 @@ jobs:
         with:
           name: OpenSable-SmartInstaller-Windows-x64
           path: installers/dist/OpenSable-SmartInstaller-Windows-x64.exe
+
+      - name: Upload x64 build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenSable-SmartInstaller-Windows-x64-log
+          path: installers/pyinstaller-x64.log
 
   build-windows-x86:
     name: Build Smart Installer x86
@@ -172,7 +190,7 @@ jobs:
           Write-Host "Resolved tag: $resolved"
 
       - name: Set up Python 3.12 x86
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
           architecture: 'x86'
@@ -181,8 +199,19 @@ jobs:
         run: python -m pip install --upgrade pip pyinstaller
 
       - name: Build Smart Windows x86 installer
+        shell: pwsh
         working-directory: installers
-        run: pyinstaller opensable-installer-windows-smart.spec --clean --noconfirm
+        run: |
+          $ErrorActionPreference = 'Continue'
+          Write-Host "Python:"; python --version
+          Write-Host "Pip:"; python -m pip --version
+          Write-Host "PyInstaller:"; pyinstaller --version
+          pyinstaller opensable-installer-windows-smart.spec --clean --noconfirm 2>&1 | Tee-Object -FilePath pyinstaller-x86.log
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "--- Last 200 lines of pyinstaller-x86.log ---"
+            Get-Content pyinstaller-x86.log -Tail 200
+            throw "PyInstaller failed for x86 with exit code $LASTEXITCODE"
+          }
 
       - name: Verify generated file
         shell: powershell
@@ -196,6 +225,13 @@ jobs:
         with:
           name: OpenSable-SmartInstaller-Windows-x86
           path: installers/dist/OpenSable-SmartInstaller-Windows-x86.exe
+
+      - name: Upload x86 build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenSable-SmartInstaller-Windows-x86-log
+          path: installers/pyinstaller-x86.log
 
   release-assets:
     name: Attach Smart Installers to Release
