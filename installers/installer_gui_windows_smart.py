@@ -149,6 +149,27 @@ def refresh_windows_path() -> None:
         pass
 
 
+def add_common_node_paths() -> int:
+    """Append typical Node.js install directories to PATH when present."""
+    candidates = [
+        os.path.join(os.environ.get("ProgramFiles", r"C:\\Program Files"), "nodejs"),
+        os.path.join(os.environ.get("ProgramFiles(x86)", r"C:\\Program Files (x86)"), "nodejs"),
+        os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs", "nodejs"),
+    ]
+    current = os.environ.get("PATH", "")
+    parts = [p.strip() for p in current.split(";") if p.strip()]
+    existing = {p.lower() for p in parts}
+    added = 0
+    for d in candidates:
+        if d and os.path.isdir(d) and d.lower() not in existing:
+            parts.append(d)
+            existing.add(d.lower())
+            added += 1
+    if added:
+        os.environ["PATH"] = ";".join(parts)
+    return added
+
+
 def run_cmd(cmd: List[str], cwd: Optional[str] = None, timeout: int = 1800) -> Tuple[int, str]:
     env = {**os.environ, "PYTHONUNBUFFERED": "1"}
     try:
@@ -213,6 +234,22 @@ def find_node() -> bool:
         return major >= 20
     except Exception:
         return False
+
+
+def find_npm() -> bool:
+    checks: List[List[str]] = [
+        ["npm", "--version"],
+        ["npm.cmd", "--version"],
+        ["cmd", "/c", "npm --version"],
+    ]
+    for cmd in checks:
+        try:
+            code, out = run_cmd(cmd, timeout=10)
+            if code == 0 and out.strip():
+                return True
+        except Exception:
+            continue
+    return False
 
 
 def find_ollama() -> bool:
@@ -627,6 +664,33 @@ class SmartWindowsInstallerEngine:
         if not find_node():
             raise RuntimeError("Node.js 20+ not available for required builds")
 
+        if not find_npm():
+            refresh_windows_path()
+            added = add_common_node_paths()
+            if added:
+                self.log(f"  Added {added} common Node.js PATH location(s).", "dim")
+
+        if not find_npm() and command_exists("winget") and self.config.get("install_node", True):
+            self.log("  npm not found. Reinstalling/repairing Node.js LTS via winget...", "warning")
+            self._run_logged(WINGET_INSTALLS["node"], check=False)
+            refresh_windows_path()
+            add_common_node_paths()
+
+        if not find_npm():
+            raise RuntimeError(
+                "npm was not found after PATH refresh. Please verify Node.js installation and PATH includes nodejs directory"
+            )
+
+        npm_cmd: List[str]
+        if command_exists("npm"):
+            npm_cmd = ["npm"]
+        elif command_exists("npm.cmd"):
+            npm_cmd = ["npm.cmd"]
+        else:
+            npm_cmd = ["cmd", "/c", "npm"]
+
+        self._run_logged(npm_cmd + ["--version"], check=False)
+
         for project in REQUIRED_WEB_PROJECTS.keys():
             pkg = os.path.join(self.install_dir, project, "package.json")
             if not os.path.isfile(pkg):
@@ -634,8 +698,8 @@ class SmartWindowsInstallerEngine:
 
             self.log(f"  Building {project}...", "dim")
             project_dir = os.path.join(self.install_dir, project)
-            self._run_logged(["npm", "install", "--legacy-peer-deps"], cwd=project_dir)
-            self._run_logged(["npm", "run", "build"], cwd=project_dir)
+            self._run_logged(npm_cmd + ["install", "--legacy-peer-deps"], cwd=project_dir)
+            self._run_logged(npm_cmd + ["run", "build"], cwd=project_dir)
             self._verify_project_build_output(project, project_dir)
 
         self.log("  ✔ Required web and desktop assets built successfully.", "ok")
