@@ -1,14 +1,18 @@
 name: Build Smart Windows Installers
 
 on:
+  push:
+    tags:
+      - '1.7.0'
+      - 'v1.7.0'
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Release tag to upload assets to (example: 1.7.0 or v1.7.0)
+        description: "Release tag to upload assets to (example: 1.7.0 or v1.7.0)"
         required: true
         default: 1.7.0
       build_ref:
-        description: Source ref to build from (branch, tag, or commit SHA)
+        description: "Source ref to build from (branch, tag, or commit SHA)"
         required: true
         default: master
 
@@ -19,11 +23,14 @@ jobs:
   build-x64-and-release:
     name: Build x64 and upload to release
     runs-on: windows-latest
+    env:
+      BUILD_REF: ${{ github.event.inputs.build_ref || github.sha }}
+      RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name }}
     steps:
       - name: Checkout source ref
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.event.inputs.build_ref }}
+          ref: ${{ env.BUILD_REF }}
           fetch-depth: 0
 
       - name: Validate required files
@@ -54,7 +61,7 @@ jobs:
         working-directory: installers
         run: |
           $ErrorActionPreference = 'Continue'
-          cmd /c "pyinstaller opensable-installer-windows-smart.spec --clean --noconfirm --noupx > pyinstaller-x64.log 2>&1"
+          cmd /c "pyinstaller opensable-installer-windows-smart.spec --clean --noconfirm > pyinstaller-x64.log 2>&1"
           $rc = $LASTEXITCODE
           if (-not (Test-Path pyinstaller-x64.log)) {
             "PyInstaller log was not generated." | Out-File -FilePath pyinstaller-x64.log -Encoding utf8
@@ -73,7 +80,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: pwsh
         run: |
-          $tag = "${{ github.event.inputs.release_tag }}"
+          $tag = "${{ env.RELEASE_TAG }}"
           gh release view $tag *> $null
           if ($LASTEXITCODE -ne 0) {
             gh release create $tag --title $tag --notes "Automated smart installer release assets"
@@ -84,7 +91,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: pwsh
         run: |
-          $tag = "${{ github.event.inputs.release_tag }}"
+          $tag = "${{ env.RELEASE_TAG }}"
           gh release upload $tag "installers/dist/OpenSable-SmartInstaller-Windows-x64.exe" --clobber
           gh release upload $tag "installers/pyinstaller-x64.log" --clobber
 
@@ -92,11 +99,14 @@ jobs:
     name: Build x86 and upload to release
     runs-on: windows-latest
     needs: build-x64-and-release
+    env:
+      BUILD_REF: ${{ github.event.inputs.build_ref || github.sha }}
+      RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name }}
     steps:
       - name: Checkout source ref
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.event.inputs.build_ref }}
+          ref: ${{ env.BUILD_REF }}
           fetch-depth: 0
 
       - name: Set up Python 3.12 x86
@@ -113,7 +123,7 @@ jobs:
         working-directory: installers
         run: |
           $ErrorActionPreference = 'Continue'
-          cmd /c "pyinstaller opensable-installer-windows-smart.spec --clean --noconfirm --noupx > pyinstaller-x86.log 2>&1"
+          cmd /c "pyinstaller opensable-installer-windows-smart.spec --clean --noconfirm > pyinstaller-x86.log 2>&1"
           $rc = $LASTEXITCODE
           if (-not (Test-Path pyinstaller-x86.log)) {
             "PyInstaller log was not generated." | Out-File -FilePath pyinstaller-x86.log -Encoding utf8
@@ -132,6 +142,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: pwsh
         run: |
-          $tag = "${{ github.event.inputs.release_tag }}"
+          $tag = "${{ env.RELEASE_TAG }}"
           gh release upload $tag "installers/dist/OpenSable-SmartInstaller-Windows-x86.exe" --clobber
           gh release upload $tag "installers/pyinstaller-x86.log" --clobber

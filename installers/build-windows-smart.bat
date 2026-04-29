@@ -59,10 +59,19 @@ echo Building Smart Installer (%BUILD_LABEL%)
 echo Python: %PY_EXE%
 echo ============================================================
 
-where "%PY_EXE%" >nul 2>nul
-if errorlevel 1 (
-  echo [ERROR] Python executable not found: %PY_EXE%
-  exit /b 1
+set PY_EXE_CHECK=%PY_EXE%
+echo %PY_EXE_CHECK% | findstr /C:"\" >nul
+if not errorlevel 1 (
+  if not exist "%PY_EXE_CHECK%" (
+    echo [ERROR] Python executable not found: %PY_EXE_CHECK%
+    exit /b 1
+  )
+) else (
+  where "%PY_EXE_CHECK%" >nul 2>nul
+  if errorlevel 1 (
+    echo [ERROR] Python executable not found in PATH: %PY_EXE_CHECK%
+    exit /b 1
+  )
 )
 
 "%PY_EXE%" -m py_compile "%ENTRY%"
@@ -82,7 +91,7 @@ if errorlevel 1 (
 )
 
 pushd "%SCRIPT_DIR%"
-"%PY_EXE%" -m PyInstaller "%SPEC%" --clean --noconfirm --noupx
+"%PY_EXE%" -m PyInstaller "%SPEC%" --clean --noconfirm
 set BUILD_RC=%errorlevel%
 popd
 
