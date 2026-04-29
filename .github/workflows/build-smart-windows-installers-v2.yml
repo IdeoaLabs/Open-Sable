@@ -1,4 +1,4 @@
-name: Build Smart Windows Installers
+name: Build Smart Windows Installers v2
 
 on:
   workflow_dispatch:
@@ -11,6 +11,11 @@ on:
         description: Source ref to build from (branch, tag, or commit SHA)
         required: true
         default: master
+      build_x86:
+        description: Also attempt x86 build (non-blocking)
+        required: true
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -88,10 +93,12 @@ jobs:
           gh release upload $tag "installers/dist/OpenSable-SmartInstaller-Windows-x64.exe" --clobber
           gh release upload $tag "installers/pyinstaller-x64.log" --clobber
 
-  build-x86:
-    name: Build x86 and upload to release
+  build-x86-optional:
+    name: Build x86 and upload (optional)
     runs-on: windows-latest
     needs: build-x64-and-release
+    if: ${{ github.event.inputs.build_x86 == 'true' }}
+    continue-on-error: true
     steps:
       - name: Checkout source ref
         uses: actions/checkout@v5
@@ -108,7 +115,8 @@ jobs:
       - name: Install PyInstaller
         run: python -m pip install --upgrade pip pyinstaller
 
-      - name: Build x86 installer
+      - name: Build x86 installer (non-blocking)
+        id: build_x86
         shell: pwsh
         working-directory: installers
         run: |
@@ -118,16 +126,19 @@ jobs:
           if (-not (Test-Path pyinstaller-x86.log)) {
             "PyInstaller log was not generated." | Out-File -FilePath pyinstaller-x86.log -Encoding utf8
           }
+          "build_exit=$rc" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           if ($rc -ne 0) {
             Write-Host "--- Last 250 lines of pyinstaller-x86.log ---"
             Get-Content pyinstaller-x86.log -Tail 250
-            throw "x86 build failed with exit code $rc"
+            exit 0
           }
           if (-not (Test-Path "dist/OpenSable-SmartInstaller-Windows-x86.exe")) {
-            throw "x86 build completed but output EXE is missing"
+            Write-Host "x86 EXE missing after build"
+            "build_exit=1" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           }
 
       - name: Upload x86 assets to release
+        if: steps.build_x86.outputs.build_exit == '0'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: pwsh
