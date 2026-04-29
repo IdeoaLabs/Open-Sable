@@ -13,6 +13,13 @@ build
 # Virtual environments
 venv
 .venv
+test-venv
+
+# Large runtime artifacts
+target/
+site/
+docs-site/
+node_modules/
 
 # IDE / editor
 .vscode
