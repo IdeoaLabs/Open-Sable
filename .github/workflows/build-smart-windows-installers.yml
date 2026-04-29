@@ -73,7 +73,7 @@ jobs:
           Write-Host "Python:"; python --version
           Write-Host "Pip:"; python -m pip --version
           Write-Host "PyInstaller:"; pyinstaller --version
-          cmd /c "pyinstaller opensable-installer-windows-smart.spec --clean --noconfirm > pyinstaller-x64.log 2>&1"
+          cmd /c "pyinstaller opensable-installer-windows-smart.spec --clean --noconfirm --noupx > pyinstaller-x64.log 2>&1"
           $buildExit = $LASTEXITCODE
           if ($buildExit -ne 0) {
             Write-Host "--- Last 200 lines of pyinstaller-x64.log ---"
@@ -148,7 +148,7 @@ jobs:
           Write-Host "Python:"; python --version
           Write-Host "Pip:"; python -m pip --version
           Write-Host "PyInstaller:"; pyinstaller --version
-          cmd /c "pyinstaller opensable-installer-windows-smart.spec --clean --noconfirm > pyinstaller-x86.log 2>&1"
+          cmd /c "pyinstaller opensable-installer-windows-smart.spec --clean --noconfirm --noupx > pyinstaller-x86.log 2>&1"
           $buildExit = $LASTEXITCODE
           if ($buildExit -ne 0) {
             Write-Host "--- Last 200 lines of pyinstaller-x86.log ---"

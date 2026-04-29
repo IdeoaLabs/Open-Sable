@@ -82,7 +82,7 @@ if errorlevel 1 (
 )
 
 pushd "%SCRIPT_DIR%"
-"%PY_EXE%" -m PyInstaller "%SPEC%" --clean --noconfirm
+"%PY_EXE%" -m PyInstaller "%SPEC%" --clean --noconfirm --noupx
 set BUILD_RC=%errorlevel%
 popd
 

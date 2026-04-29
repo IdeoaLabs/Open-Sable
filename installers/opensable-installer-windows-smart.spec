@@ -61,7 +61,8 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    # Keep resources untouched; some environments can strip icon metadata when UPX is enabled.
+    upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
     console=False,

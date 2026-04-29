@@ -77,6 +77,9 @@ REQUIRED_WEB_PROJECTS = {
     "desktop": {
         "build_markers": ["dist/index.html"],
     },
+    "aggr": {
+        "build_markers": ["dist/index.html"],
+    },
     "sable_dev": {
         "build_markers": [".next/BUILD_ID"],
     },
@@ -1146,6 +1149,7 @@ class SmartWindowsInstallerApp(tk.Tk):
             "Required builds:",
             "  - desktop",
             "  - dashboard",
+            "  - aggr",
             "  - sable_dev",
         ]
         if self.llm_provider_var.get() == "api":
