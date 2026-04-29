@@ -742,12 +742,13 @@ class SmartWindowsInstallerApp(tk.Tk):
 
         self.title(f"{APP_NAME} - Smart Windows Installer")
         self.configure(bg=BG_DARK)
-        self.resizable(False, False)
+        self.resizable(True, True)
 
         w, h = 760, 680
         x = (self.winfo_screenwidth() - w) // 2
         y = (self.winfo_screenheight() - h) // 2
         self.geometry(f"{w}x{h}+{x}+{y}")
+        self.minsize(760, 680)
 
         try:
             if IS_WIN and os.path.isfile(ICON_ICO):
@@ -801,6 +802,12 @@ class SmartWindowsInstallerApp(tk.Tk):
 
         self._build_pages()
         self._show_page(0)
+
+        # Keyboard fallback for high-DPI layouts where action buttons may be clipped.
+        self.bind_all("<Alt-n>", lambda e: self._hotkey_next())
+        self.bind_all("<Alt-N>", lambda e: self._hotkey_next())
+        self.bind_all("<Alt-i>", lambda e: self._hotkey_install())
+        self.bind_all("<Alt-I>", lambda e: self._hotkey_install())
 
     def _build_pages(self):
         for p in self._pages:
@@ -863,6 +870,16 @@ class SmartWindowsInstallerApp(tk.Tk):
         header = tk.Frame(page, bg=BG_DARK)
         header.pack(fill="x", padx=30, pady=(20, 10))
         ttk.Label(header, text="Configuration", style="Title.TLabel").pack(anchor="w")
+
+        btn = tk.Frame(page, bg=BG_DARK)
+        btn.pack(side="bottom", fill="x", padx=30, pady=(5, 18))
+        ttk.Label(btn, text="Tip: Alt+N = Next", style="Small.TLabel").pack(side="left", padx=(8, 0))
+        make_button(btn, text="<- Back", command=lambda: self._show_page(0),
+                    bg=BG_INPUT, fg=FG_TEXT, hover_bg=BG_CARD,
+                    padx=14, pady=8).pack(side="left")
+        make_button(btn, text="  Next -> Review  ", command=self._go_review,
+                    bg=ACCENT, fg=BG_DARK, hover_bg=ACCENT_HOVER, hover_fg=BG_DARK,
+                    font=("Segoe UI", 12, "bold"), padx=28, pady=8).pack(side="right")
 
         body = tk.Frame(page, bg=BG_DARK)
         body.pack(fill="both", expand=True, padx=30)
@@ -935,15 +952,6 @@ class SmartWindowsInstallerApp(tk.Tk):
         ttk.Checkbutton(opts, text="Install Node.js for required builds (desktop/dashboard/sable_dev)", variable=self.install_node_var).pack(anchor="w")
         ttk.Checkbutton(opts, text="Enable automatic self-healing", variable=self.auto_fix_var).pack(anchor="w")
 
-        btn = tk.Frame(page, bg=BG_DARK)
-        btn.pack(fill="x", padx=30, pady=(5, 18))
-        make_button(btn, text="<- Back", command=lambda: self._show_page(0),
-                    bg=BG_INPUT, fg=FG_TEXT, hover_bg=BG_CARD,
-                    padx=14, pady=8).pack(side="left")
-        make_button(btn, text="  Next -> Review  ", command=self._go_review,
-                    bg=ACCENT, fg=BG_DARK, hover_bg=ACCENT_HOVER, hover_fg=BG_DARK,
-                    font=("Segoe UI", 12, "bold"), padx=28, pady=8).pack(side="right")
-
         return page
 
     def _build_review_page(self) -> tk.Frame:
@@ -954,6 +962,16 @@ class SmartWindowsInstallerApp(tk.Tk):
         ttk.Label(header, text="Review", style="Title.TLabel").pack(anchor="w")
         ttk.Label(header, text="Confirm settings before starting installation.", style="Subtitle.TLabel").pack(anchor="w")
 
+        btn = tk.Frame(page, bg=BG_DARK)
+        btn.pack(side="bottom", fill="x", padx=30, pady=(0, 18))
+        ttk.Label(btn, text="Tip: Alt+I = Install", style="Small.TLabel").pack(side="left", padx=(8, 0))
+        make_button(btn, text="<- Back", command=lambda: self._show_page(1),
+                    bg=BG_INPUT, fg=FG_TEXT, hover_bg=BG_CARD,
+                    padx=14, pady=8).pack(side="left")
+        make_button(btn, text="  Install  ", command=self._start_install,
+                    bg=ACCENT, fg=BG_DARK, hover_bg=ACCENT_HOVER, hover_fg=BG_DARK,
+                    font=("Segoe UI", 12, "bold"), padx=28, pady=8).pack(side="right")
+
         card = tk.Frame(page, bg=BG_CARD, padx=14, pady=12)
         card.pack(fill="both", expand=True, padx=30, pady=(0, 10))
 
@@ -961,15 +979,6 @@ class SmartWindowsInstallerApp(tk.Tk):
                                     relief="flat", bd=0, wrap="word", state="disabled",
                                     insertbackground=FG_TEXT)
         self._review_text.pack(fill="both", expand=True)
-
-        btn = tk.Frame(page, bg=BG_DARK)
-        btn.pack(fill="x", padx=30, pady=(0, 18))
-        make_button(btn, text="<- Back", command=lambda: self._show_page(1),
-                    bg=BG_INPUT, fg=FG_TEXT, hover_bg=BG_CARD,
-                    padx=14, pady=8).pack(side="left")
-        make_button(btn, text="  Install  ", command=self._start_install,
-                    bg=ACCENT, fg=BG_DARK, hover_bg=ACCENT_HOVER, hover_fg=BG_DARK,
-                    font=("Segoe UI", 12, "bold"), padx=28, pady=8).pack(side="right")
 
         return page
 
@@ -1150,6 +1159,14 @@ class SmartWindowsInstallerApp(tk.Tk):
         self._review_text.delete("1.0", "end")
         self._review_text.insert("end", "\n".join(lines) + "\n")
         self._review_text.configure(state="disabled")
+
+    def _hotkey_next(self):
+        if self._current_page == 1:
+            self._go_review()
+
+    def _hotkey_install(self):
+        if self._current_page == 2:
+            self._start_install()
 
     def _open_folder(self):
         try:
