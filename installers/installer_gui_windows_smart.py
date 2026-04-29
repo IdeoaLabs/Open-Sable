@@ -794,6 +794,7 @@ class SmartWindowsInstallerApp(tk.Tk):
         self.engine: Optional[SmartWindowsInstallerEngine] = None
         self._pages: List[tk.Frame] = []
         self._current_page = 0
+        self._review_text: Optional[tk.Text] = None
 
         self._container = tk.Frame(self, bg=BG_DARK)
         self._container.pack(fill="both", expand=True)
@@ -807,6 +808,7 @@ class SmartWindowsInstallerApp(tk.Tk):
         self._pages = [
             self._build_welcome_page(),
             self._build_config_page(),
+            self._build_review_page(),
             self._build_progress_page(),
             self._build_done_page(),
         ]
@@ -938,6 +940,33 @@ class SmartWindowsInstallerApp(tk.Tk):
         make_button(btn, text="<- Back", command=lambda: self._show_page(0),
                     bg=BG_INPUT, fg=FG_TEXT, hover_bg=BG_CARD,
                     padx=14, pady=8).pack(side="left")
+        make_button(btn, text="  Next -> Review  ", command=self._go_review,
+                    bg=ACCENT, fg=BG_DARK, hover_bg=ACCENT_HOVER, hover_fg=BG_DARK,
+                    font=("Segoe UI", 12, "bold"), padx=28, pady=8).pack(side="right")
+
+        return page
+
+    def _build_review_page(self) -> tk.Frame:
+        page = tk.Frame(self._container, bg=BG_DARK)
+
+        header = tk.Frame(page, bg=BG_DARK)
+        header.pack(fill="x", padx=30, pady=(20, 10))
+        ttk.Label(header, text="Review", style="Title.TLabel").pack(anchor="w")
+        ttk.Label(header, text="Confirm settings before starting installation.", style="Subtitle.TLabel").pack(anchor="w")
+
+        card = tk.Frame(page, bg=BG_CARD, padx=14, pady=12)
+        card.pack(fill="both", expand=True, padx=30, pady=(0, 10))
+
+        self._review_text = tk.Text(card, bg=BG_CARD, fg=FG_TEXT, font=("Consolas", 10),
+                                    relief="flat", bd=0, wrap="word", state="disabled",
+                                    insertbackground=FG_TEXT)
+        self._review_text.pack(fill="both", expand=True)
+
+        btn = tk.Frame(page, bg=BG_DARK)
+        btn.pack(fill="x", padx=30, pady=(0, 18))
+        make_button(btn, text="<- Back", command=lambda: self._show_page(1),
+                    bg=BG_INPUT, fg=FG_TEXT, hover_bg=BG_CARD,
+                    padx=14, pady=8).pack(side="left")
         make_button(btn, text="  Install  ", command=self._start_install,
                     bg=ACCENT, fg=BG_DARK, hover_bg=ACCENT_HOVER, hover_fg=BG_DARK,
                     font=("Segoe UI", 12, "bold"), padx=28, pady=8).pack(side="right")
@@ -1039,7 +1068,7 @@ class SmartWindowsInstallerApp(tk.Tk):
                 return
             config["llm_provider"] = "none"
 
-        self._show_page(2)
+        self._show_page(3)
         self._clear_log()
         self._progress_subtitle.configure(text="Starting...")
 
@@ -1086,7 +1115,41 @@ class SmartWindowsInstallerApp(tk.Tk):
             self._done_icon.configure(text="✘", foreground=ERROR_C)
             self._done_title.configure(text="Installation Failed")
             self._done_subtitle.configure(text=(error or "Unknown error")[:180])
-        self._show_page(3)
+        self._show_page(4)
+
+    def _go_review(self):
+        self._refresh_review()
+        self._show_page(2)
+
+    def _refresh_review(self):
+        if not self._review_text:
+            return
+        lines = [
+            f"Install dir      : {self.install_dir_var.get().strip()}",
+            f"Architecture     : {self.arch_var.get()}",
+            f"Local model      : {self.model_var.get()}",
+            f"LLM provider     : {self.llm_provider_var.get()}",
+            f"Install Ollama   : {self.install_ollama_var.get()}",
+            f"Pull model       : {self.pull_model_var.get()}",
+            f"Install Node.js  : {self.install_node_var.get()}",
+            f"Auto-fix enabled : {self.auto_fix_var.get()}",
+            "",
+            "Required builds:",
+            "  - desktop",
+            "  - dashboard",
+            "  - sable_dev",
+        ]
+        if self.llm_provider_var.get() == "api":
+            lines.extend([
+                "",
+                f"API base URL     : {self.api_base_url_var.get().strip() or '(empty)'}",
+                f"API model        : {self.api_model_var.get().strip() or '(empty)'}",
+            ])
+
+        self._review_text.configure(state="normal")
+        self._review_text.delete("1.0", "end")
+        self._review_text.insert("end", "\n".join(lines) + "\n")
+        self._review_text.configure(state="disabled")
 
     def _open_folder(self):
         try:
