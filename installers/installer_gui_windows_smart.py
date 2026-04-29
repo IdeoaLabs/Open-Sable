@@ -151,17 +151,24 @@ def refresh_windows_path() -> None:
 
 def run_cmd(cmd: List[str], cwd: Optional[str] = None, timeout: int = 1800) -> Tuple[int, str]:
     env = {**os.environ, "PYTHONUNBUFFERED": "1"}
-    proc = subprocess.Popen(
-        cmd,
-        cwd=cwd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        creationflags=_NO_WINDOW,
-        env=env,
-    )
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            cwd=cwd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            creationflags=_NO_WINDOW,
+            env=env,
+        )
+    except FileNotFoundError:
+        exe = cmd[0] if cmd else "<empty>"
+        return 127, f"Executable not found: {exe}"
+    except OSError as e:
+        exe = cmd[0] if cmd else "<empty>"
+        return 127, f"Failed to launch command ({exe}): {e}"
     try:
         out, _ = proc.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
@@ -486,6 +493,11 @@ class SmartWindowsInstallerEngine:
         for line in out.splitlines():
             if line.strip():
                 self.log("    " + line, "dim")
+        if check and code == 127:
+            raise RuntimeError(
+                f"Executable not found for command: {' '.join(cmd)}. "
+                "Please verify PATH or install the missing dependency."
+            )
         if check and code != 0:
             raise RuntimeError(f"Command failed ({code}): {' '.join(cmd)}")
         return out
