@@ -1,7 +1,6 @@
 name: Build Smart Windows Installers
 
 env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   DEFAULT_BUILD_REF: master
 
 on:
@@ -66,22 +65,33 @@ jobs:
         run: python -m pip install --upgrade pip pyinstaller
 
       - name: Build Smart Windows x64 installer
+        id: build_x64
+        continue-on-error: true
         shell: pwsh
         working-directory: installers
         run: |
-          $ErrorActionPreference = 'Stop'
+          $ErrorActionPreference = 'Continue'
           Write-Host "Python:"; python --version
           Write-Host "Pip:"; python -m pip --version
           Write-Host "PyInstaller:"; pyinstaller --version
           cmd /c "pyinstaller opensable-installer-windows-smart.spec --clean --noconfirm --noupx > pyinstaller-x64.log 2>&1"
           $buildExit = $LASTEXITCODE
-          if ($buildExit -ne 0) {
-            Write-Host "--- Last 200 lines of pyinstaller-x64.log ---"
-            Get-Content pyinstaller-x64.log -Tail 200
-            throw "PyInstaller failed for x64 with exit code $buildExit"
+          "build_exit=$buildExit" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Show x64 build log tail on failure
+        if: steps.build_x64.outputs.build_exit != '0'
+        shell: pwsh
+        working-directory: installers
+        run: |
+          Write-Host "--- Last 250 lines of pyinstaller-x64.log ---"
+          if (Test-Path pyinstaller-x64.log) {
+            Get-Content pyinstaller-x64.log -Tail 250
+          } else {
+            Write-Host "pyinstaller-x64.log not found"
           }
 
       - name: Verify generated file
+        if: steps.build_x64.outputs.build_exit == '0'
         shell: powershell
         run: |
           if (-not (Test-Path "installers/dist/OpenSable-SmartInstaller-Windows-x64.exe")) {
@@ -89,6 +99,7 @@ jobs:
           }
 
       - name: Upload x64 artifact
+        if: steps.build_x64.outputs.build_exit == '0'
         uses: actions/upload-artifact@v5
         with:
           name: OpenSable-SmartInstaller-Windows-x64
@@ -100,6 +111,12 @@ jobs:
         with:
           name: OpenSable-SmartInstaller-Windows-x64-log
           path: installers/pyinstaller-x64.log
+
+      - name: Fail x64 job if build failed
+        if: steps.build_x64.outputs.build_exit != '0'
+        shell: pwsh
+        run: |
+          throw "PyInstaller x64 failed with exit code ${{ steps.build_x64.outputs.build_exit }}"
 
   build-windows-x86:
     name: Build Smart Installer x86
@@ -141,22 +158,33 @@ jobs:
         run: python -m pip install --upgrade pip pyinstaller
 
       - name: Build Smart Windows x86 installer
+        id: build_x86
+        continue-on-error: true
         shell: pwsh
         working-directory: installers
         run: |
-          $ErrorActionPreference = 'Stop'
+          $ErrorActionPreference = 'Continue'
           Write-Host "Python:"; python --version
           Write-Host "Pip:"; python -m pip --version
           Write-Host "PyInstaller:"; pyinstaller --version
           cmd /c "pyinstaller opensable-installer-windows-smart.spec --clean --noconfirm --noupx > pyinstaller-x86.log 2>&1"
           $buildExit = $LASTEXITCODE
-          if ($buildExit -ne 0) {
-            Write-Host "--- Last 200 lines of pyinstaller-x86.log ---"
-            Get-Content pyinstaller-x86.log -Tail 200
-            throw "PyInstaller failed for x86 with exit code $buildExit"
+          "build_exit=$buildExit" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Show x86 build log tail on failure
+        if: steps.build_x86.outputs.build_exit != '0'
+        shell: pwsh
+        working-directory: installers
+        run: |
+          Write-Host "--- Last 250 lines of pyinstaller-x86.log ---"
+          if (Test-Path pyinstaller-x86.log) {
+            Get-Content pyinstaller-x86.log -Tail 250
+          } else {
+            Write-Host "pyinstaller-x86.log not found"
           }
 
       - name: Verify generated file
+        if: steps.build_x86.outputs.build_exit == '0'
         shell: powershell
         run: |
           if (-not (Test-Path "installers/dist/OpenSable-SmartInstaller-Windows-x86.exe")) {
@@ -164,6 +192,7 @@ jobs:
           }
 
       - name: Upload x86 artifact
+        if: steps.build_x86.outputs.build_exit == '0'
         uses: actions/upload-artifact@v5
         with:
           name: OpenSable-SmartInstaller-Windows-x86
@@ -175,6 +204,12 @@ jobs:
         with:
           name: OpenSable-SmartInstaller-Windows-x86-log
           path: installers/pyinstaller-x86.log
+
+      - name: Fail x86 job if build failed
+        if: steps.build_x86.outputs.build_exit != '0'
+        shell: pwsh
+        run: |
+          throw "PyInstaller x86 failed with exit code ${{ steps.build_x86.outputs.build_exit }}"
 
   release-assets:
     name: Attach Smart Installers to Release
