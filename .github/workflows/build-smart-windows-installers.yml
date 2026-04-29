@@ -1,16 +1,9 @@
 name: Build Smart Windows Installers
 
 env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   DEFAULT_BUILD_REF: master
 
 on:
-  push:
-    tags:
-      - '1.7.0'
-      - 'v1.7.0'
-  release:
-    types: [published]
   workflow_dispatch:
     inputs:
       release_tag:
@@ -29,17 +22,11 @@ jobs:
   build-windows-x64:
     name: Build Smart Installer x64
     runs-on: windows-latest
-    if: |
-      github.event_name == 'workflow_dispatch' ||
-      startsWith(github.ref, 'refs/tags/1.7.0') ||
-      startsWith(github.ref, 'refs/tags/v1.7.0') ||
-      github.event.release.tag_name == '1.7.0' ||
-      github.event.release.tag_name == 'v1.7.0'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.build_ref || env.DEFAULT_BUILD_REF }}
+          ref: ${{ github.event.inputs.build_ref || env.DEFAULT_BUILD_REF }}
           fetch-depth: 0
 
       - name: Validate required installer files
@@ -116,17 +103,12 @@ jobs:
   build-windows-x86:
     name: Build Smart Installer x86
     runs-on: windows-latest
-    if: |
-      github.event_name == 'workflow_dispatch' ||
-      startsWith(github.ref, 'refs/tags/1.7.0') ||
-      startsWith(github.ref, 'refs/tags/v1.7.0') ||
-      github.event.release.tag_name == '1.7.0' ||
-      github.event.release.tag_name == 'v1.7.0'
+    continue-on-error: true
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.build_ref || env.DEFAULT_BUILD_REF }}
+          ref: ${{ github.event.inputs.build_ref || env.DEFAULT_BUILD_REF }}
           fetch-depth: 0
 
       - name: Validate required installer files
@@ -204,36 +186,32 @@ jobs:
     name: Attach Smart Installers to Release
     runs-on: ubuntu-latest
     needs: [build-windows-x64, build-windows-x86]
-    if: |
-      github.event_name == 'workflow_dispatch' ||
-      startsWith(github.ref, 'refs/tags/1.7.0') ||
-      startsWith(github.ref, 'refs/tags/v1.7.0') ||
-      github.event.release.tag_name == '1.7.0' ||
-      github.event.release.tag_name == 'v1.7.0'
     steps:
       - uses: actions/download-artifact@v5
         with:
+          pattern: OpenSable-SmartInstaller-Windows-*
+          merge-multiple: true
           path: artifacts
 
+      - name: Validate at least one installer artifact exists
+        shell: bash
+        run: |
+          set -e
+          ls -la artifacts || true
+          count=$(find artifacts -maxdepth 1 -type f -name 'OpenSable-SmartInstaller-Windows-*.exe' | wc -l)
+          echo "Installer artifact count: $count"
+          if [ "$count" -lt 1 ]; then
+            echo "No installer artifacts were produced."
+            exit 1
+          fi
+
       - name: Upload assets to GitHub Release (manual tag)
-        if: github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.release_tag }}
           overwrite_files: true
           files: |
-            artifacts/OpenSable-SmartInstaller-Windows-x64/OpenSable-SmartInstaller-Windows-x64.exe
-            artifacts/OpenSable-SmartInstaller-Windows-x86/OpenSable-SmartInstaller-Windows-x86.exe
-          draft: false
-          prerelease: false
-
-      - name: Upload assets to GitHub Release (event tag)
-        if: github.event_name != 'workflow_dispatch'
-        uses: softprops/action-gh-release@v2
-        with:
-          overwrite_files: true
-          files: |
-            artifacts/OpenSable-SmartInstaller-Windows-x64/OpenSable-SmartInstaller-Windows-x64.exe
-            artifacts/OpenSable-SmartInstaller-Windows-x86/OpenSable-SmartInstaller-Windows-x86.exe
+            artifacts/OpenSable-SmartInstaller-Windows-x64.exe
+            artifacts/OpenSable-SmartInstaller-Windows-x86.exe
           draft: false
           prerelease: false
