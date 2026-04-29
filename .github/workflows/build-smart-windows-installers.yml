@@ -2,6 +2,7 @@ name: Build Smart Windows Installers
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  DEFAULT_BUILD_REF: master
 
 on:
   push:
@@ -38,7 +39,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.build_ref || github.ref }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.build_ref || env.DEFAULT_BUILD_REF }}
           fetch-depth: 0
 
       - name: Validate required installer files
@@ -113,7 +114,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.build_ref || github.ref }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.build_ref || env.DEFAULT_BUILD_REF }}
           fetch-depth: 0
 
       - name: Validate required installer files
@@ -195,6 +196,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.release_tag }}
+          overwrite_files: true
           files: |
             artifacts/OpenSable-SmartInstaller-Windows-x64/OpenSable-SmartInstaller-Windows-x64.exe
             artifacts/OpenSable-SmartInstaller-Windows-x86/OpenSable-SmartInstaller-Windows-x86.exe
@@ -205,6 +207,7 @@ jobs:
         if: github.event_name != 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
+          overwrite_files: true
           files: |
             artifacts/OpenSable-SmartInstaller-Windows-x64/OpenSable-SmartInstaller-Windows-x64.exe
             artifacts/OpenSable-SmartInstaller-Windows-x86/OpenSable-SmartInstaller-Windows-x86.exe
