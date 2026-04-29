@@ -252,6 +252,25 @@ def find_npm() -> bool:
     return False
 
 
+def resolve_npm_command() -> Optional[List[str]]:
+    """Resolve npm command with absolute path when possible."""
+    npm_path = shutil.which("npm") or shutil.which("npm.cmd")
+    if npm_path:
+        return [npm_path]
+
+    candidate_dirs = [
+        os.path.join(os.environ.get("ProgramFiles", r"C:\\Program Files"), "nodejs"),
+        os.path.join(os.environ.get("ProgramFiles(x86)", r"C:\\Program Files (x86)"), "nodejs"),
+        os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs", "nodejs"),
+    ]
+    for base in candidate_dirs:
+        npm_cmd = os.path.join(base, "npm.cmd")
+        if os.path.isfile(npm_cmd):
+            return [npm_cmd]
+
+    return None
+
+
 def find_ollama() -> bool:
     try:
         return run_cmd(["ollama", "--version"], timeout=8)[0] == 0
@@ -681,13 +700,12 @@ class SmartWindowsInstallerEngine:
                 "npm was not found after PATH refresh. Please verify Node.js installation and PATH includes nodejs directory"
             )
 
-        npm_cmd: List[str]
-        if command_exists("npm"):
-            npm_cmd = ["npm"]
-        elif command_exists("npm.cmd"):
-            npm_cmd = ["npm.cmd"]
-        else:
-            npm_cmd = ["cmd", "/c", "npm"]
+        npm_cmd = resolve_npm_command()
+        if not npm_cmd:
+            raise RuntimeError(
+                "npm command could not be resolved (including absolute npm.cmd paths). "
+                "Please reinstall Node.js and retry."
+            )
 
         self._run_logged(npm_cmd + ["--version"], check=False)
 
