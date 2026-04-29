@@ -2,6 +2,7 @@ name: Build Smart Windows Installers
 
 env:
   DEFAULT_BUILD_REF: master
+  ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
 
 on:
   workflow_dispatch:
@@ -26,8 +27,44 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.event.inputs.build_ref || env.DEFAULT_BUILD_REF }}
           fetch-depth: 0
+
+      - name: Resolve build ref with fallback
+        shell: pwsh
+        run: |
+          $requested = "${{ github.event.inputs.build_ref || env.DEFAULT_BUILD_REF }}".Trim()
+          $candidates = @($requested, "main", "master") | Select-Object -Unique
+          $resolved = $null
+
+          git fetch --all --tags --prune
+
+          foreach ($ref in $candidates) {
+            if ([string]::IsNullOrWhiteSpace($ref)) { continue }
+            git rev-parse --verify --quiet "refs/remotes/origin/$ref" *> $null
+            if ($LASTEXITCODE -eq 0) {
+              $resolved = "origin/$ref"
+              break
+            }
+            git rev-parse --verify --quiet "refs/heads/$ref" *> $null
+            if ($LASTEXITCODE -eq 0) {
+              $resolved = $ref
+              break
+            }
+          }
+
+          if (-not $resolved) {
+            Write-Host "Requested build_ref: $requested"
+            Write-Host "Tried candidates: $($candidates -join ', ')"
+            Write-Host "Available branches:"
+            git branch -a
+            throw "Could not resolve build_ref in repository."
+          }
+
+          git checkout "$resolved"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to checkout resolved ref: $resolved"
+          }
+          Write-Host "Resolved build ref: $resolved"
 
       - name: Validate required installer files
         shell: pwsh
@@ -108,8 +145,44 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.event.inputs.build_ref || env.DEFAULT_BUILD_REF }}
           fetch-depth: 0
+
+      - name: Resolve build ref with fallback
+        shell: pwsh
+        run: |
+          $requested = "${{ github.event.inputs.build_ref || env.DEFAULT_BUILD_REF }}".Trim()
+          $candidates = @($requested, "main", "master") | Select-Object -Unique
+          $resolved = $null
+
+          git fetch --all --tags --prune
+
+          foreach ($ref in $candidates) {
+            if ([string]::IsNullOrWhiteSpace($ref)) { continue }
+            git rev-parse --verify --quiet "refs/remotes/origin/$ref" *> $null
+            if ($LASTEXITCODE -eq 0) {
+              $resolved = "origin/$ref"
+              break
+            }
+            git rev-parse --verify --quiet "refs/heads/$ref" *> $null
+            if ($LASTEXITCODE -eq 0) {
+              $resolved = $ref
+              break
+            }
+          }
+
+          if (-not $resolved) {
+            Write-Host "Requested build_ref: $requested"
+            Write-Host "Tried candidates: $($candidates -join ', ')"
+            Write-Host "Available branches:"
+            git branch -a
+            throw "Could not resolve build_ref in repository."
+          }
+
+          git checkout "$resolved"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to checkout resolved ref: $resolved"
+          }
+          Write-Host "Resolved build ref: $resolved"
 
       - name: Validate required installer files
         shell: pwsh
