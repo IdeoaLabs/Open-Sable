@@ -39,6 +39,10 @@ APP_VERSION = "2.0.0-win-smart"
 REPO_URL = "https://github.com/IdeoaLabs/Open-Sable.git"
 REPO_BRANCH = "master"
 OLLAMA_WIN_URL = "https://ollama.com/download/OllamaSetup.exe"
+INSTALL_DIR_NAME = "Open-Sable"
+LAUNCHER_BAT_NAME = "Open-Sable-Start.bat"
+INSTALL_ICON_NAME = "Open-Sable.ico"
+SHORTCUT_NAME = "Open-Sable.lnk"
 
 IS_WIN = sys.platform == "win32"
 _NO_WINDOW = 0x08000000 if IS_WIN else 0
@@ -129,7 +133,7 @@ def machine_arch() -> str:
 
 def default_install_dir() -> str:
     base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
-    return os.path.join(base, "OpenSable")
+    return os.path.join(base, INSTALL_DIR_NAME)
 
 
 def refresh_windows_path() -> None:
@@ -790,6 +794,10 @@ class SmartWindowsInstallerEngine:
         if os.path.isfile(trading_req):
             self._run_logged([self.venv_python, "-m", "pip", "install", "-r", "requirements-trading.txt"], cwd=self.install_dir, check=False)
 
+        # main.py imports matplotlib at startup; ensure it's present even if upstream
+        # dependency manifests drift.
+        self._run_logged([self.venv_python, "-m", "pip", "install", "matplotlib"], cwd=self.install_dir)
+
         self.log("  ✔ Python libraries installed.", "ok")
 
     def _apply_known_sable_dev_hotfixes(self, project_dir: str):
@@ -1094,16 +1102,16 @@ class SmartWindowsInstallerEngine:
         checks.append(("Git", find_git()))
         checks.append(("Node.js 20+", find_node()))
         checks.append(("PyProject", os.path.isfile(os.path.join(self.install_dir, "pyproject.toml"))))
-        checks.append(("Launcher script", os.path.isfile(os.path.join(self.install_dir, "OpenSable-Start.bat"))))
+        checks.append(("Launcher script", os.path.isfile(os.path.join(self.install_dir, LAUNCHER_BAT_NAME))))
 
-        desktop_link = os.path.join(os.path.expanduser("~"), "Desktop", "Open-Sable.lnk")
+        desktop_link = os.path.join(os.path.expanduser("~"), "Desktop", SHORTCUT_NAME)
         start_link = os.path.join(
             os.environ.get("APPDATA", ""),
             "Microsoft",
             "Windows",
             "Start Menu",
             "Programs",
-            "Open-Sable.lnk",
+            SHORTCUT_NAME,
         )
         checks.append(("Desktop shortcut", os.path.isfile(desktop_link)))
         checks.append(("Start Menu shortcut", os.path.isfile(start_link)))
@@ -1130,13 +1138,37 @@ class SmartWindowsInstallerEngine:
             f.write("smart-windows-installer=true\n")
 
     def _create_windows_shortcuts(self):
-        launcher_bat = os.path.join(self.install_dir, "OpenSable-Start.bat")
-        icon_path = os.path.join(self.install_dir, "assets", "icon.ico")
+        launcher_bat = os.path.join(self.install_dir, LAUNCHER_BAT_NAME)
+
+        # Persist a stable icon inside install_dir so shortcuts keep logo after installer exits.
+        install_icon = os.path.join(self.install_dir, INSTALL_ICON_NAME)
+        icon_candidates = [
+            os.path.join(self.install_dir, "installers", "assets", "icon.ico"),
+            os.path.join(self.install_dir, "assets", "icon.ico"),
+            ICON_ICO,
+        ]
+        icon_path = ""
+        for cand in icon_candidates:
+            if cand and os.path.isfile(cand):
+                try:
+                    shutil.copyfile(cand, install_icon)
+                    icon_path = install_icon
+                    break
+                except OSError:
+                    icon_path = cand
+                    break
 
         launcher = [
             "@echo off",
             "setlocal",
             "cd /d %~dp0",
+            "for /f %%e in ('echo prompt $E^| cmd') do set \"ESC=%%e\"",
+            "echo %ESC%[96m  ____   ____  ______ _   _ ____    _    ____  _     _____ %ESC%[0m",
+            "echo %ESC%[96m / __ \\ / __ \\|  ____| \\ | / ___|  / \\  | __ )| |   | ____|%ESC%[0m",
+            "echo %ESC%[92m| |  | | |  | | |__  |  \\| \\___ \\ / _ \\ |  _ \\| |   |  _|  %ESC%[0m",
+            "echo %ESC%[92m| |__| | |__| |  __| | |\\  |___) / ___ \\| |_) | |___| |___ %ESC%[0m",
+            "echo %ESC%[92m \\____/ \\____/|_|    |_| \\_|____/_/   \\_\\____/|_____|_____|%ESC%[0m",
+            "echo.",
             "if not exist .venv\\Scripts\\python.exe (",
             "  echo Python virtual environment not found: .venv\\Scripts\\python.exe",
             "  pause",
@@ -1153,9 +1185,9 @@ class SmartWindowsInstallerEngine:
         ]
         with open(launcher_bat, "w", encoding="utf-8", errors="replace") as f:
             f.write("\r\n".join(launcher) + "\r\n")
-        self.log("  ✔ Launcher created: OpenSable-Start.bat", "ok")
+        self.log(f"  ✔ Launcher created: {LAUNCHER_BAT_NAME}", "ok")
 
-        desktop_link = os.path.join(os.path.expanduser("~"), "Desktop", "Open-Sable.lnk")
+        desktop_link = os.path.join(os.path.expanduser("~"), "Desktop", SHORTCUT_NAME)
         start_programs = os.path.join(
             os.environ.get("APPDATA", ""),
             "Microsoft",
@@ -1164,7 +1196,7 @@ class SmartWindowsInstallerEngine:
             "Programs",
         )
         safe_mkdir(start_programs)
-        start_link = os.path.join(start_programs, "Open-Sable.lnk")
+        start_link = os.path.join(start_programs, SHORTCUT_NAME)
 
         def _ps_quote(s: str) -> str:
             return s.replace("'", "''")
@@ -1178,7 +1210,7 @@ class SmartWindowsInstallerEngine:
                 "$s.Description='Open-Sable';"
                 + (
                     f"$s.IconLocation='{_ps_quote(icon_path)},0';"
-                    if os.path.isfile(icon_path)
+                    if icon_path and os.path.isfile(icon_path)
                     else ""
                 )
                 + "$s.Save()"

@@ -57,7 +57,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name=f"OpenSable-SmartInstaller-Windows-{arch_tag}",
+    name=f"Open-Sable-SmartInstaller-Windows-{arch_tag}",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
