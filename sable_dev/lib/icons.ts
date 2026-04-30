@@ -13,6 +13,5 @@ export {
   BsFolder2Open 
 } from 'react-icons/bs';
 
-import { SiJavascript, SiReact, SiCss, SiJson } from 'react-icons/si';
-const SiCss3 = SiCss;
+import { SiJavascript, SiReact, SiCss3, SiJson } from 'react-icons/si';
 export { SiJavascript, SiReact, SiCss3, SiJson };

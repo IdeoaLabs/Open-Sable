@@ -1380,7 +1380,7 @@ Common fixes:
         const isOpenAI = effectiveModel.startsWith('openai/');
         const isOllama = effectiveModel.startsWith('ollama/');
         const isOpenWebUI = effectiveModel.startsWith('openwebui/');
-        const groqModelConfig = appConfig.ai.modelApiConfig[effectiveModel];
+        const groqModelConfig = appConfig.ai.modelApiConfig[effectiveModel as keyof typeof appConfig.ai.modelApiConfig];
         const isGroqModel = groqModelConfig?.provider === 'groq';
         const modelProvider = isOllama ? ollamaProvider :
                               (isOpenWebUI ? openWebUIProvider :

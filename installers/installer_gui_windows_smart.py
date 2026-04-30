@@ -335,6 +335,30 @@ def resolve_npm_command() -> Optional[List[str]]:
     return None
 
 
+def resolve_pnpm_command() -> Optional[List[str]]:
+    pnpm_path = shutil.which("pnpm") or shutil.which("pnpm.cmd")
+    if pnpm_path:
+        return [pnpm_path]
+
+    # Common global npm bin location on Windows where pnpm.cmd is installed.
+    appdata = os.environ.get("APPDATA", "")
+    if appdata:
+        appdata_pnpm = os.path.join(appdata, "npm", "pnpm.cmd")
+        if os.path.isfile(appdata_pnpm):
+            return [appdata_pnpm]
+
+    corepack = shutil.which("corepack") or shutil.which("corepack.cmd")
+    if corepack:
+        code, _ = run_cmd([corepack, "enable"], timeout=30)
+        if code == 0:
+            pnpm_path = shutil.which("pnpm") or shutil.which("pnpm.cmd")
+            if pnpm_path:
+                return [pnpm_path]
+            return [corepack, "pnpm"]
+
+    return None
+
+
 def find_ollama() -> bool:
     try:
         return run_cmd(["ollama", "--version"], timeout=8)[0] == 0
@@ -489,6 +513,7 @@ class SmartWindowsInstallerEngine:
             ("Installing required web and desktop assets", self._install_node_assets, False),
             ("Configuring LLM provider", self._configure_llm, True),
             ("Installing and preparing Ollama", self._prepare_ollama, True),
+            ("Creating Windows shortcuts", self._create_windows_shortcuts, False),
             ("Final verification", self._verify, False),
         ]
 
@@ -767,6 +792,69 @@ class SmartWindowsInstallerEngine:
 
         self.log("  ✔ Python libraries installed.", "ok")
 
+    def _apply_known_sable_dev_hotfixes(self, project_dir: str):
+        """Apply safe, idempotent hotfixes for known sable_dev build blockers.
+
+        These fixes are applied in the install copy so users are not blocked when
+        the remote branch lags behind validated local patches.
+        """
+
+        def _replace_in_file(rel_path: str, replacements: List[Tuple[str, str]], label: str):
+            target = os.path.join(project_dir, rel_path)
+            if not os.path.isfile(target):
+                return
+            try:
+                with open(target, "r", encoding="utf-8", errors="replace") as f:
+                    text = f.read()
+            except Exception:
+                return
+
+            updated = text
+            for old, new in replacements:
+                if old in updated:
+                    updated = updated.replace(old, new)
+
+            if updated != text:
+                try:
+                    with open(target, "w", encoding="utf-8", errors="replace") as f:
+                        f.write(updated)
+                    self.log(f"  Applied sable_dev hotfix: {label}", "dim")
+                except Exception as e:
+                    self.log(f"  Could not apply hotfix ({label}): {e}", "warning")
+
+        _replace_in_file(
+            "app/api/download-zip/route.ts",
+            [
+                (
+                    "    const zipBuffer = createZipBuffer(files);\n    \n    return new Response(zipBuffer, {",
+                    "    const zipBuffer = createZipBuffer(files);\n    const zipBytes = new Uint8Array(zipBuffer);\n\n    return new Response(zipBytes, {",
+                )
+            ],
+            "download-zip Response body type",
+        )
+
+        _replace_in_file(
+            "lib/icons.ts",
+            [
+                (
+                    "import { SiJavascript, SiReact, SiCss, SiJson } from 'react-icons/si';\nconst SiCss3 = SiCss;\nexport { SiJavascript, SiReact, SiCss3, SiJson };",
+                    "import { SiJavascript, SiReact, SiCss3, SiJson } from 'react-icons/si';\nexport { SiJavascript, SiReact, SiCss3, SiJson };",
+                )
+            ],
+            "icons SiCss -> SiCss3 import",
+        )
+
+        _replace_in_file(
+            "app/api/generate-ai-code-stream/route.ts",
+            [
+                (
+                    "        const groqModelConfig = appConfig.ai.modelApiConfig[effectiveModel];",
+                    "        const groqModelConfig = appConfig.ai.modelApiConfig[effectiveModel as keyof typeof appConfig.ai.modelApiConfig];",
+                )
+            ],
+            "modelApiConfig index typing",
+        )
+
     def _install_node_assets(self):
         if not find_node():
             raise RuntimeError("Node.js 20+ not available for required builds")
@@ -800,7 +888,18 @@ class SmartWindowsInstallerEngine:
         logs_root = os.path.join(self.install_dir, "logs", "node-build")
         safe_mkdir(logs_root)
 
-        for project in REQUIRED_WEB_PROJECTS.keys():
+        # Prevent Next.js lockfile auto-detection from selecting a parent root lockfile
+        # instead of the project-local lockfile (notably for sable_dev/pnpm-lock.yaml).
+        root_package_lock = os.path.join(self.install_dir, "package-lock.json")
+        if os.path.isfile(root_package_lock):
+            try:
+                os.remove(root_package_lock)
+                self.log("  Removed root package-lock.json in install copy to avoid lockfile conflicts.", "dim")
+            except OSError as e:
+                self.log(f"  Could not remove root package-lock.json: {e}", "warning")
+
+        project_order = ["sable_dev"] + [p for p in REQUIRED_WEB_PROJECTS.keys() if p != "sable_dev"]
+        for project in project_order:
             pkg = os.path.join(self.install_dir, project, "package.json")
             if not os.path.isfile(pkg):
                 raise RuntimeError(f"Required project missing: {project}")
@@ -819,22 +918,61 @@ class SmartWindowsInstallerEngine:
             install_log = os.path.join(logs_root, f"{project}-npm-install.log")
             build_log = os.path.join(logs_root, f"{project}-npm-build.log")
 
+            if project == "sable_dev":
+                self._apply_known_sable_dev_hotfixes(project_dir)
+
+            lock_pnpm = os.path.join(project_dir, "pnpm-lock.yaml")
+            use_pnpm = project == "sable_dev" and os.path.isfile(lock_pnpm)
+            pm_cmd = npm_cmd
+            install_args = ["install", "--legacy-peer-deps"]
+            if use_pnpm:
+                pnpm_cmd = resolve_pnpm_command()
+                if pnpm_cmd:
+                    pm_cmd = pnpm_cmd
+                    install_args = ["install", "--no-frozen-lockfile"]
+                    self.log("  sable_dev detected pnpm-lock.yaml. Using pnpm for dependency install.", "dim")
+                else:
+                    self.log("  pnpm lock detected but pnpm is unavailable. Attempting to install pnpm...", "warning")
+                    # Try to bootstrap pnpm for sable_dev before falling back to npm.
+                    self._run_logged(npm_cmd + ["install", "-g", "pnpm@9"], cwd=project_dir, check=False)
+                    refresh_windows_path()
+                    add_common_node_paths()
+                    pnpm_cmd = resolve_pnpm_command()
+                    if pnpm_cmd:
+                        pm_cmd = pnpm_cmd
+                        install_args = ["install", "--no-frozen-lockfile"]
+                        self.log("  ✔ pnpm installed and detected.", "ok")
+                    else:
+                        raise RuntimeError(
+                            "sable_dev requires pnpm (pnpm-lock.yaml detected), but pnpm could not be resolved. "
+                            "Install pnpm/corepack or enable Node.js corepack and retry."
+                        )
+
             try:
                 self._run_logged(
-                    npm_cmd + ["install", "--legacy-peer-deps"],
+                    pm_cmd + install_args,
                     cwd=project_dir,
                     log_path=install_log,
-                    context_label=f"npm install for {project}",
+                    context_label=f"dependency install for {project}",
                 )
                 self._run_logged(
-                    npm_cmd + ["run", "build"],
+                    pm_cmd + ["run", "build"],
                     cwd=project_dir,
                     log_path=build_log,
-                    context_label=f"npm run build for {project}",
+                    context_label=f"build for {project}",
                 )
             except Exception as first_err:
                 self.log(f"  Build failed for {project}. Running auto-fix and retry...", "warning")
-                self._run_logged(npm_cmd + ["cache", "verify"], cwd=project_dir, check=False)
+                first_err_text = str(first_err)
+                # TypeScript/source build failures are not dependency failures; avoid useless reinstall loops.
+                if "Type error:" in first_err_text or "Failed to compile." in first_err_text:
+                    raise RuntimeError(
+                        f"Build failed for {project} due to source/type errors, not dependency installation.\n"
+                        f"Details:\n{first_err_text}"
+                    )
+
+                if pm_cmd != npm_cmd:
+                    self._run_logged(pm_cmd + ["store", "prune"], cwd=project_dir, check=False)
 
                 node_modules = os.path.join(project_dir, "node_modules")
                 if os.path.isdir(node_modules):
@@ -848,17 +986,21 @@ class SmartWindowsInstallerEngine:
                         except OSError:
                             pass
 
+                retry_install = ["install", "--legacy-peer-deps", "--no-audit", "--no-fund"]
+                if pm_cmd != npm_cmd:
+                    retry_install = ["install", "--no-frozen-lockfile"]
+
                 self._run_logged(
-                    npm_cmd + ["install", "--legacy-peer-deps", "--no-audit", "--no-fund"],
+                    pm_cmd + retry_install,
                     cwd=project_dir,
                     log_path=install_log,
-                    context_label=f"npm install retry for {project}",
+                    context_label=f"dependency install retry for {project}",
                 )
                 self._run_logged(
-                    npm_cmd + ["run", "build"],
+                    pm_cmd + ["run", "build"],
                     cwd=project_dir,
                     log_path=build_log,
-                    context_label=f"npm run build retry for {project}",
+                    context_label=f"build retry for {project}",
                 )
                 self.log(f"  ✔ Auto-fix retry succeeded for {project}", "ok")
 
@@ -952,6 +1094,19 @@ class SmartWindowsInstallerEngine:
         checks.append(("Git", find_git()))
         checks.append(("Node.js 20+", find_node()))
         checks.append(("PyProject", os.path.isfile(os.path.join(self.install_dir, "pyproject.toml"))))
+        checks.append(("Launcher script", os.path.isfile(os.path.join(self.install_dir, "OpenSable-Start.bat"))))
+
+        desktop_link = os.path.join(os.path.expanduser("~"), "Desktop", "Open-Sable.lnk")
+        start_link = os.path.join(
+            os.environ.get("APPDATA", ""),
+            "Microsoft",
+            "Windows",
+            "Start Menu",
+            "Programs",
+            "Open-Sable.lnk",
+        )
+        checks.append(("Desktop shortcut", os.path.isfile(desktop_link)))
+        checks.append(("Start Menu shortcut", os.path.isfile(start_link)))
 
         for project in REQUIRED_WEB_PROJECTS.keys():
             project_dir = os.path.join(self.install_dir, project)
@@ -973,6 +1128,70 @@ class SmartWindowsInstallerEngine:
         marker = os.path.join(self.install_dir, ".installed")
         with open(marker, "w", encoding="utf-8") as f:
             f.write("smart-windows-installer=true\n")
+
+    def _create_windows_shortcuts(self):
+        launcher_bat = os.path.join(self.install_dir, "OpenSable-Start.bat")
+        icon_path = os.path.join(self.install_dir, "assets", "icon.ico")
+
+        launcher = [
+            "@echo off",
+            "setlocal",
+            "cd /d %~dp0",
+            "if not exist .venv\\Scripts\\python.exe (",
+            "  echo Python virtual environment not found: .venv\\Scripts\\python.exe",
+            "  pause",
+            "  exit /b 1",
+            ")",
+            ".venv\\Scripts\\python.exe main.py",
+            "set EXIT_CODE=%ERRORLEVEL%",
+            "if not \"%EXIT_CODE%\"==\"0\" (",
+            "  echo.",
+            "  echo Open-Sable exited with code %EXIT_CODE%",
+            "  pause",
+            ")",
+            "exit /b %EXIT_CODE%",
+        ]
+        with open(launcher_bat, "w", encoding="utf-8", errors="replace") as f:
+            f.write("\r\n".join(launcher) + "\r\n")
+        self.log("  ✔ Launcher created: OpenSable-Start.bat", "ok")
+
+        desktop_link = os.path.join(os.path.expanduser("~"), "Desktop", "Open-Sable.lnk")
+        start_programs = os.path.join(
+            os.environ.get("APPDATA", ""),
+            "Microsoft",
+            "Windows",
+            "Start Menu",
+            "Programs",
+        )
+        safe_mkdir(start_programs)
+        start_link = os.path.join(start_programs, "Open-Sable.lnk")
+
+        def _ps_quote(s: str) -> str:
+            return s.replace("'", "''")
+
+        def _create_shortcut(link_path: str):
+            ps = (
+                "$w=New-Object -ComObject WScript.Shell;"
+                f"$s=$w.CreateShortcut('{_ps_quote(link_path)}');"
+                f"$s.TargetPath='{_ps_quote(launcher_bat)}';"
+                f"$s.WorkingDirectory='{_ps_quote(self.install_dir)}';"
+                "$s.Description='Open-Sable';"
+                + (
+                    f"$s.IconLocation='{_ps_quote(icon_path)},0';"
+                    if os.path.isfile(icon_path)
+                    else ""
+                )
+                + "$s.Save()"
+            )
+            self._run_logged(
+                ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps],
+                check=True,
+                context_label=f"shortcut creation for {os.path.basename(link_path)}",
+            )
+
+        _create_shortcut(desktop_link)
+        _create_shortcut(start_link)
+        self.log("  ✔ Desktop and Start Menu shortcuts created.", "ok")
 
 
 # ---------------------------------------------------------------------------
@@ -1366,7 +1585,17 @@ class SmartWindowsInstallerApp(tk.Tk):
         else:
             self._done_icon.configure(text="✘", foreground=ERROR_C)
             self._done_title.configure(text="Installation Failed")
-            self._done_subtitle.configure(text=(error or "Unknown error")[:180])
+            full_error = (error or "Unknown error").strip()
+            lines = [ln.strip() for ln in full_error.splitlines() if ln.strip()]
+            summary = lines[0] if lines else "Unknown error"
+            if "Full log:" in full_error:
+                summary = f"{summary} (see Full log path in installer output)"
+            self._done_subtitle.configure(text=summary[:260])
+            # Also show full details in a dialog so the real failure cause is visible.
+            try:
+                messagebox.showerror("Installation failed", full_error)
+            except Exception:
+                pass
         self._show_page(4)
 
     def _go_review(self):
