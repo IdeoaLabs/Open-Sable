@@ -100,8 +100,8 @@ jobs:
         run: |
           $tag = "${{ env.RELEASE_TAG }}"
           gh release delete-asset $tag "OpenSable-SmartInstaller-Windows-x64.exe" --yes *> $null
+          gh release delete-asset $tag "pyinstaller-x64.log" --yes *> $null
           gh release upload $tag "installers/dist/Open-Sable-SmartInstaller-Windows-x64.exe" --clobber
-          gh release upload $tag "installers/pyinstaller-x64.log" --clobber
 
   build-x86:
     name: Build x86 and upload to release
@@ -152,5 +152,5 @@ jobs:
         run: |
           $tag = "${{ env.RELEASE_TAG }}"
           gh release delete-asset $tag "OpenSable-SmartInstaller-Windows-x86.exe" --yes *> $null
+          gh release delete-asset $tag "pyinstaller-x86.log" --yes *> $null
           gh release upload $tag "installers/dist/Open-Sable-SmartInstaller-Windows-x86.exe" --clobber
-          gh release upload $tag "installers/pyinstaller-x86.log" --clobber
