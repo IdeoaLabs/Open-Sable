@@ -2,9 +2,16 @@ name: Build Smart Windows Installers
 
 on:
   push:
+    branches:
+      - master
     tags:
       - '1.7.0'
       - 'v1.7.0'
+    paths:
+      - '.github/workflows/build-smart-windows-installers.yml'
+      - 'installers/installer_gui_windows_smart.py'
+      - 'installers/opensable-installer-windows-smart.spec'
+      - 'installers/assets/**'
   workflow_dispatch:
     inputs:
       release_tag:
@@ -25,7 +32,7 @@ jobs:
     runs-on: windows-latest
     env:
       BUILD_REF: ${{ github.event.inputs.build_ref || github.sha }}
-      RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name }}
+      RELEASE_TAG: ${{ github.event.inputs.release_tag || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || 'v1.7.0' }}
     steps:
       - name: Checkout source ref
         uses: actions/checkout@v5
@@ -71,7 +78,7 @@ jobs:
             Get-Content pyinstaller-x64.log -Tail 250
             throw "x64 build failed with exit code $rc"
           }
-          if (-not (Test-Path "dist/OpenSable-SmartInstaller-Windows-x64.exe")) {
+          if (-not (Test-Path "dist/Open-Sable-SmartInstaller-Windows-x64.exe")) {
             throw "x64 build completed but output EXE is missing"
           }
 
@@ -92,7 +99,8 @@ jobs:
         shell: pwsh
         run: |
           $tag = "${{ env.RELEASE_TAG }}"
-          gh release upload $tag "installers/dist/OpenSable-SmartInstaller-Windows-x64.exe" --clobber
+          gh release delete-asset $tag "OpenSable-SmartInstaller-Windows-x64.exe" --yes *> $null
+          gh release upload $tag "installers/dist/Open-Sable-SmartInstaller-Windows-x64.exe" --clobber
           gh release upload $tag "installers/pyinstaller-x64.log" --clobber
 
   build-x86:
@@ -101,7 +109,7 @@ jobs:
     needs: build-x64-and-release
     env:
       BUILD_REF: ${{ github.event.inputs.build_ref || github.sha }}
-      RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name }}
+      RELEASE_TAG: ${{ github.event.inputs.release_tag || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || 'v1.7.0' }}
     steps:
       - name: Checkout source ref
         uses: actions/checkout@v5
@@ -133,7 +141,7 @@ jobs:
             Get-Content pyinstaller-x86.log -Tail 250
             throw "x86 build failed with exit code $rc"
           }
-          if (-not (Test-Path "dist/OpenSable-SmartInstaller-Windows-x86.exe")) {
+          if (-not (Test-Path "dist/Open-Sable-SmartInstaller-Windows-x86.exe")) {
             throw "x86 build completed but output EXE is missing"
           }
 
@@ -143,5 +151,6 @@ jobs:
         shell: pwsh
         run: |
           $tag = "${{ env.RELEASE_TAG }}"
-          gh release upload $tag "installers/dist/OpenSable-SmartInstaller-Windows-x86.exe" --clobber
+          gh release delete-asset $tag "OpenSable-SmartInstaller-Windows-x86.exe" --yes *> $null
+          gh release upload $tag "installers/dist/Open-Sable-SmartInstaller-Windows-x86.exe" --clobber
           gh release upload $tag "installers/pyinstaller-x86.log" --clobber
