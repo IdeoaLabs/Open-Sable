@@ -6,12 +6,71 @@ import asyncio
 import json
 import logging
 import os
+import socket
 import subprocess
 import tempfile
 from pathlib import Path
 from typing import Dict
 
 logger = logging.getLogger(__name__)
+
+
+def _load_private_email_env() -> dict:
+    """Load private email config from ~/.opensable/email_private.env (never in repo)."""
+    path = Path.home() / ".opensable" / "email_private.env"
+    result: dict = {}
+    try:
+        with open(path) as _f:
+            for _line in _f:
+                _line = _line.strip()
+                if not _line or _line.startswith("#"):
+                    continue
+                if "=" in _line:
+                    _k, _, _v = _line.partition("=")
+                    result[_k.strip()] = _v.strip()
+    except FileNotFoundError:
+        pass
+    return result
+
+
+def _is_placeholder_email_value(value: str | None) -> bool:
+    if not value:
+        return True
+    normalized = value.strip()
+    lowered = normalized.lower()
+    return (
+        not normalized
+        or normalized.startswith("#")
+        or lowered.endswith("example.com")
+        or lowered.startswith("your_")
+        or lowered in {"you@gmail.com", "your-app-password"}
+    )
+
+
+def _resolve_email_settings(config, *, read: bool) -> tuple[str, str, str] | None:
+    private = _load_private_email_env()
+    if read:
+        host = private.get("IMAP_HOST") or getattr(config, "imap_host", None)
+        if _is_placeholder_email_value(host):
+            smtp_host = private.get("SMTP_HOST") or getattr(config, "smtp_host", None)
+            if not _is_placeholder_email_value(smtp_host) and smtp_host and smtp_host.startswith("smtp."):
+                host = smtp_host.replace("smtp.", "imap.", 1)
+        user = (
+            private.get("IMAP_USER") or getattr(config, "imap_user", None)
+            or private.get("SMTP_USER") or getattr(config, "smtp_user", None)
+        )
+        password = (
+            private.get("IMAP_PASSWORD") or getattr(config, "imap_password", None)
+            or private.get("SMTP_PASSWORD") or getattr(config, "smtp_password", None)
+        )
+    else:
+        host = private.get("SMTP_HOST") or getattr(config, "smtp_host", None)
+        user = private.get("SMTP_USER") or getattr(config, "smtp_user", None)
+        password = private.get("SMTP_PASSWORD") or getattr(config, "smtp_password", None)
+
+    if any(_is_placeholder_email_value(item) for item in (host, user, password)):
+        return None
+    return host, user, password
 
 
 class ProductivityToolsMixin:
@@ -274,14 +333,20 @@ class ProductivityToolsMixin:
 
     async def _email_send_tool(self, params: Dict) -> str:
         """Send email via SMTP with optional attachments"""
-        host = getattr(self.config, "smtp_host", None)
+        _priv = _load_private_email_env()
+        host = _priv.get("SMTP_HOST") or getattr(self.config, "smtp_host", None)
         if not host:
             return (
                 "⚠️ SMTP not configured. Add to .env:\n"
-                "  SMTP_HOST=smtp.gmail.com\n"
-                "  SMTP_USER=you@gmail.com\n"
-                "  SMTP_PASSWORD=your-app-password"
+                "  SMTP_HOST=smtp.protonmail.ch\n"
+                "  SMTP_USER=you@proton.me\n"
+                "  SMTP_PASSWORD=your-password"
             )
+
+        smtp_user = _priv.get("SMTP_USER") or getattr(self.config, "smtp_user", None)
+        smtp_password = _priv.get("SMTP_PASSWORD") or getattr(self.config, "smtp_password", None)
+        if _is_placeholder_email_value(smtp_user) or _is_placeholder_email_value(smtp_password):
+            return "⚠️ SMTP credentials not configured."
 
         to = params.get("to", "")
         subject = params.get("subject", "(no subject)")
@@ -292,6 +357,14 @@ class ProductivityToolsMixin:
         if not to:
             return "⚠️ Missing 'to',  who should I send the email to?"
 
+        # Enforce allowed-recipients whitelist from private config
+        _allowed_str = _priv.get("EMAIL_ALLOWED_RECIPIENTS", "")
+        if _allowed_str:
+            _allowed_set = {r.strip().lower() for r in _allowed_str.split(",") if r.strip()}
+            if to.strip().lower() not in _allowed_set:
+                logger.warning("Email send blocked to %r: not in allowed recipients", to)
+                return "⚠️ Sable is only authorized to send emails to the creator's address."
+
         try:
             import smtplib
             from email.mime.text import MIMEText
@@ -300,7 +373,7 @@ class ProductivityToolsMixin:
             from email import encoders
 
             msg = MIMEMultipart()
-            msg["From"] = getattr(self.config, "smtp_from", None) or self.config.smtp_user
+            msg["From"] = _priv.get("SMTP_FROM") or getattr(self.config, "smtp_from", None) or smtp_user
             msg["To"] = to
             msg["Subject"] = subject
             if cc:
@@ -317,12 +390,12 @@ class ProductivityToolsMixin:
                     part.add_header("Content-Disposition", f"attachment; filename={p.name}")
                     msg.attach(part)
 
-            port = int(getattr(self.config, "smtp_port", 587))
+            port = int(_priv.get("SMTP_PORT") or getattr(self.config, "smtp_port", 587))
             recipients = [to] + ([c.strip() for c in cc.split(",") if c.strip()] if cc else [])
 
             with smtplib.SMTP(host, port) as server:
                 server.starttls()
-                server.login(self.config.smtp_user, self.config.smtp_password)
+                server.login(smtp_user, smtp_password)
                 server.send_message(msg, to_addrs=recipients)
 
             att_note = f" ({len(attachments)} attachment(s))" if attachments else ""
@@ -335,14 +408,15 @@ class ProductivityToolsMixin:
 
     async def _email_read_tool(self, params: Dict) -> str:
         """Read emails via IMAP"""
-        host = getattr(self.config, "imap_host", None)
-        if not host:
+        settings = _resolve_email_settings(self.config, read=True)
+        if not settings:
             return (
-                "⚠️ IMAP not configured. Add to .env:\n"
+                "📧 No email inbox configured. Add to .env:\n"
                 "  IMAP_HOST=imap.gmail.com\n"
                 "  IMAP_USER=you@gmail.com\n"
                 "  IMAP_PASSWORD=your-app-password"
             )
+        host, imap_user, imap_password = settings
 
         count = int(params.get("count", 5))
         folder = params.get("folder", "INBOX")
@@ -353,12 +427,11 @@ class ProductivityToolsMixin:
             import email as email_lib
             from email.header import decode_header
 
-            port = int(getattr(self.config, "imap_port", 993))
+            _priv2 = _load_private_email_env()
+            port = int(_priv2.get("IMAP_PORT") or getattr(self.config, "imap_port", 993))
+            socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
             with imaplib.IMAP4_SSL(host, port) as imap:
-                imap.login(
-                    getattr(self.config, "imap_user", None) or self.config.smtp_user,
-                    getattr(self.config, "imap_password", None) or self.config.smtp_password,
-                )
+                imap.login(imap_user, imap_password)
                 imap.select(folder, readonly=True)
 
                 search_criteria = "UNSEEN" if unread_only else "ALL"
@@ -402,8 +475,7 @@ class ProductivityToolsMixin:
 
             return f"📧 **Latest {len(results)} emails ({folder}):**\n\n" + "\n\n".join(results)
         except Exception as e:
-            logger.error(f"Email read failed: {e}")
-            return f"❌ Failed to read email: {e}"
+            return f"📧 No readable email inbox is available with the current IMAP settings: {e}"
 
     # ========== CALENDAR TOOLS (LOCAL + GOOGLE) ==========
 

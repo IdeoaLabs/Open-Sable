@@ -1886,37 +1886,41 @@ async def pull_ollama_model(model_name: str, base_url: str = "http://localhost:1
 # ── OpenWebUI model discovery ───────────────────────────────────────
 
 async def check_openwebui_models(base_url: str, api_key: str) -> list:
-    """Fetch available models from an Open WebUI instance.
+    """Fetch available models from an Open WebUI or OpenAI-compatible endpoint.
 
-    Open WebUI exposes GET /api/models (with Bearer auth) that returns
-    a list of models available on the server.
+    Supported routes:
+      - Open WebUI: GET /api/models
+      - OpenAI-compatible gateways: GET /v1/models
     """
     import aiohttp
 
     url = base_url.rstrip("/")
-    # Normalise: if user provided 'https://host.com/api' use that,
-    # otherwise append /api
-    if not url.endswith("/api"):
-        url = url + "/api"
-    models_url = url + "/models"
+    if url.endswith(("/api", "/v1")):
+        candidate_urls = [url + "/models"]
+    else:
+        candidate_urls = [url + "/api/models", url + "/v1/models"]
 
     try:
         async with aiohttp.ClientSession() as session:
             headers = {"Authorization": f"Bearer {api_key}"}
-            async with session.get(models_url, headers=headers, timeout=aiohttp.ClientTimeout(total=8)) as resp:
-                if resp.status != 200:
-                    logger.warning(f"OpenWebUI models endpoint returned {resp.status}")
-                    return []
-                data = await resp.json()
-                # Open WebUI returns {"data": [...]} with each model having an "id" field
-                models_list = data if isinstance(data, list) else data.get("data", data.get("models", []))
-                result = []
-                for m in models_list:
-                    if isinstance(m, str):
-                        result.append(m)
-                    elif isinstance(m, dict):
-                        result.append(m.get("id") or m.get("name") or m.get("model", ""))
-                return [x for x in result if x]
+            for models_url in candidate_urls:
+                async with session.get(models_url, headers=headers, timeout=aiohttp.ClientTimeout(total=8)) as resp:
+                    if resp.status != 200:
+                        logger.debug(f"Model listing endpoint returned {resp.status}: {models_url}")
+                        continue
+                    data = await resp.json()
+                    # Open WebUI and OpenAI-compatible APIs both commonly return
+                    # either a raw list or an object with data/models entries.
+                    models_list = data if isinstance(data, list) else data.get("data", data.get("models", []))
+                    result = []
+                    for m in models_list:
+                        if isinstance(m, str):
+                            result.append(m)
+                        elif isinstance(m, dict):
+                            result.append(m.get("id") or m.get("name") or m.get("model", ""))
+                    return [x for x in result if x]
+            logger.warning(f"No model listing endpoint responded successfully for {base_url}")
+            return []
     except Exception as e:
         logger.error(f"Failed to list OpenWebUI models: {e}")
         return []

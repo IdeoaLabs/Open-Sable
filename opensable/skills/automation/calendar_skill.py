@@ -7,12 +7,22 @@ import logging
 import os
 import uuid
 from typing import List, Dict, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 _CALENDAR_FILE = Path(os.environ.get("_SABLE_DATA_DIR", "data")) / "calendar.json"
+
+
+def _normalize_event_datetime(dt: datetime) -> datetime:
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _parse_event_datetime(value: str) -> datetime:
+    return _normalize_event_datetime(datetime.fromisoformat(value))
 
 
 class CalendarSkill:
@@ -63,21 +73,21 @@ class CalendarSkill:
             return self._demo_events()
 
         try:
-            now = datetime.now()
+            now = datetime.now(timezone.utc)
             cutoff = now + timedelta(days=days_ahead)
             events = self._load()
 
             upcoming = []
             for ev in events:
                 try:
-                    start_dt = datetime.fromisoformat(ev["start"])
+                    start_dt = _parse_event_datetime(ev["start"])
                 except (KeyError, ValueError):
                     continue
                 if now <= start_dt <= cutoff:
-                    upcoming.append(ev)
+                    upcoming.append((start_dt, ev))
 
-            upcoming.sort(key=lambda e: e["start"])
-            return upcoming[:max_results]
+            upcoming.sort(key=lambda item: item[0])
+            return [event for _, event in upcoming[:max_results]]
 
         except Exception as e:
             logger.error(f"Failed to list events: {e}")
@@ -97,7 +107,7 @@ class CalendarSkill:
             return True
 
         try:
-            start_dt = datetime.fromisoformat(start_time)
+            start_dt = _parse_event_datetime(start_time)
             end_dt = start_dt + timedelta(minutes=duration_minutes)
 
             event = {
@@ -139,7 +149,7 @@ class CalendarSkill:
 
     def _demo_events(self) -> List[Dict[str, Any]]:
         """Return demo events when not ready."""
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         return [
             {
                 "id": "demo1",

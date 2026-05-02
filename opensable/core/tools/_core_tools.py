@@ -4,10 +4,77 @@ Core tools,  file system, commands, browser, voice, image, database, RAG, code e
 
 import json
 import logging
+import socket
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Dict
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_calendar_datetime(value: str) -> datetime:
+    dt = datetime.fromisoformat(value)
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _load_private_email_env() -> dict:
+    """Load private email config from ~/.opensable/email_private.env (never in repo)."""
+    path = Path.home() / ".opensable" / "email_private.env"
+    result: dict = {}
+    try:
+        with open(path) as _f:
+            for _line in _f:
+                _line = _line.strip()
+                if not _line or _line.startswith("#"):
+                    continue
+                if "=" in _line:
+                    _k, _, _v = _line.partition("=")
+                    result[_k.strip()] = _v.strip()
+    except FileNotFoundError:
+        pass
+    return result
+
+
+def _is_placeholder_email_value(value: str | None) -> bool:
+    if not value:
+        return True
+    normalized = value.strip()
+    lowered = normalized.lower()
+    return (
+        not normalized
+        or normalized.startswith("#")
+        or lowered.endswith("example.com")
+        or lowered.startswith("your_")
+        or lowered in {"you@gmail.com", "your-app-password"}
+    )
+
+
+def _resolve_email_settings(config, *, read: bool) -> tuple[str, str, str] | None:
+    private = _load_private_email_env()
+    if read:
+        host = private.get("IMAP_HOST") or getattr(config, "imap_host", None)
+        if _is_placeholder_email_value(host):
+            smtp_host = private.get("SMTP_HOST") or getattr(config, "smtp_host", None)
+            if not _is_placeholder_email_value(smtp_host) and smtp_host and smtp_host.startswith("smtp."):
+                host = smtp_host.replace("smtp.", "imap.", 1)
+        user = (
+            private.get("IMAP_USER") or getattr(config, "imap_user", None)
+            or private.get("SMTP_USER") or getattr(config, "smtp_user", None)
+        )
+        password = (
+            private.get("IMAP_PASSWORD") or getattr(config, "imap_password", None)
+            or private.get("SMTP_PASSWORD") or getattr(config, "smtp_password", None)
+        )
+    else:
+        host = private.get("SMTP_HOST") or getattr(config, "smtp_host", None)
+        user = private.get("SMTP_USER") or getattr(config, "smtp_user", None)
+        password = private.get("SMTP_PASSWORD") or getattr(config, "smtp_password", None)
+
+    if any(_is_placeholder_email_value(item) for item in (host, user, password)):
+        return None
+    return host, user, password
 
 
 class CoreToolsMixin:
@@ -207,14 +274,15 @@ class CoreToolsMixin:
         action = params.get("action", "read")
 
         if action == "send":
-            host = getattr(self.config, "smtp_host", None)
-            if not host:
+            settings = _resolve_email_settings(self.config, read=False)
+            if not settings:
                 return (
                     "⚠️ SMTP not configured. Add to .env:\n"
                     "  SMTP_HOST=smtp.gmail.com\n"
                     "  SMTP_USER=you@gmail.com\n"
                     "  SMTP_PASSWORD=your-app-password"
                 )
+            host, smtp_user, smtp_password = settings
 
             to = params.get("to", "")
             subject = params.get("subject", "(no subject)")
@@ -222,38 +290,48 @@ class CoreToolsMixin:
             if not to:
                 return "⚠️ Missing 'to' field,  who should I send the email to?"
 
+            # Enforce allowed-recipients whitelist from private config
+            _priv = _load_private_email_env()
+            _allowed_str = _priv.get("EMAIL_ALLOWED_RECIPIENTS", "")
+            if _allowed_str:
+                _allowed_set = {r.strip().lower() for r in _allowed_str.split(",") if r.strip()}
+                if to.strip().lower() not in _allowed_set:
+                    logger.warning("Email send blocked to %r: not in allowed recipients", to)
+                    return "⚠️ Sable is only authorized to send emails to the creator's address."
+
             try:
                 import smtplib
                 from email.mime.text import MIMEText
                 from email.mime.multipart import MIMEMultipart
 
                 msg = MIMEMultipart()
-                msg["From"] = getattr(self.config, "smtp_from", None) or self.config.smtp_user
+                msg["From"] = _priv.get("SMTP_FROM") or getattr(self.config, "smtp_from", None) or smtp_user
                 msg["To"] = to
                 msg["Subject"] = subject
                 msg.attach(MIMEText(body, "plain"))
 
-                port = int(getattr(self.config, "smtp_port", 587))
+                port = int(_priv.get("SMTP_PORT") or getattr(self.config, "smtp_port", 587))
+                socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
                 with smtplib.SMTP(host, port) as server:
                     server.starttls()
-                    server.login(self.config.smtp_user, self.config.smtp_password)
+                    server.login(smtp_user, smtp_password)
                     server.send_message(msg)
 
                 logger.info(f"📧 Email sent to {to}: {subject}")
                 return f"✅ Email sent to **{to}**\nSubject: {subject}"
             except Exception as e:
-                logger.error(f"Email send failed: {e}")
-                return f"❌ Failed to send email: {e}"
+                return f"⚠️ Email sending is not available with the current SMTP settings: {e}"
 
         elif action == "read":
-            host = getattr(self.config, "imap_host", None)
-            if not host:
+            settings = _resolve_email_settings(self.config, read=True)
+            if not settings:
                 return (
-                    "⚠️ IMAP not configured. Add to .env:\n"
+                    "📧 No email inbox configured. Add to .env:\n"
                     "  IMAP_HOST=imap.gmail.com\n"
                     "  IMAP_USER=you@gmail.com\n"
                     "  IMAP_PASSWORD=your-app-password"
                 )
+            host, imap_user, imap_password = settings
 
             count = int(params.get("count", 5))
             folder = params.get("folder", "INBOX")
@@ -264,11 +342,9 @@ class CoreToolsMixin:
                 from email.header import decode_header
 
                 port = int(getattr(self.config, "imap_port", 993))
+                socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
                 with imaplib.IMAP4_SSL(host, port) as imap:
-                    imap.login(
-                        getattr(self.config, "imap_user", None) or self.config.smtp_user,
-                        getattr(self.config, "imap_password", None) or self.config.smtp_password,
-                    )
+                    imap.login(imap_user, imap_password)
                     imap.select(folder, readonly=True)
                     _, data = imap.search(None, "ALL")
                     ids = data[0].split()
@@ -295,8 +371,7 @@ class CoreToolsMixin:
 
                 return f"📧 **Latest {len(results)} emails ({folder}):**\n\n" + "\n\n".join(results)
             except Exception as e:
-                logger.error(f"Email read failed: {e}")
-                return f"❌ Failed to read email: {e}"
+                return f"📧 No readable email inbox is available with the current IMAP settings: {e}"
 
         else:
             return f"Unknown email action: {action}. Use: send, read"
@@ -314,19 +389,16 @@ class CoreToolsMixin:
                 now = datetime.now(timezone.utc)
                 upcoming = []
                 for e in events:
-                    dt = datetime.fromisoformat(e["datetime"])
-                    # Ensure both are timezone-aware for comparison
-                    if dt.tzinfo is None:
-                        dt = dt.replace(tzinfo=timezone.utc)
-                    upcoming.append(e) if dt >= now else None
-                upcoming.sort(key=lambda x: x["datetime"])
+                    dt = _normalize_calendar_datetime(e["datetime"])
+                    if dt >= now:
+                        upcoming.append((dt, e))
+                upcoming.sort(key=lambda item: item[0])
 
                 if not upcoming:
                     return "📅 No upcoming events in your calendar."
 
                 result = "📅 **Upcoming Events:**\n\n"
-                for event in upcoming[:10]:  # Show next 10
-                    dt = datetime.fromisoformat(event["datetime"])
+                for dt, event in upcoming[:10]:  # Show next 10
                     result += f"• **{event['title']}**\n"
                     result += f"  📆 {dt.strftime('%Y-%m-%d %H:%M')}\n"
                     if event.get("description"):
@@ -357,9 +429,10 @@ class CoreToolsMixin:
                     else:
                         return f"⚠️ Could not parse date '{date_str}'. Use format: YYYY-MM-DD HH:MM"
 
-                # Add event — ensure timezone-aware
                 if event_dt.tzinfo is None:
                     event_dt = event_dt.replace(tzinfo=timezone.utc)
+                else:
+                    event_dt = event_dt.astimezone(timezone.utc)
                 new_event = {
                     "id": len(events) + 1,
                     "title": title,

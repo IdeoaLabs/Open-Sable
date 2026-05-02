@@ -1,5 +1,13 @@
 """
 Email skill for Open-Sable,  SMTP/IMAP (no Google API dependency)
+
+TODO: Proton Bridge integration
+  - Install and run Proton Bridge locally (https://proton.me/mail/bridge)
+  - Set credentials in ~/.opensable/email_private.env (never in repo):
+      SMTP_HOST=127.0.0.1  SMTP_PORT=1025
+      IMAP_HOST=127.0.0.1  IMAP_PORT=1143
+      EMAIL_ALLOWED_RECIPIENTS=<creator-only address>
+  - Email sending is locked to allowed recipients only; disabled until configured.
 """
 
 import logging

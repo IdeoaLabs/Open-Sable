@@ -2257,8 +2257,24 @@ class SableAgent:
         # ─────────────────────────────────────────────────────────────────────
         if _intent.intent == "general_chat" and not _intent.needs_web_search:
             logger.info("💬 No-tools fast-path (general_chat),  letting LLM respond naturally")
+            _compact_blocks = []
+            try:
+                _soul_block = self._get_soul_context()
+                if _soul_block:
+                    _compact_blocks.append(_soul_block[:6000])
+            except Exception:
+                pass
+            if self.temporal_consciousness:
+                try:
+                    _temporal_block = self.temporal_consciousness.get_context_for_system2()
+                    if _temporal_block:
+                        _compact_blocks.append(_temporal_block[:2000])
+                except Exception:
+                    pass
             _nt_system = (
-                base_system
+                self._get_personality_prompt()
+                + f"\n\nToday's date: {today}."
+                + ("\n\n" + "\n\n".join(_compact_blocks) if _compact_blocks else "")
                 + "\n\nIMPORTANT: Answer the user directly from your knowledge. "
                 "If you genuinely need real-time data, a web search, file access, "
                 "or any other tool to answer properly, say so explicitly and the "

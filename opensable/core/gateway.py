@@ -2435,11 +2435,16 @@ class Gateway:
             if llm:
                 current_model = getattr(llm, "current_model", "") or ""
                 provider_type = getattr(llm, "provider", "ollama")
+                config = getattr(self.agent, "config", None)
 
                 # ── Local Ollama models ──
-                if hasattr(llm, "_update_available_models"):
-                    llm._update_available_models()
-                local_models = getattr(llm, "available_models", [])
+                local_models = []
+                if config and getattr(config, "ollama_base_url", ""):
+                    try:
+                        from opensable.core.llm import check_ollama_models
+                        local_models = await check_ollama_models(config.ollama_base_url)
+                    except Exception as e:
+                        logger.debug(f"[Gateway] Ollama model fetch error: {e}")
                 if local_models:
                     groups.append({
                         "provider": "ollama",
@@ -2452,7 +2457,6 @@ class Gateway:
                     })
 
                 # ── OpenWebUI models (fetched live from API) ──
-                config = getattr(self.agent, "config", None)
                 if config:
                     owui_url = getattr(config, "openwebui_api_url", None)
                     owui_key = getattr(config, "openwebui_api_key", None)

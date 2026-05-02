@@ -126,6 +126,93 @@ class TwikitCurlResponse:
         return self._response.json(**kwargs)
 
 
+_TWIKIT_CLASS_PATCHES_APPLIED = False
+
+
+def _apply_twikit_class_patches():
+    """
+    Monkey-patch twikit classes at the CLASS level so ALL instances are covered,
+    regardless of which skill created them (X skill, Grok skill, etc.).
+
+    Safe to call multiple times — only applied once.
+    """
+    global _TWIKIT_CLASS_PATCHES_APPLIED
+    if _TWIKIT_CLASS_PATCHES_APPLIED:
+        return
+
+    # ── ClientTransaction: bypass KEY_BYTE scraping ──────────────────────────
+    # init() scrapes x.com JS for KEY_BYTE indices. X changed the page format
+    # so this always fails. Replace init() with a no-op and
+    # generate_transaction_id() to return an empty string.
+    try:
+        from twikit.x_client_transaction.transaction import ClientTransaction
+
+        async def _noop_init(self, session, headers):
+            """No-op: skip X.com JS scraping entirely."""
+            pass
+
+        def _safe_generate_tid(self, method: str, path: str, **kwargs) -> str:
+            """Return empty string — X still accepts requests without this header."""
+            return ""
+
+        ClientTransaction.init = _noop_init
+        ClientTransaction.generate_transaction_id = _safe_generate_tid
+        logger.info("🔑 ClientTransaction KEY_BYTE bypass applied (class-level)")
+    except Exception as _kb_err:
+        logger.warning(f"ClientTransaction patch skipped: {_kb_err}")
+
+    # ── twikit User: withheld_in_countries KeyError fix ──────────────────────
+    try:
+        import twikit.user as _twu
+        import twikit.guest.user as _twgu
+
+        _orig_user_init = _twu.User.__init__
+        _orig_guest_user_init = _twgu.User.__init__
+
+        def _safe_user_init(self_u, data, client_u=None):
+            try:
+                legacy = (
+                    data.get("legacy") or
+                    data.get("result", {}).get("legacy") or
+                    {}
+                )
+                legacy.setdefault("withheld_in_countries", [])
+                if "legacy" in data:
+                    data["legacy"] = legacy
+                elif "result" in data and "legacy" in data["result"]:
+                    data["result"]["legacy"] = legacy
+            except Exception:
+                pass
+            if client_u is not None:
+                _orig_user_init(self_u, data, client_u)
+            else:
+                _orig_user_init(self_u, data)
+
+        def _safe_guest_user_init(self_u, data):
+            try:
+                legacy = (
+                    data.get("legacy") or
+                    data.get("result", {}).get("legacy") or
+                    {}
+                )
+                legacy.setdefault("withheld_in_countries", [])
+                if "legacy" in data:
+                    data["legacy"] = legacy
+                elif "result" in data and "legacy" in data["result"]:
+                    data["result"]["legacy"] = legacy
+            except Exception:
+                pass
+            _orig_guest_user_init(self_u, data)
+
+        _twu.User.__init__ = _safe_user_init
+        _twgu.User.__init__ = _safe_guest_user_init
+        logger.info("🛡️ withheld_in_countries patch applied (class-level)")
+    except Exception as _wc_err:
+        logger.warning(f"withheld_in_countries patch skipped: {_wc_err}")
+
+    _TWIKIT_CLASS_PATCHES_APPLIED = True
+
+
 def patch_twikit_client(client, proxy: Optional[str] = None):
     """
     Replaces a twikit Client's httpx backend with curl_cffi
@@ -159,6 +246,13 @@ def patch_twikit_client(client, proxy: Optional[str] = None):
         # Reset client_transaction so it re-inits with the new session
         if hasattr(client, 'client_transaction'):
             client.client_transaction.home_page_response = None
+
+        # ── KEY_BYTE bypass (class-level, covers ALL twikit clients) ─────────
+        # twikit.client_transaction.init() scrapes x.com JS for KEY_BYTE
+        # indices. This fails with "Couldn't get KEY_BYTE indices" because X
+        # changed the page format. Patch the CLASS so every instance (X skill,
+        # Grok skill, any future client) is covered, not just this one instance.
+        _apply_twikit_class_patches()
 
         logger.info("✅ TLS patch applied,  twikit now uses Chrome Android fingerprint")
         return True
