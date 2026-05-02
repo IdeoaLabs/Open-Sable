@@ -1296,6 +1296,12 @@ class XAutonomousAgent:
         error_indicators = [
             "{'errors'",
             '{"errors"',
+            "error: openwebui returned",
+            "openwebui returned 502",
+            "cloud llm (openwebui) failed",
+            "<!doctype html",
+            "<html",
+            "<!--[if lt ie 7]>",
             "page does not exist",
             "sorry, that page",
             "'code': 34",
@@ -2318,6 +2324,9 @@ class XAutonomousAgent:
             "Just the raw post text, nothing else. No code, no random tokens, no prefixes."
         )
         text = await self._ask_llm(system_prompt, user_prompt)
+        if text and self._is_error_response(text):
+            logger.warning(f"X autoposter: rejected primary LLM error payload ({text[:120]}...)")
+            text = None
         if not text:
             text = await self._ask_grok(system_prompt, user_prompt)
         # Defence-in-depth: strip <think> blocks from ANY LLM/Grok response
@@ -2328,6 +2337,9 @@ class XAutonomousAgent:
             # Strip leading role labels that some models prepend (e.g. "system\n...", "assistant:")
             text = re.sub(r'^(system|user|assistant|human)\s*[:;\n]\s*', '', text, flags=re.IGNORECASE)
             text = text.strip()
+        if text and self._is_error_response(text):
+            logger.warning(f"X autoposter: rejected fallback LLM error payload ({text[:120]}...)")
+            return None
         # Reject meta-responses where the model echoes/summarises the system prompt
         # instead of generating actual content
         if text and self._is_meta_response(text):
@@ -2568,6 +2580,12 @@ class XAutonomousAgent:
             logger.info("\U0001f4dd Post blocked,  self-heal stealth mode active")
             return {"success": False, "error": "stealth_mode"}
 
+        if content.get("type") == "tweet":
+            candidate = str(content.get("text", "") or "")
+            if self._is_error_response(candidate):
+                logger.warning(f"X autoposter: blocked invalid tweet payload before publish ({candidate[:120]}...)")
+                return {"success": False, "error": "invalid_tweet_payload"}
+
         if self.dry_run:
             logger.info(f"\U0001f3dc\ufe0f DRY RUN,  {content.get('type')}: {str(content.get('text', content.get('tweets', '')))[:80]}")
             return {"success": True, "tweet_id": "dry_run", "url": "dry_run"}
@@ -2606,6 +2624,8 @@ class XAutonomousAgent:
 
     def _clean_tweet(self, text: str) -> str:
         if not text:
+            return ""
+        if self._is_error_response(text):
             return ""
         # ── Strip <think> blocks FIRST (content + tags) ───────────────
         # Models emit <think>reasoning…</think> before the actual reply;
@@ -2727,6 +2747,8 @@ class XAutonomousAgent:
             cleaned_lines.append(line)
         text = "\n".join(cleaned_lines)
         text = text.strip().strip('"').strip("'").strip()
+        if self._is_error_response(text):
+            return ""
         # Collapse accidental double-spaces or leftover whitespace
         text = re.sub(r"\s{2,}", " ", text).strip()
         # ── Strip trailing ellipsis the LLM uses as a stylistic cliffhanger ──

@@ -14,6 +14,69 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+
+def _apply_user_legacy_defaults(data: dict) -> None:
+    """Fill sparse X user payloads with safe defaults expected by twikit."""
+    if not isinstance(data, dict):
+        return
+
+    data.setdefault("rest_id", "")
+    data.setdefault("is_blue_verified", False)
+
+    legacy = data.setdefault("legacy", {})
+    if not isinstance(legacy, dict):
+        return
+
+    entities = legacy.setdefault("entities", {})
+    if not isinstance(entities, dict):
+        entities = {}
+        legacy["entities"] = entities
+
+    description = entities.setdefault("description", {})
+    if not isinstance(description, dict):
+        description = {}
+        entities["description"] = description
+    description.setdefault("urls", [])
+
+    url_obj = entities.setdefault("url", {})
+    if not isinstance(url_obj, dict):
+        url_obj = {}
+        entities["url"] = url_obj
+    url_obj.setdefault("urls", [])
+
+    legacy_defaults = {
+        "created_at": "",
+        "name": "",
+        "screen_name": "",
+        "profile_image_url_https": "",
+        "profile_banner_url": None,
+        "url": None,
+        "location": "",
+        "description": "",
+        "pinned_tweet_ids_str": [],
+        "verified": False,
+        "possibly_sensitive": False,
+        "can_dm": False,
+        "can_media_tag": False,
+        "want_retweets": False,
+        "default_profile": False,
+        "default_profile_image": False,
+        "has_custom_timelines": False,
+        "followers_count": 0,
+        "fast_followers_count": 0,
+        "normal_followers_count": 0,
+        "friends_count": 0,
+        "favourites_count": 0,
+        "listed_count": 0,
+        "media_count": 0,
+        "statuses_count": 0,
+        "is_translator": False,
+        "translator_type": "none",
+        "withheld_in_countries": [],
+    }
+    for key, value in legacy_defaults.items():
+        legacy.setdefault(key, value)
+
 CURL_CFFI_AVAILABLE = False
 try:
     from curl_cffi.requests import AsyncSession as _CurlAsyncSession
@@ -169,37 +232,22 @@ def _apply_twikit_class_patches():
         _orig_user_init = _twu.User.__init__
         _orig_guest_user_init = _twgu.User.__init__
 
-        def _safe_user_init(self_u, data, client_u=None):
+        def _safe_user_init(self_u, client_u, data):
             try:
-                legacy = (
-                    data.get("legacy") or
-                    data.get("result", {}).get("legacy") or
-                    {}
-                )
-                legacy.setdefault("withheld_in_countries", [])
                 if "legacy" in data:
-                    data["legacy"] = legacy
-                elif "result" in data and "legacy" in data["result"]:
-                    data["result"]["legacy"] = legacy
+                    _apply_user_legacy_defaults(data)
+                elif "result" in data and isinstance(data["result"], dict):
+                    _apply_user_legacy_defaults(data["result"])
             except Exception:
                 pass
-            if client_u is not None:
-                _orig_user_init(self_u, data, client_u)
-            else:
-                _orig_user_init(self_u, data)
+            _orig_user_init(self_u, client_u, data)
 
         def _safe_guest_user_init(self_u, data):
             try:
-                legacy = (
-                    data.get("legacy") or
-                    data.get("result", {}).get("legacy") or
-                    {}
-                )
-                legacy.setdefault("withheld_in_countries", [])
                 if "legacy" in data:
-                    data["legacy"] = legacy
-                elif "result" in data and "legacy" in data["result"]:
-                    data["result"]["legacy"] = legacy
+                    _apply_user_legacy_defaults(data)
+                elif "result" in data and isinstance(data["result"], dict):
+                    _apply_user_legacy_defaults(data["result"])
             except Exception:
                 pass
             _orig_guest_user_init(self_u, data)

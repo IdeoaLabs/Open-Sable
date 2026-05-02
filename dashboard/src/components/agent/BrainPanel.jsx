@@ -750,8 +750,14 @@ function XReflectionsFeed({ reflections }) {
             borderLeft: `2px solid ${i === 0 ? 'var(--teal)' : 'var(--border)'}`,
             background: i === 0 ? 'rgba(0,206,201,0.04)' : 'transparent',
           }}>
-            <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-              {typeof content === 'string' && content.length > 200 ? content.slice(0, 200) + '…' : content}
+            <div style={{
+              fontSize: 11,
+              color: 'var(--text-secondary)',
+              lineHeight: 1.5,
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+            }}>
+              {content}
             </div>
             {ts && (
               <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 2, fontFamily: 'var(--mono)' }}>
