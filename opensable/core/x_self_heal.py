@@ -529,23 +529,30 @@ class RemedyEngine:
         }
 
     def _pause_until_midnight(self) -> Dict:
-        """Twitter 344: daily post limit hit. Pause post/trend loops until midnight UTC."""
-        now = datetime.now(timezone.utc)
-        midnight = (now + timedelta(days=1)).replace(hour=0, minute=5, second=0, microsecond=0)
+        """Twitter 344: daily post limit hit.
+        Pause post/trend loops for _limit_retry_hours (default 3h) so that
+        the self-heal pause and the autoposter's _daily_limit_hit cooldown
+        expire at the same time and don't fight each other.
+        """
+        agent = self._agent
+        retry_hours = getattr(agent, '_limit_retry_hours', 3.0)
+        resume_at = datetime.now() + timedelta(hours=retry_hours)
         for loop in ["post", "trend"]:
-            self._paused_loops[loop] = midnight
-        # Also set the flag on the agent if it has one
-        if hasattr(self._agent, '_daily_limit_hit'):
-            self._agent._daily_limit_hit = True
-        minutes_left = int((midnight - now).total_seconds() / 60)
+            self._paused_loops[loop] = resume_at
+        # Set the flag + timestamp on the agent so _should_post_now also tracks it
+        if hasattr(agent, '_daily_limit_hit'):
+            agent._daily_limit_hit = True
+        if hasattr(agent, '_daily_limit_hit_at'):
+            agent._daily_limit_hit_at = datetime.now()
         logger.warning(
-            f"\U0001f6ab Daily post limit (344),  posting paused for {minutes_left}min until midnight UTC. "
-            f"Engagement and browsing continue normally."
+            f"\U0001f6ab Daily post limit (344) — posting paused for {retry_hours:.0f}h "
+            f"(resumes ~{resume_at.strftime('%H:%M')}). Engagement continues normally."
         )
         return {
-            "action": "pause_until_midnight",
-            "resume_at": midnight.isoformat(),
+            "action": "pause_until_retry",
+            "resume_at": resume_at.isoformat(),
             "loops_paused": ["post", "trend"],
+            "retry_hours": retry_hours,
         }
 
     async def _grok_custom_fix(self, error_context: str) -> Dict:
@@ -778,6 +785,28 @@ class SelfHealMonitor:
     def remedy(self) -> RemedyEngine:
         return self._remedy
 
+    def _is_x_relevant_error(self, error_source: str, error_msg: str) -> bool:
+        """Return True only for errors that plausibly belong to the X/Twitter stack."""
+        text = f"{error_source} {error_msg}".lower()
+
+        if re.search(
+            r"instagram|instagrapi|ig_autoposter|whatsapp|wwebjs|telegram|arena|agentmon|"
+            r"gdelt|zunvra|camera move|voice skill|pyttsx3|crm|pipeline|emailtemplates|"
+            r"youtube|ollama|fm\.opensable|news\.zunvra|whatsapp-event|linkedin|facebook|tiktok",
+            text,
+            re.IGNORECASE,
+        ):
+            return False
+
+        return bool(re.search(
+            r"opensable\.core\.x_|opensable\.skills\.social|twikit|twitter|x\.com|grok\.x\.com|"
+            r"create(tweet|grokconversation)|searchtimeline|hometimeline|tweet|retweet|reply|quote|"
+            r"follow|cookie|user.?agent|cloudflare|might be automated|protect our users from spam|"
+            r"daily limit|rate.?limit|unauthorized|forbidden|status[:\s]*(401|403|429)",
+            text,
+            re.IGNORECASE,
+        ))
+
     async def run(self):
         """Main self-healing loop,  runs forever alongside other loops."""
         logger.info("🩺 Self-heal monitor active,  watching console for errors")
@@ -811,6 +840,10 @@ class SelfHealMonitor:
         for error_entry in new_errors:
             error_msg = error_entry.get("raw", "") + " " + error_entry.get("msg", "")
             error_source = error_entry.get("name", "")
+
+            if not self._is_x_relevant_error(error_source, error_msg):
+                logger.debug(f"🩺 Skipping non-X error from logger '{error_source}'")
+                continue
 
             # Skip ALL errors from Instagram/instagrapi loggers,  IG autoposter
             # handles its own backoff.  These must NEVER trigger X remedies.

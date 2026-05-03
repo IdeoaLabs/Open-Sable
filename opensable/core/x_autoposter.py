@@ -184,6 +184,9 @@ class XAutonomousAgent:
         self._max_grok_images_daily = int(getattr(config, "x_max_daily_images", 4))
         self._last_reset = datetime.now().date()
         self._daily_limit_hit: bool = False  # True when X 344 daily cap is reached
+        self._daily_limit_hit_at: Optional[datetime] = None   # timestamp of the 344; cleared after retry delay
+        # Hours to wait before retrying after a 344 (configurable, default 3h)
+        self._limit_retry_hours: float = float(os.environ.get("X_LIMIT_RETRY_HOURS", "3"))
         self._posted_urls: set = set()
         self._engaged_tweet_ids: set = set()
         self._mention_replies_today: int = 0
@@ -323,6 +326,9 @@ class XAutonomousAgent:
         """Seconds since a given datetime, or None."""
         if dt is None:
             return None
+        # X API can return tz-aware datetimes; strip tzinfo so comparison is always naive
+        if dt.tzinfo is not None:
+            dt = dt.replace(tzinfo=None)
         return max(0, (datetime.now() - dt).total_seconds())
 
     @staticmethod
@@ -349,6 +355,7 @@ class XAutonomousAgent:
             self._grok_images_today = 0
             self._last_reset = today
             self._daily_limit_hit = False  # New day,  reset cap flag
+            self._daily_limit_hit_at = None
 
     # ── Smart post scheduling ─────────────────────────────────────
     def _remaining_active_hours(self) -> float:
@@ -395,8 +402,36 @@ class XAutonomousAgent:
         Decide if it's time to post based on smart scheduling.
         Uses the dynamic interval and current inspiration level.
         """
-        if self._posts_today >= self.max_daily_posts or self._daily_limit_hit:
+        if self._posts_today >= self.max_daily_posts:
             return False
+        if self._daily_limit_hit:
+            # Don't block for the entire day — check if the retry cooldown has elapsed
+            if self._daily_limit_hit_at is not None:
+                elapsed_h = (datetime.now() - self._daily_limit_hit_at).total_seconds() / 3600
+                if elapsed_h >= self._limit_retry_hours:
+                    logger.info(
+                        f"\U0001f513 X 344 cooldown elapsed ({elapsed_h:.1f}h \u2265 {self._limit_retry_hours:.0f}h) "
+                        "\u2014 unblocking posts, retrying"
+                    )
+                    self._daily_limit_hit = False
+                    self._daily_limit_hit_at = None
+                    # Also clear the self-heal loop pauses so the execution loop
+                    # doesn't keep skipping post_original after the flag is cleared
+                    try:
+                        self._healer.remedy._paused_loops.pop("post", None)
+                        self._healer.remedy._paused_loops.pop("trend", None)
+                    except Exception:
+                        pass
+                else:
+                    return False
+            else:
+                # Legacy state without a timestamp — just clear the old block
+                self._daily_limit_hit = False
+                try:
+                    self._healer.remedy._paused_loops.pop("post", None)
+                    self._healer.remedy._paused_loops.pop("trend", None)
+                except Exception:
+                    pass
 
         since_post = self._seconds_since(self._last_post_at)
         optimal = self._optimal_post_interval()
@@ -408,6 +443,10 @@ class XAutonomousAgent:
         if since_post < self.post_interval:
             # Below the hard minimum,  never post this fast
             return False
+
+        if self._posts_today == 0:
+            # Don't let an entire day drift by with zero original posts.
+            return True
 
         if since_post >= optimal:
             # Past the optimal interval,  post with high probability
@@ -529,9 +568,14 @@ class XAutonomousAgent:
         without burning through them too early.
         """
         activities: List[Dict] = []
+        should_post = self._should_post_now()
 
         # ── ALWAYS check mentions first,  replies are highest priority ──
         activities.append({"type": "check_mentions", "pause_key": "mention"})
+
+        # ── If a post is due, make the attempt early in the session ──
+        if should_post:
+            activities.append({"type": "post_original", "pause_key": "post"})
 
         # ── Check reply chains,  continue conversations people started with us ──
         if self._reply_chains and self._reply_chain_replies_today < self._max_reply_chain_daily:
@@ -540,12 +584,8 @@ class XAutonomousAgent:
         # ── Browse (scroll the feed) ──
         activities.append({"type": "browse_engage", "pause_key": "engage"})
 
-        # ── Post if the smart scheduler says it's time ──
-        if self._should_post_now():
-            activities.append({"type": "post_original", "pause_key": "post"})
-
         # ── Join a trend occasionally (12%),  also respects scheduling ──
-        if random.random() < 0.12 and self._should_post_now():
+        if random.random() < 0.12 and should_post:
             activities.append({"type": "join_trend", "pause_key": "trend"})
 
         # ── Maybe browse more at the end (25%) ──
@@ -2603,8 +2643,12 @@ class XAutonomousAgent:
             if not result.get("success"):
                 if "344" in error_str or "daily limit" in error_str.lower():
                     self._daily_limit_hit = True
+                    self._daily_limit_hit_at = datetime.now()
                     self._save_state()
-                    logger.warning("\U0001f6ab X daily post limit (344) hit,  posting blocked until midnight")
+                    logger.warning(
+                        f"\U0001f6ab X daily post limit (344) hit "
+                        f"\u2014 will retry automatically in {self._limit_retry_hours:.0f}h"
+                    )
                 elif "226" in error_str or "automated" in error_str.lower():
                     logger.warning("\U0001f6ab Post rejected (226),  account flagged as automated")
             return result
@@ -2802,6 +2846,7 @@ class XAutonomousAgent:
                 "last_post_at": self._last_post_at.isoformat() if getattr(self, '_last_post_at', None) else None,
                 "last_engage_at": self._last_engage_at.isoformat() if getattr(self, '_last_engage_at', None) else None,
                 "daily_limit_hit": getattr(self, '_daily_limit_hit', False),
+                "daily_limit_hit_at": self._daily_limit_hit_at.isoformat() if getattr(self, '_daily_limit_hit_at', None) else None,
                 "mention_queue": self._mention_queue[-100:],  # persist pending mentions
                 "reply_chains": dict(list(self._reply_chains.items())[-50:]),  # active reply chains
                 "reply_chain_replies_today": self._reply_chain_replies_today,
@@ -2829,11 +2874,28 @@ class XAutonomousAgent:
             if state.get("last_reset") == str(datetime.now().date()):
                 self._posts_today = state.get("posts_today", 0)
                 self._engagements_today = state.get("engagements_today", 0)
-                self._daily_limit_hit = state.get("daily_limit_hit", False)
                 self._reply_chain_replies_today = state.get("reply_chain_replies_today", 0)
+                # Restore 344 cooldown only if it was hit recently enough to still matter
+                raw_hit_at = state.get("daily_limit_hit_at")
+                if raw_hit_at:
+                    try:
+                        hit_at = datetime.fromisoformat(raw_hit_at)
+                        elapsed_h = (datetime.now() - hit_at).total_seconds() / 3600
+                        if elapsed_h < self._limit_retry_hours:
+                            self._daily_limit_hit = True
+                            self._daily_limit_hit_at = hit_at
+                        # else: cooldown already expired — start fresh, no block
+                    except (ValueError, TypeError):
+                        pass
+                # Older state files only had a bool (no timestamp) — don't restore that block
 
             if self._daily_limit_hit:
-                logger.warning("\U0001f6ab Daily post limit was hit today,  posting stays blocked until midnight")
+                elapsed = (datetime.now() - self._daily_limit_hit_at).total_seconds() / 3600
+                retry_in = max(0, self._limit_retry_hours - elapsed)
+                logger.warning(
+                    f"\U0001f6ab X 344 cooldown active (hit {elapsed:.1f}h ago) "
+                    f"\u2014 posts resume automatically in ~{retry_in:.1f}h"
+                )
 
             logger.info(
                 f"Loaded: {len(self._posted_urls)} posted, "
