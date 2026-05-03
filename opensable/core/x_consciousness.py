@@ -180,6 +180,40 @@ Think out loud about:
 Be honest, introspective, and strategic. This is YOUR private thought.
 No one else will see this. Think freely."""
 
+COMPACT_INNER_MONOLOGUE_PROMPT = """You are having a brief private inner dialogue with yourself.
+
+Your soul:
+{soul}
+
+Your identity:
+{identity}
+
+Recent thoughts:
+{recent_thoughts}
+
+Current situation:
+{situation}
+
+Write one complete private thought about:
+- what you're trying to achieve right now
+- whether your current approach is working
+- one thing you would change next
+
+Be honest and strategic. Keep it concise but complete."""
+
+COMPACT_REFLECTION_PROMPT = """You are doing a brief strategic reflection on your recent activity on X.
+
+Here is the compact context:
+{context}
+
+Return a concise reflection covering:
+1. what worked best
+2. what is clearly not working
+3. one strategic change to make next
+4. how your voice or identity should adapt
+
+Be concrete and practical."""
+
 EVOLUTION_PROMPT = """You are the evolution engine of an autonomous X agent.
 Based on the agent's reflection and performance, decide what to change,  both BEHAVIOR and PERSONALITY.
 
@@ -801,6 +835,36 @@ class XConsciousness:
         self._identity["last_updated"] = datetime.now().isoformat()
         self._save_identity()
 
+    @staticmethod
+    def _is_invalid_ai_response(text: Optional[str]) -> bool:
+        """Reject gateway/HTML error payloads that leaked through as plain text."""
+        if not text:
+            return True
+
+        normalized = text.lower().strip()
+        invalid_indicators = [
+            "{'errors'",
+            '{"errors"',
+            "error: openwebui returned",
+            "openwebui returned 502",
+            "cloud llm (openwebui) failed",
+            "<!doctype html",
+            "<html",
+            "<!--[if lt ie 7]>",
+            "page does not exist",
+            "sorry, that page",
+            "'code': 34",
+            '"code": 34',
+            '"code":34',
+            "rate limit",
+            "unauthorized",
+            "forbidden",
+            "internal server error",
+            "bad gateway",
+            "service unavailable",
+        ]
+        return any(indicator in normalized for indicator in invalid_indicators)
+
     # ══════════════════════════════════════════════════════════════════
     #  INNER MONOLOGUE,  Think out loud
     # ══════════════════════════════════════════════════════════════════
@@ -825,7 +889,25 @@ class XConsciousness:
 
         thought = await self._ask_ai("You are reflecting privately.", prompt)
         if not thought:
-            return None
+            compact_recent = self.recall("thought", limit=2)
+            compact_thoughts_text = "\n".join(
+                f"- [{t['ts'][:16]}] {str(t['data'].get('thought', ''))[:90]}"
+                for t in compact_recent
+            )
+            compact_prompt = COMPACT_INNER_MONOLOGUE_PROMPT.format(
+                identity=json.dumps(self._identity, indent=2, default=str)[:700],
+                recent_thoughts=compact_thoughts_text or "(no recent thoughts)",
+                situation=(situation or "routine check-in")[:300],
+                soul=(self.get_soul_condensed() or "(no soul loaded)")[:900],
+            )
+            logger.info(
+                "X consciousness: retrying inner monologue with compact prompt "
+                f"({len(prompt)} -> {len(compact_prompt)} chars)"
+            )
+            thought = await self._ask_ai("You are reflecting privately.", compact_prompt)
+        if not thought:
+            thought = self._build_local_fallback_thought(situation, recent_thoughts)
+            logger.warning("X consciousness: using local fallback thought after AI failure")
 
         # Remember the thought
         self._thought_count += 1
@@ -850,6 +932,53 @@ class XConsciousness:
         logger.info(f"💭 Thought #{self._thought_count}: {thought[:80]}...")
         return thought
 
+    def _build_local_fallback_thought(
+        self,
+        situation: str,
+        recent_thoughts: List[Dict[str, Any]],
+    ) -> str:
+        """Create a deterministic inner note when remote thinking backends are unavailable."""
+        normalized_situation = " ".join((situation or "routine check-in").split())[:280]
+        previous = ""
+        for entry in reversed(recent_thoughts):
+            candidate = str(entry.get("data", {}).get("thought", "")).strip()
+            if (
+                candidate
+                and not self._is_invalid_ai_response(candidate)
+                and not self._is_unhelpful_fallback_context(candidate)
+            ):
+                previous = " ".join(candidate.split())[:180]
+                break
+
+        opening = (
+            f"I'm continuing in fallback mode because the live thinking backend did not return a usable response. "
+            f"Right now the situation is: {normalized_situation}."
+        )
+        direction = (
+            f"My immediate priority is to stay operational, keep my memory coherent, and avoid letting transport failures erase my internal state. "
+            f"Current mood is {self._mood} with intensity {self._mood_intensity:.1f}."
+        )
+        if previous:
+            reflection = (
+                f"My last usable thought was: {previous}. I should build from that instead of resetting my identity every time a provider fails."
+            )
+        else:
+            reflection = (
+                "I do not have a recent usable thought to build on, so I need to re-establish continuity from the current situation and move forward deliberately."
+            )
+        next_move = (
+            "Next move: keep prompts lean, preserve continuity, and resume normal introspection as soon as a valid model response returns."
+        )
+        return "\n\n".join([opening, direction, reflection, next_move])
+
+    @staticmethod
+    def _is_unhelpful_fallback_context(text: str) -> bool:
+        normalized = text.lower().strip()
+        return (
+            normalized.startswith("i'm continuing in fallback mode because")
+            or "synthetic check" in normalized
+        )
+
     # ══════════════════════════════════════════════════════════════════
     #  REFLECTION,  Analyze what happened
     # ══════════════════════════════════════════════════════════════════
@@ -871,7 +1000,16 @@ class XConsciousness:
             soul_intro = f"\n\nYour soul (who you fundamentally are):\n{self.get_soul_condensed()}\n\n"
         analysis = await self._ask_ai(CORE_DIRECTIVE + soul_intro, prompt)
         if not analysis:
-            return None
+            compact_context = self._build_compact_reflection_context()
+            compact_prompt = COMPACT_REFLECTION_PROMPT.format(context=compact_context)
+            logger.info(
+                "X consciousness: retrying reflection with compact prompt "
+                f"({len(prompt)} -> {len(compact_prompt)} chars)"
+            )
+            analysis = await self._ask_ai(CORE_DIRECTIVE + soul_intro, compact_prompt)
+        if not analysis:
+            analysis = self._build_local_fallback_reflection()
+            logger.warning("X consciousness: using local fallback reflection after AI failure")
 
         reflection = {
             "ts": datetime.now().isoformat(),
@@ -891,6 +1029,54 @@ class XConsciousness:
 
         logger.info(f"🪞 Reflected: {analysis[:100]}...")
         return reflection
+
+    def _build_compact_reflection_context(self) -> str:
+        """Build a smaller reflection context when full introspection prompts fail."""
+        stats = self.get_memory_stats()
+        parts = [
+            f"Identity: {self._identity.get('name', 'Sable')} | mood={self._mood} ({self._mood_intensity:.1f})",
+            f"Memory stats: total={stats.get('total_memories', 0)} thoughts={stats.get('by_type', {}).get('thought', 0)} posts={stats.get('by_type', {}).get('posted', 0)} reflections={stats.get('reflections', 0)}",
+        ]
+
+        recent_posts = self.recall("posted", limit=3)
+        if recent_posts:
+            post_summary = "; ".join(
+                str(item.get("data", {}).get("tweet", "")).replace("\n", " ")[:80]
+                for item in recent_posts
+            )
+            parts.append(f"Recent posts: {post_summary}")
+
+        recent_thoughts = []
+        for item in reversed(self.recall("thought", limit=6)):
+            candidate = str(item.get("data", {}).get("thought", "")).strip()
+            if candidate and not self._is_invalid_ai_response(candidate):
+                recent_thoughts.append(" ".join(candidate.split())[:120])
+            if len(recent_thoughts) == 2:
+                break
+        if recent_thoughts:
+            parts.append("Recent valid thoughts: " + " | ".join(reversed(recent_thoughts)))
+
+        return "\n".join(parts)
+
+    def _build_local_fallback_reflection(self) -> str:
+        """Create a deterministic strategic reflection when remote reflection backends fail."""
+        stats = self.get_memory_stats()
+        post_count = stats.get("by_type", {}).get("posted", 0)
+        thought_count = stats.get("by_type", {}).get("thought", 0)
+        reflection_count = stats.get("reflections", 0)
+        recent_posts = self.recall("posted", limit=3)
+        recent_post_summary = "; ".join(
+            str(item.get("data", {}).get("tweet", "")).replace("\n", " ")[:70]
+            for item in recent_posts
+        ) or "no recent posts captured"
+
+        return (
+            "Fallback reflection: the remote reflection backend did not return a usable analysis.\n\n"
+            f"What worked: the agent is still persisting state locally, with {thought_count} thoughts, {post_count} posts, and {reflection_count} stored reflections available for continuity.\n\n"
+            f"What is not working: cloud reflection calls are failing, so strategic analysis cannot depend on live provider availability. Recent post context: {recent_post_summary}.\n\n"
+            "Next strategic change: keep reflection prompts compact, preserve local continuity, and treat remote analysis as an enhancement rather than a requirement for self-observation.\n\n"
+            "Identity adaptation: stay analytical and steady under transport failures, favoring continuity and operational memory over silence."
+        )
 
     def _build_reflection_context(self) -> str:
         """Build context for reflection from memory."""
@@ -1352,8 +1538,10 @@ REASONING: <explanation>"""
                 timeout=90,
             )
             text = response.get("text", "")
-            if text:
+            if text and not self._is_invalid_ai_response(text):
                 return text
+            if text:
+                logger.warning("X consciousness rejected invalid primary LLM payload")
         except Exception as e:
             logger.debug(f"LLM failed: {e}")
 
@@ -1365,7 +1553,11 @@ REASONING: <explanation>"""
                 if TWIKIT_GROK_AVAILABLE:
                     result = await grok.chat(f"{system}\n\n{user}")
                     if result.get("success"):
-                        return result.get("response", "")
+                        text = result.get("response", "")
+                        if text and not self._is_invalid_ai_response(text):
+                            return text
+                        if text:
+                            logger.warning("X consciousness rejected invalid Grok fallback payload")
         except Exception as e:
             logger.debug(f"Grok AI failed: {e}")
         return None

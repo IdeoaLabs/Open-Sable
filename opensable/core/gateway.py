@@ -823,6 +823,9 @@ class Gateway:
         # Apply changed env vars to os.environ and agent.config immediately
         # so that /api/llm/switch works without a restart.
         _API_ENV_MAP = {
+            "FM_API_KEY": "fm_api_key",
+            "FM_API_URL": "fm_api_url",
+            "FM_MODEL": "fm_model",
             "OPENAI_API_KEY": "openai_api_key",
             "ANTHROPIC_API_KEY": "anthropic_api_key",
             "DEEPSEEK_API_KEY": "deepseek_api_key",
@@ -2364,6 +2367,7 @@ class Gateway:
             result.append({"name": "ollama", "active": False})
 
         provider_keys = [
+            ("fm", "fm_api_key"),
             ("openwebui", "openwebui_api_key"),
             ("openai", "openai_api_key"),
             ("anthropic", "anthropic_api_key"),
@@ -2408,8 +2412,59 @@ class Gateway:
         ("together",  "together_api_key",  "Together",  ["meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo"]),
     ]
 
+    async def _infer_model_provider(self, model_name: str, current_provider: str = "") -> str:
+        config = getattr(self.agent, "config", None)
+        if not config:
+            return current_provider or "ollama"
+
+        from opensable.core.llm import CloudLLM, check_ollama_models, check_openai_compatible_models
+
+        candidates: list[str] = []
+
+        def add_candidate(provider_id: str) -> None:
+            if provider_id not in candidates:
+                candidates.append(provider_id)
+
+        try:
+            if getattr(config, "ollama_base_url", ""):
+                local_models = await check_ollama_models(config.ollama_base_url)
+                if model_name in local_models:
+                    add_candidate("ollama")
+        except Exception as exc:
+            logger.debug(f"[Gateway] provider inference Ollama check failed: {exc}")
+
+        try:
+            openwebui_key = CloudLLM._configured_api_key(config, "openwebui")
+            openwebui_url = getattr(config, "openwebui_api_url", None)
+            if openwebui_url and openwebui_key:
+                openwebui_models = await check_openai_compatible_models(openwebui_url, openwebui_key)
+                if model_name in openwebui_models:
+                    add_candidate("openwebui")
+        except Exception as exc:
+            logger.debug(f"[Gateway] provider inference OpenWebUI check failed: {exc}")
+
+        try:
+            fm_key = CloudLLM._configured_api_key(config, "fm")
+            fm_url = getattr(config, "fm_api_url", None)
+            if fm_url and fm_key:
+                fm_models = await check_openai_compatible_models(fm_url, fm_key)
+                if model_name in fm_models:
+                    add_candidate("fm")
+        except Exception as exc:
+            logger.debug(f"[Gateway] provider inference FM check failed: {exc}")
+
+        for provider_id, _, _, default_models in self._MODEL_PROVIDERS:
+            if CloudLLM.is_provider_configured(config, provider_id) and model_name in default_models:
+                add_candidate(provider_id)
+
+        if current_provider and current_provider in candidates:
+            return current_provider
+        if candidates:
+            return candidates[0]
+        return current_provider or "ollama"
+
     async def _on_models_list(self, client: _Client, msg: dict = None):
-        """Return all available models: local Ollama + OpenWebUI + configured cloud providers."""
+        """Return all available models: local Ollama + FM/OpenAI-compatible + configured cloud providers."""
         profile = (msg or {}).get("profile", "")
         if profile and profile != _profile_name:
             # Proxy to remote agent
@@ -2456,14 +2511,39 @@ class Gateway:
                         ],
                     })
 
+                # ── FM models (fetched live from API) ──
+                if config:
+                    fm_url = getattr(config, "fm_api_url", None)
+                    fm_key = getattr(config, "fm_api_key", None)
+                    fm_model = getattr(config, "fm_model", None)
+                    if fm_url and fm_key:
+                        try:
+                            from opensable.core.llm import check_openai_compatible_models
+
+                            fm_models = await check_openai_compatible_models(fm_url, fm_key)
+                            if not fm_models and fm_model:
+                                fm_models = [fm_model]
+                            if fm_models:
+                                groups.append({
+                                    "provider": "fm",
+                                    "name": f"FM ({fm_url.replace('https://', '').replace('http://', '').split('/')[0]})",
+                                    "models": [
+                                        {"name": m, "active": m == current_model and provider_type == "fm"}
+                                        for m in fm_models
+                                    ],
+                                })
+                        except Exception as e:
+                            logger.debug(f"[Gateway] FM model fetch error: {e}")
+
                 # ── OpenWebUI models (fetched live from API) ──
                 if config:
                     owui_url = getattr(config, "openwebui_api_url", None)
                     owui_key = getattr(config, "openwebui_api_key", None)
                     if owui_url and owui_key:
                         try:
-                            from opensable.core.llm import check_openwebui_models
-                            owui_models = await check_openwebui_models(owui_url, owui_key)
+                            from opensable.core.llm import check_openai_compatible_models
+
+                            owui_models = await check_openai_compatible_models(owui_url, owui_key)
                             if owui_models:
                                 groups.append({
                                     "provider": "openwebui",
@@ -2537,29 +2617,26 @@ class Gateway:
             if not llm:
                 raise RuntimeError("LLM not initialised")
 
-            # If switching to a cloud provider model, we need to swap the LLM instance
-            if provider and provider != "ollama":
-                from opensable.core.llm import CloudLLM
-                config = self.agent.config
-                cloud_llm = CloudLLM(provider=provider, config=config)
-                cloud_llm.current_model = model_name
-                self.agent.llm = cloud_llm
-                logger.info(f"[Gateway] Switched to cloud LLM: {provider}/{model_name}")
-            else:
-                # Local Ollama model switch
-                llm.current_model = model_name
-                logger.info(f"[Gateway] Switched model → {model_name}")
+            from opensable.core.llm import AdaptiveLLM, switch_llm
+            current_provider = "ollama" if isinstance(llm, AdaptiveLLM) else getattr(llm, "provider", "")
+            resolved_provider = provider or await self._infer_model_provider(model_name, current_provider)
+
+            result = switch_llm(self.agent, resolved_provider, model_name)
+            if not result.get("success"):
+                raise RuntimeError(result.get("error") or "model switch failed")
+
+            logger.info(f"[Gateway] Switched model/provider → {resolved_provider}/{model_name}")
 
             await client.send({
                 "type": "models.set.result",
                 "success": True,
                 "model": model_name,
-                "provider": provider or "ollama",
+                "provider": resolved_provider,
             })
             # Broadcast status update so all clients see the new model
             for c in list(self._clients):
                 try:
-                    await c.send({"type": "status", "model": model_name})
+                    await c.send({"type": "status", "model": model_name, "provider": resolved_provider})
                 except Exception:
                     pass
         except Exception as exc:

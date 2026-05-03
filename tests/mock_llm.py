@@ -96,6 +96,10 @@ class MockLLM:
         from types import SimpleNamespace
         return SimpleNamespace(content=result.get("text", ""))
 
+    async def plain_chat(self, messages: List[Dict]) -> Dict[str, Any]:
+        """Compatibility helper for code paths that use the no-tools fast-path."""
+        return await self.invoke_with_tools(messages, [])
+
     def invoke(self, messages):
         """Sync invoke."""
         import asyncio

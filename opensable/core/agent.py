@@ -2303,6 +2303,18 @@ class SableAgent:
                     self.llm.plain_chat(_nt_msgs),
                     timeout=300,
                 )
+                if _nt_resp.get("error"):
+                    logger.warning(
+                        f"No-tools fast-path backend error: {_nt_resp['error']}"
+                    )
+                    _nt_text = self._llm_backend_unavailable_reply()
+                    state["messages"].append({
+                        "role": "final_response",
+                        "content": _nt_text,
+                        "timestamp": datetime.now().isoformat(),
+                    })
+                    await self._store_memory(user_id, task, _nt_text)
+                    return state
                 _nt_text = _nt_resp.get("text", "")
                 _nt_text = self._clean_output(_nt_text)
                 # If the LLM gave a real answer (not a "I need tools" hedge):
@@ -2746,6 +2758,13 @@ class SableAgent:
                     break
                 except Exception as e:
                     logger.error(f"LLM call failed: {e}")
+                    break
+
+                llm_error = response.get("error")
+                if llm_error:
+                    logger.warning(f"LLM backend error during agent round {_round + 1}: {llm_error}")
+                    if not tool_results:
+                        final_text = self._llm_backend_unavailable_reply()
                     break
 
                 # Emit DeepSeek reasoning if present
@@ -3441,6 +3460,13 @@ class SableAgent:
         except Exception:
             return ""
 
+    @staticmethod
+    def _llm_backend_unavailable_reply() -> str:
+        return (
+            "I'm having trouble reaching my language backend right now. "
+            "Please try again in a moment."
+        )
+
     async def _stream_llm_response(self, messages: list) -> str:
         """
         Call the LLM and stream tokens via _stream_chunk_callback if set.
@@ -3463,6 +3489,8 @@ class SableAgent:
                 logger.warning(f"[Agent] Streaming LLM failed, falling back to blocking call: {e}")
         # Blocking fallback
         resp = await self.llm.invoke_with_tools(messages, [])
+        if resp.get("error"):
+            raise RuntimeError(resp["error"])
         text = resp.get("text", "") or ""
         # Emit accumulated text as one chunk so the frontend shows it
         if cb and text:

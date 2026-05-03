@@ -100,6 +100,16 @@ def parse_thinking(text: str) -> Tuple[str, Optional[str]]:
     return clean, reasoning
 
 
+def _llm_error_result(exc: Exception) -> Dict[str, Any]:
+    """Return structured backend error metadata without surfacing it as model text."""
+    return {
+        "tool_call": None,
+        "tool_calls": [],
+        "text": "",
+        "error": str(exc),
+    }
+
+
 # Models where /no_think kills output,  the distilled versions don't handle
 # the Qwen3 /no_think token properly and produce empty responses.
 _NO_THINK_BLOCKLIST_PATTERNS = ["distill", "distilled", "claude.*opus.*distill", "opus.*distill"]
@@ -806,7 +816,7 @@ class AdaptiveLLM:
                 return result
             except Exception as e2:
                 logger.error(f"Fallback also failed: {e2}")
-                return {"tool_call": None, "tool_calls": [], "text": f"Error: {e}"}
+                return _llm_error_result(e)
 
     async def plain_chat(self, messages: List[Dict]) -> Dict[str, Any]:
         """
@@ -956,7 +966,7 @@ class AdaptiveLLM:
                 except Exception:
                     pass
             logger.error(f"Streaming failed: {e}")
-            yield f"Error: {e}"
+            return
 
 
 def get_llm(config):
@@ -1042,23 +1052,8 @@ def get_llm(config):
 
     # ── Ollama not available — fall back to cloud providers ───────────────
     logger.info("Looking for cloud/remote LLM providers...")
-    _CLOUD_FALLBACK_ORDER = [
-        ("openwebui", "openwebui_api_key"),
-        ("openai", "openai_api_key"),
-        ("anthropic", "anthropic_api_key"),
-        ("gemini", "gemini_api_key"),
-        ("deepseek", "deepseek_api_key"),
-        ("groq", "groq_api_key"),
-        ("mistral", "mistral_api_key"),
-        ("together", "together_api_key"),
-        ("xai", "xai_api_key"),
-        ("cohere", "cohere_api_key"),
-        ("kimi", "kimi_api_key"),
-        ("qwen", "qwen_api_key"),
-        ("openrouter", "openrouter_api_key"),
-    ]
-    for provider, key_attr in _CLOUD_FALLBACK_ORDER:
-        if getattr(config, key_attr, None):
+    for provider in CloudLLM._provider_order(config, include_fm_when_openwebui=False):
+        if CloudLLM.is_provider_configured(config, provider):
             logger.info(f"Using {provider} as LLM provider")
             return CloudLLM(provider=provider, config=config)
 
@@ -1068,6 +1063,7 @@ def get_llm(config):
         "DEEPSEEK_API_KEY, GROQ_API_KEY, MISTRAL_API_KEY, "
         "TOGETHER_API_KEY, XAI_API_KEY, COHERE_API_KEY, "
         "KIMI_API_KEY, QWEN_API_KEY, OPENROUTER_API_KEY, "
+        "FM_API_KEY + FM_API_URL, "
         "OPENWEBUI_API_KEY + OPENWEBUI_API_URL"
     )
 
@@ -1076,7 +1072,7 @@ class CloudLLM:
     """Cloud LLM provider with full tool calling parity.
 
     Supported providers:
-      OpenAI-compatible : openai, deepseek, groq, together, xai, mistral,
+    OpenAI-compatible : fm, openai, deepseek, groq, together, xai, mistral,
                           kimi, qwen, openrouter
       Native SDK        : anthropic, gemini, cohere
 
@@ -1120,6 +1116,11 @@ class CloudLLM:
             "openrouter_api_key",
             "openai/gpt-4o-mini",
         ),
+        "fm": (
+            None,
+            "fm_api_key",
+            "sable:latest",
+        ),
         "openwebui": (
             None,  # user sets OPENWEBUI_API_URL in .env
             "openwebui_api_key",
@@ -1130,6 +1131,90 @@ class CloudLLM:
         "gemini": (None, "gemini_api_key", "gemini-2.5-flash"),
         "cohere": (None, "cohere_api_key", "command-a-03-2025"),
     }
+
+    _FAILOVER_ORDER = (
+        "fm",
+        "openai",
+        "anthropic",
+        "gemini",
+        "deepseek",
+        "groq",
+        "mistral",
+        "together",
+        "xai",
+        "cohere",
+        "kimi",
+        "qwen",
+        "openrouter",
+        "openwebui",
+    )
+
+    _REQUIRED_URL_ATTRS = {
+        "fm": "fm_api_url",
+        "openwebui": "openwebui_api_url",
+    }
+
+    _INVALID_API_KEY_VALUES = {
+        "0",
+        "false",
+        "none",
+        "null",
+        "unset",
+        "dummy",
+        "test",
+    }
+
+    _API_KEY_PREFIXES = {
+        "anthropic": ("sk-ant-",),
+    }
+
+    @classmethod
+    def _configured_api_key(cls, config, provider: str) -> Optional[str]:
+        if provider not in cls._PROVIDERS:
+            return None
+
+        _, key_attr, _ = cls._PROVIDERS[provider]
+        key = getattr(config, key_attr, None)
+        if isinstance(key, str):
+            key = key.strip()
+        if not key:
+            return None
+
+        if isinstance(key, str):
+            if key.lower() in cls._INVALID_API_KEY_VALUES:
+                return None
+            required_prefixes = cls._API_KEY_PREFIXES.get(provider)
+            if required_prefixes and not key.startswith(required_prefixes):
+                return None
+
+        return str(key)
+
+    @classmethod
+    def is_provider_configured(cls, config, provider: str) -> bool:
+        if provider not in cls._PROVIDERS:
+            return False
+        if not cls._configured_api_key(config, provider):
+            return False
+        url_attr = cls._REQUIRED_URL_ATTRS.get(provider)
+        if url_attr and not getattr(config, url_attr, None):
+            return False
+        return True
+
+    @classmethod
+    def _provider_order(
+        cls,
+        config,
+        *,
+        include_fm_when_openwebui: bool = True,
+    ) -> Tuple[str, ...]:
+        order = [provider for provider in cls._FAILOVER_ORDER if provider in cls._PROVIDERS]
+        if cls.is_provider_configured(config, "openwebui"):
+            if "openwebui" in order:
+                order.remove("openwebui")
+                order.insert(0, "openwebui")
+            if not include_fm_when_openwebui and "fm" in order:
+                order.remove("fm")
+        return tuple(order)
 
     def __init__(self, provider: str, config):
         if provider not in self._PROVIDERS:
@@ -1142,6 +1227,7 @@ class CloudLLM:
         self.current_model = default_model
         self.available_models = [self.current_model]
         self._client = None
+        self._custom_base_url: Optional[str] = None
         self.token_tracker = TokenTracker()
 
         # ── Circuit breaker state (prevents hammering a stuck server) ──
@@ -1151,8 +1237,24 @@ class CloudLLM:
         self._backoff_max = 300               # 5 minute max
         self._failure_threshold = 3           # open circuit after N failures
 
+        # FM: dedicated OpenAI-compatible endpoint for hosted sable models.
+        if provider == "fm":
+            custom_url = getattr(config, "fm_api_url", None)
+            if not custom_url:
+                raise ValueError(
+                    "FM_API_URL is required for the FM provider. "
+                    "Set it in .env (e.g. https://fm.opensable.com/v1)"
+                )
+            self._custom_base_url = custom_url.rstrip("/")
+            if not self._custom_base_url.endswith("/v1"):
+                self._custom_base_url += "/v1"
+            custom_model = getattr(config, "fm_model", None)
+            if custom_model:
+                self.current_model = custom_model
+                self.available_models = [custom_model]
+
         # Open WebUI: user configures URL and model via .env
-        if provider == "openwebui":
+        elif provider == "openwebui":
             custom_url = getattr(config, "openwebui_api_url", None)
             if not custom_url:
                 raise ValueError(
@@ -1173,12 +1275,88 @@ class CloudLLM:
     def _get_api_key(self) -> str:
         """Retrieve the API key for the current provider from config."""
         _, key_attr, _ = self._PROVIDERS[self.provider]
-        key = getattr(self.config, key_attr, None)
+        key = self._configured_api_key(self.config, self.provider)
         if not key:
             raise ValueError(
                 f"No API key for {self.provider}. " f"Set {key_attr.upper()} environment variable."
             )
         return key
+
+    def _is_provider_configured(self, provider: str) -> bool:
+        return self.is_provider_configured(self.config, provider)
+
+    def _failover_candidates(self) -> List[str]:
+        provider_order = self._provider_order(self.config, include_fm_when_openwebui=False)
+
+        if self.provider not in provider_order:
+            return [
+                provider
+                for provider in provider_order
+                if provider != self.provider and self._is_provider_configured(provider)
+            ]
+
+        current_index = provider_order.index(self.provider)
+        candidates: List[str] = []
+        for offset in range(1, len(provider_order)):
+            provider = provider_order[(current_index + offset) % len(provider_order)]
+            if self._is_provider_configured(provider):
+                candidates.append(provider)
+        return candidates
+
+    def _adopt_provider(self, replacement: "CloudLLM") -> None:
+        previous_provider = self.provider
+        self.provider = replacement.provider
+        self.current_model = replacement.current_model
+        self.available_models = replacement.available_models
+        self._client = replacement._client
+        self._custom_base_url = getattr(replacement, "_custom_base_url", None)
+        self._openwebui_base_url = getattr(replacement, "_openwebui_base_url", None)
+        self._consecutive_failures = 0
+        self._circuit_open_until = 0.0
+        logger.warning(
+            f"Cloud LLM failover succeeded: switched from {previous_provider} to {self.provider}"
+        )
+
+    async def _invoke_current_provider(self, messages: List[Dict], tools: List[Dict]) -> Dict[str, Any]:
+        if self.provider == "fm":
+            return await self._fm_invoke(messages, tools)
+        elif self.provider == "openwebui":
+            return await self._openwebui_invoke(messages, tools)
+        elif self.provider in self._OPENAI_COMPAT:
+            return await self._openai_invoke(messages, tools)
+        elif self.provider == "anthropic":
+            return await self._anthropic_invoke(messages, tools)
+        elif self.provider == "gemini":
+            return await self._gemini_invoke(messages, tools)
+        elif self.provider == "cohere":
+            return await self._cohere_invoke(messages, tools)
+        raise ValueError(f"Unknown provider: {self.provider}")
+
+    async def _invoke_with_failover(self, messages: List[Dict], tools: List[Dict], initial_error: Exception) -> Dict[str, Any]:
+        logger.error(f"Cloud LLM ({self.provider}) failed: {initial_error}")
+
+        for provider in self._failover_candidates():
+            try:
+                replacement = CloudLLM(provider=provider, config=self.config)
+                replacement.token_tracker = self.token_tracker
+            except Exception as candidate_error:
+                logger.warning(
+                    f"Cloud LLM failover skipped {provider}: {candidate_error}"
+                )
+                continue
+
+            try:
+                result = await replacement._invoke_current_provider(messages, tools)
+            except Exception as candidate_error:
+                logger.error(
+                    f"Cloud LLM failover provider ({provider}) failed: {candidate_error}"
+                )
+                continue
+
+            self._adopt_provider(replacement)
+            return result
+
+        return _llm_error_result(initial_error)
 
     # ── OpenAI-compatible providers ──────────────────────────────────────
 
@@ -1190,6 +1368,7 @@ class CloudLLM:
             raise ImportError("pip install openai ,  required for OpenAI-compatible providers")
 
         base_url, _, _ = self._PROVIDERS[self.provider]
+        base_url = self._custom_base_url or base_url
         client = AsyncOpenAI(api_key=self._get_api_key(), base_url=base_url)
 
         kwargs: dict = {"model": self.current_model, "messages": messages}
@@ -1248,6 +1427,73 @@ class CloudLLM:
         if reasoning:
             result["reasoning"] = reasoning
             logger.info(f"💭 DeepSeek reasoning captured ({len(reasoning)} chars)")
+        return result
+
+    async def _fm_invoke(self, messages: List[Dict], tools: List[Dict]) -> Dict[str, Any]:
+        """Call the dedicated FM OpenAI-compatible endpoint via aiohttp.
+
+        The FM edge blocks the default httpx transport used by the OpenAI SDK,
+        but accepts the same OpenAI-compatible payload over aiohttp.
+        """
+        import aiohttp
+
+        url = (self._custom_base_url or "").rstrip("/") + "/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {self._get_api_key()}",
+            "Content-Type": "application/json",
+            "User-Agent": "OpenSable-FM/1.0",
+        }
+        body: dict = {"model": self.current_model, "messages": messages}
+        if tools:
+            body["tools"] = tools
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                url,
+                headers=headers,
+                json=body,
+                timeout=aiohttp.ClientTimeout(total=90),
+            ) as resp:
+                if resp.status != 200:
+                    err = await resp.text()
+                    raise RuntimeError(f"FM returned {resp.status}: {err[:300]}")
+                data = await resp.json()
+
+        usage = data.get("usage", {})
+        if usage:
+            pt = usage.get("prompt_tokens", 0)
+            ct = usage.get("completion_tokens", 0)
+            self.token_tracker.record(TokenUsage(
+                prompt_tokens=pt,
+                completion_tokens=ct,
+                total_tokens=pt + ct,
+                model=self.current_model,
+                provider=self.provider,
+                estimated_cost_usd=TokenTracker.estimate_cost(self.current_model, pt, ct),
+            ))
+
+        choice = data.get("choices", [{}])[0]
+        msg = choice.get("message", {})
+
+        tool_calls_raw = msg.get("tool_calls")
+        if tool_calls_raw:
+            parsed = []
+            for tc in tool_calls_raw:
+                fn = tc.get("function", {})
+                args = fn.get("arguments", {})
+                if isinstance(args, str):
+                    try:
+                        args = json.loads(args)
+                    except Exception:
+                        args = {}
+                parsed.append({"name": fn.get("name", ""), "arguments": args})
+            return {"tool_call": parsed[0], "tool_calls": parsed, "text": None}
+
+        raw_text = msg.get("content", "") or ""
+        raw_text, reasoning = parse_thinking(raw_text)
+        result: dict = {"tool_call": None, "tool_calls": [], "text": raw_text}
+        if reasoning:
+            result["reasoning"] = reasoning
         return result
 
     # ── Anthropic ────────────────────────────────────────────────────────
@@ -1571,6 +1817,7 @@ class CloudLLM:
 
     # Map providers to their invoke method
     _OPENAI_COMPAT = {
+        "fm",
         "openai",
         "deepseek",
         "groq",
@@ -1587,23 +1834,9 @@ class CloudLLM:
     async def invoke_with_tools(self, messages: List[Dict], tools: List[Dict]) -> Dict[str, Any]:
         """Call cloud LLM with native tool calling."""
         try:
-            if self.provider == "openwebui":
-                return await self._openwebui_invoke(messages, tools)
-            elif self.provider in self._OPENAI_COMPAT:
-                return await self._openai_invoke(messages, tools)
-            elif self.provider == "anthropic":
-                return await self._anthropic_invoke(messages, tools)
-            elif self.provider == "gemini":
-                return await self._gemini_invoke(messages, tools)
-            elif self.provider == "cohere":
-                return await self._cohere_invoke(messages, tools)
-            else:
-                raise ValueError(f"Unknown provider: {self.provider}")
-        except ImportError:
-            raise
+            return await self._invoke_current_provider(messages, tools)
         except Exception as e:
-            logger.error(f"Cloud LLM ({self.provider}) failed: {e}")
-            return {"tool_call": None, "tool_calls": [], "text": f"Error: {e}"}
+            return await self._invoke_with_failover(messages, tools, e)
 
     async def plain_chat(self, messages: List[Dict]) -> Dict[str, Any]:
         """Simple chat without tools — used for the no-tools fast-path.
@@ -1649,6 +1882,13 @@ class CloudLLM:
         Supports OpenAI-compatible providers, Anthropic, and Open WebUI (via aiohttp).
         """
         try:
+            if self.provider == "fm":
+                result = await self._fm_invoke(messages, [])
+                text = result.get("text", "")
+                if text:
+                    yield text
+                return
+
             if self.provider == "openwebui":
                 # Open WebUI: use aiohttp SSE (Cloudflare blocks openai SDK's httpx)
                 import aiohttp
@@ -1658,7 +1898,10 @@ class CloudLLM:
                 if self._consecutive_failures >= self._failure_threshold:
                     if now < self._circuit_open_until:
                         wait = int(self._circuit_open_until - now)
-                        yield f"Error: OpenWebUI circuit breaker open ({self._consecutive_failures} failures). Retrying in {wait}s."
+                        logger.warning(
+                            f"OpenWebUI circuit breaker open ({self._consecutive_failures} failures). "
+                            f"Retrying in {wait}s."
+                        )
                         return
 
                 url = getattr(self, "_openwebui_base_url", "") + "/chat/completions"
@@ -1678,7 +1921,9 @@ class CloudLLM:
                             if resp.status != 200:
                                 err = await resp.text()
                                 self._consecutive_failures += 1
-                                yield f"Error: OpenWebUI returned {resp.status}"
+                                logger.error(
+                                    f"OpenWebUI stream failed with status {resp.status}: {err[:300]}"
+                                )
                                 return
                             # Reset circuit breaker on first successful byte
                             if self._consecutive_failures > 0:
@@ -1750,7 +1995,7 @@ class CloudLLM:
                             f"OpenWebUI stream circuit breaker: {self._consecutive_failures} failures, "
                             f"cooldown {backoff}s"
                         )
-                    yield f"Error: {exc}"
+                    logger.error(f"OpenWebUI streaming failed: {exc}")
                     return
 
             elif self.provider in self._OPENAI_COMPAT:
@@ -1849,23 +2094,55 @@ class CloudLLM:
             else:
                 # Fallback: non-streaming invoke
                 result = await self.invoke_with_tools(messages, [])
-                yield result.get("text", "")
+                text = result.get("text", "")
+                if text:
+                    yield text
         except Exception as e:
             logger.error(f"Cloud streaming failed ({self.provider}): {e}")
-            yield f"Error: {e}"
+            return
 
 
 async def check_ollama_models(base_url: str = "http://localhost:11434") -> list:
     """Check which models are available in Ollama"""
     if not base_url:
         return []
+
+    def _normalize_ollama_models(models: list) -> list:
+        result = []
+        for model in models:
+            if isinstance(model, str):
+                result.append(model)
+            elif isinstance(model, dict):
+                result.append(model.get("name") or model.get("model") or "")
+            else:
+                result.append(getattr(model, "model", None) or getattr(model, "name", None) or "")
+        return [name for name in result if name]
+
     try:
-        client = ollama.Client(host=base_url)
-        models = client.list()
-        return [
-            getattr(m, "model", None) or m.get("name") or m.get("model", "")
-            for m in models.get("models", [])
-        ]
+        if ollama is not None:
+            client = ollama.Client(host=base_url)
+            models = client.list()
+            return _normalize_ollama_models(models.get("models", []))
+    except Exception as e:
+        logger.debug(f"Ollama Python client model listing failed, falling back to HTTP: {e}")
+
+    try:
+        import aiohttp
+
+        url = base_url.rstrip("/")
+        if url.endswith("/api"):
+            url = url[:-4]
+
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                url + "/api/tags",
+                timeout=aiohttp.ClientTimeout(total=8),
+            ) as resp:
+                if resp.status != 200:
+                    logger.error(f"Failed to list Ollama models over HTTP: {resp.status}")
+                    return []
+                data = await resp.json()
+        return _normalize_ollama_models(data.get("models", []))
     except Exception as e:
         logger.error(f"Failed to list Ollama models: {e}")
         return []
@@ -1883,10 +2160,10 @@ async def pull_ollama_model(model_name: str, base_url: str = "http://localhost:1
         raise
 
 
-# ── OpenWebUI model discovery ───────────────────────────────────────
+# ── OpenAI-compatible model discovery ───────────────────────────────
 
-async def check_openwebui_models(base_url: str, api_key: str) -> list:
-    """Fetch available models from an Open WebUI or OpenAI-compatible endpoint.
+async def check_openai_compatible_models(base_url: str, api_key: str) -> list:
+    """Fetch available models from an OpenAI-compatible endpoint.
 
     Supported routes:
       - Open WebUI: GET /api/models
@@ -1922,8 +2199,13 @@ async def check_openwebui_models(base_url: str, api_key: str) -> list:
             logger.warning(f"No model listing endpoint responded successfully for {base_url}")
             return []
     except Exception as e:
-        logger.error(f"Failed to list OpenWebUI models: {e}")
+        logger.error(f"Failed to list OpenAI-compatible models: {e}")
         return []
+
+
+async def check_openwebui_models(base_url: str, api_key: str) -> list:
+    """Backward-compatible wrapper for Open WebUI/OpenAI-compatible model discovery."""
+    return await check_openai_compatible_models(base_url, api_key)
 
 
 # ── Runtime LLM switching ───────────────────────────────────────────
@@ -1944,12 +2226,25 @@ async def list_all_models(config) -> dict:
     except Exception:
         pass
 
+    # FM models
+    fm_url = getattr(config, "fm_api_url", None)
+    fm_key = CloudLLM._configured_api_key(config, "fm")
+    if fm_url and fm_key:
+        try:
+            fm_models = await check_openai_compatible_models(fm_url, fm_key)
+            if fm_models:
+                result["fm"] = fm_models
+            elif getattr(config, "fm_model", None):
+                result["fm"] = [config.fm_model]
+        except Exception:
+            pass
+
     # Open WebUI models
     owui_url = getattr(config, "openwebui_api_url", None)
-    owui_key = getattr(config, "openwebui_api_key", None)
+    owui_key = CloudLLM._configured_api_key(config, "openwebui")
     if owui_url and owui_key:
         try:
-            owui_models = await check_openwebui_models(owui_url, owui_key)
+            owui_models = await check_openai_compatible_models(owui_url, owui_key)
             if owui_models:
                 result["openwebui"] = owui_models
         except Exception:
@@ -1957,9 +2252,9 @@ async def list_all_models(config) -> dict:
 
     # Cloud providers,  list the default model for each configured provider
     for provider, (_, key_attr, default_model) in CloudLLM._PROVIDERS.items():
-        if provider in ("openwebui",):
+        if provider in ("fm", "openwebui"):
             continue  # already handled above
-        if getattr(config, key_attr, None):
+        if CloudLLM.is_provider_configured(config, provider):
             result[provider] = [default_model]
 
     return result

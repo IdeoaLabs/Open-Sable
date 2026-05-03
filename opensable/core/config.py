@@ -53,6 +53,9 @@ class OpenSableConfig(BaseModel):
     kimi_api_key: Optional[str] = None
     qwen_api_key: Optional[str] = None
     openrouter_api_key: Optional[str] = None
+    fm_api_key: Optional[str] = None
+    fm_api_url: Optional[str] = None
+    fm_model: Optional[str] = None
     openwebui_api_key: Optional[str] = None
     openwebui_api_url: Optional[str] = None
     openwebui_model: Optional[str] = None
@@ -267,7 +270,7 @@ class OpenSableConfig(BaseModel):
 
     # ── Validators ────────────────────────────────────────────────
 
-    @field_validator("ollama_base_url", "openwebui_api_url", "jupiter_rpc_url", mode="before")
+    @field_validator("ollama_base_url", "fm_api_url", "openwebui_api_url", "jupiter_rpc_url", mode="before")
     @classmethod
     def _validate_url(cls, v: Optional[str]) -> Optional[str]:
         if v is None:
@@ -397,6 +400,25 @@ def load_config() -> OpenSableConfig:
     """Load configuration from environment variables"""
     load_dotenv()
 
+    sofia_api_url = os.getenv("SOFIA_API_URL")
+    sofia_api_key = os.getenv("SOFIA_API_KEY")
+    sofia_model = os.getenv("SOFIA_MODEL")
+
+    legacy_openwebui_api_url = os.getenv("OPENWEBUI_API_URL") or sofia_api_url
+    legacy_openwebui_api_key = os.getenv("OPENWEBUI_API_KEY") or sofia_api_key
+    legacy_openwebui_model = os.getenv("OPENWEBUI_MODEL") or sofia_model
+    legacy_fm_endpoint = bool(
+        legacy_openwebui_api_url and "fm.opensable.com" in legacy_openwebui_api_url.lower()
+    )
+
+    fm_api_url = os.getenv("FM_API_URL") or (legacy_openwebui_api_url if legacy_fm_endpoint else None)
+    fm_api_key = os.getenv("FM_API_KEY") or (legacy_openwebui_api_key if legacy_fm_endpoint else None)
+    fm_model = os.getenv("FM_MODEL") or (legacy_openwebui_model if legacy_fm_endpoint else None)
+
+    openwebui_api_url = None if legacy_fm_endpoint else legacy_openwebui_api_url
+    openwebui_api_key = None if legacy_fm_endpoint else legacy_openwebui_api_key
+    openwebui_model = None if legacy_fm_endpoint else legacy_openwebui_model
+
     config_data = {
         "ollama_base_url": os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
         "default_model": os.getenv("DEFAULT_MODEL", "qwen3.5:0.8b"),
@@ -416,9 +438,12 @@ def load_config() -> OpenSableConfig:
         "kimi_api_key": os.getenv("KIMI_API_KEY") or os.getenv("MOONSHOT_API_KEY"),
         "qwen_api_key": os.getenv("QWEN_API_KEY") or os.getenv("DASHSCOPE_API_KEY"),
         "openrouter_api_key": os.getenv("OPENROUTER_API_KEY"),
-        "openwebui_api_key": os.getenv("OPENWEBUI_API_KEY"),
-        "openwebui_api_url": os.getenv("OPENWEBUI_API_URL"),
-        "openwebui_model": os.getenv("OPENWEBUI_MODEL"),
+        "fm_api_key": fm_api_key,
+        "fm_api_url": fm_api_url,
+        "fm_model": fm_model,
+        "openwebui_api_key": openwebui_api_key,
+        "openwebui_api_url": openwebui_api_url,
+        "openwebui_model": openwebui_model,
         "telegram_bot_token": os.getenv("TELEGRAM_BOT_TOKEN"),
         "telegram_allowed_users": [
             u.strip() for u in os.getenv("TELEGRAM_ALLOWED_USERS", "").split(",") if u.strip()

@@ -483,6 +483,109 @@ class TestTokenStreaming:
         assert '"token"' in source or "'token'" in source
 
 
+class TestCloudProviderFailover:
+    """Tests for automatic cloud provider failover."""
+
+    def test_openwebui_is_preferred_over_fm_when_both_are_configured(self):
+        from opensable.core.config import OpenSableConfig
+        from opensable.core.llm import CloudLLM, get_llm
+
+        config = OpenSableConfig(
+            ollama_base_url="",
+            fm_api_key="fm-key",
+            fm_api_url="https://fm.opensable.com/v1",
+            openwebui_api_key="owui-key",
+            openwebui_api_url="https://sofia.zunvra.com",
+            openwebui_model="sable-sofia",
+        )
+
+        llm = get_llm(config)
+
+        assert isinstance(llm, CloudLLM)
+        assert llm.provider == "openwebui"
+        assert "fm" not in CloudLLM._provider_order(config, include_fm_when_openwebui=False)
+
+    @pytest.mark.asyncio
+    async def test_cloud_llm_fails_over_to_next_configured_provider(self):
+        from opensable.core.config import OpenSableConfig
+        from opensable.core.llm import CloudLLM
+
+        config = OpenSableConfig(
+            fm_api_key="fm-key",
+            fm_api_url="https://fm.opensable.com/v1",
+            openai_api_key="openai-key",
+        )
+
+        llm = CloudLLM(provider="fm", config=config)
+
+        async def fail_fm(self, messages, tools):
+            raise RuntimeError("FM returned 502")
+
+        async def succeed_openai(self, messages, tools):
+            return {"tool_call": None, "tool_calls": [], "text": "backup ok"}
+
+        with patch.object(CloudLLM, "_fm_invoke", fail_fm), patch.object(CloudLLM, "_openai_invoke", succeed_openai):
+            result = await llm.invoke_with_tools(
+                [{"role": "user", "content": "hello"}],
+                [],
+            )
+
+        assert result["text"] == "backup ok"
+        assert llm.provider == "openai"
+
+    def test_invalid_anthropic_key_is_not_treated_as_configured(self):
+        from opensable.core.config import OpenSableConfig
+        from opensable.core.llm import CloudLLM
+
+        config = OpenSableConfig(
+            fm_api_key="fm-key",
+            fm_api_url="https://fm.opensable.com/v1",
+            anthropic_api_key="foobar",
+            deepseek_api_key="deepseek-key",
+        )
+
+        llm = CloudLLM(provider="fm", config=config)
+
+        assert llm._is_provider_configured("anthropic") is False
+        assert "anthropic" not in llm._failover_candidates()
+        assert "deepseek" in llm._failover_candidates()
+
+    def test_openwebui_failover_does_not_drop_back_to_fm(self):
+        from opensable.core.config import OpenSableConfig
+        from opensable.core.llm import CloudLLM
+
+        config = OpenSableConfig(
+            fm_api_key="fm-key",
+            fm_api_url="https://fm.opensable.com/v1",
+            openwebui_api_key="owui-key",
+            openwebui_api_url="https://sofia.zunvra.com",
+            openai_api_key="openai-key",
+        )
+
+        llm = CloudLLM(provider="openwebui", config=config)
+
+        assert "openai" in llm._failover_candidates()
+        assert "fm" not in llm._failover_candidates()
+
+
+class TestConfigAliases:
+    def test_load_config_accepts_sofia_aliases_for_openwebui(self, monkeypatch):
+        from opensable.core.config import load_config
+
+        monkeypatch.delenv("OPENWEBUI_API_URL", raising=False)
+        monkeypatch.delenv("OPENWEBUI_API_KEY", raising=False)
+        monkeypatch.delenv("OPENWEBUI_MODEL", raising=False)
+        monkeypatch.setenv("SOFIA_API_URL", "https://sofia.zunvra.com")
+        monkeypatch.setenv("SOFIA_API_KEY", "sofia-key")
+        monkeypatch.setenv("SOFIA_MODEL", "sable-sofia")
+
+        config = load_config()
+
+        assert config.openwebui_api_url == "https://sofia.zunvra.com"
+        assert config.openwebui_api_key == "sofia-key"
+        assert config.openwebui_model == "sable-sofia"
+
+
 # ═══════════════════════════════════════════════════════════════════════
 # 6.  Integration: full loop with mocked LLM
 # ═══════════════════════════════════════════════════════════════════════
@@ -515,6 +618,40 @@ class TestIntegrationMockedLoop:
 
         result = await agent.run("What is the capital of France?")
         assert "Paris" in result
+
+    @pytest.mark.asyncio
+    async def test_llm_backend_error_is_not_leaked_to_user(self):
+        """Transport/backend failures should not be returned as raw assistant text."""
+        from opensable.core.agent import SableAgent
+        from opensable.core.config import OpenSableConfig
+        from tests.mock_llm import MockLLM
+
+        config = OpenSableConfig()
+        agent = SableAgent(config)
+
+        agent.llm = MockLLM(
+            responses=[
+                {
+                "tool_call": None,
+                "tool_calls": [],
+                "text": "",
+                "error": "FM returned 502: <!DOCTYPE html>",
+                }
+            ]
+        )
+        agent.memory = AsyncMock()
+        agent.memory.recall = AsyncMock(return_value=[])
+        agent.memory.store = AsyncMock()
+        agent.memory.get_user_preferences = AsyncMock(return_value={})
+        agent.memory.close = AsyncMock()
+        agent.tools = MagicMock()
+        agent.tools.get_tool_schemas = MagicMock(return_value=[])
+
+        result = await agent.run("hey")
+
+        assert "FM returned 502" not in result
+        assert "<!DOCTYPE html>" not in result
+        assert "language backend" in result
 
     @pytest.mark.asyncio
     async def test_tool_call_loop(self):

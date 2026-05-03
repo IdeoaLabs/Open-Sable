@@ -223,6 +223,7 @@ class NLAutomationEngine:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.state_file = self.data_dir / "nl_automation_state.json"
         self.log_file = self.data_dir / "nl_automation_log.jsonl"
+        self.llm = None
 
         self.rules: List[AutomationRule] = []
         self.activation_logs: List[ActivationLog] = []
@@ -235,6 +236,10 @@ class NLAutomationEngine:
         self.total_actions_executed = 0
 
         self._load_state()
+
+    def set_llm(self, llm):
+        """Store the shared LLM handle injected by the core agent."""
+        self.llm = llm
 
     # ── Rule Management ───────────────────────────────────────────────
 
