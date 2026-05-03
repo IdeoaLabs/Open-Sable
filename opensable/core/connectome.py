@@ -527,3 +527,37 @@ class NeuralColony:
                 logger.info("🧠 Connectome loaded: baseline Drosophila wiring")
         except Exception as e:
             logger.warning(f"Failed to load connectome state: {e}")
+
+
+# ─── Factory: choose between static or plastic connectome ──────────────────
+
+def make_connectome(
+    data_dir: "Optional[Path]" = None,
+    *,
+    plastic: bool = False,
+    seed: int = 0,
+):
+    """
+    Create a connectome instance.
+
+    Args:
+        data_dir: Path to the data directory for state persistence.
+        plastic:  If True, return a PlasticConnectome (STDP spiking substrates).
+                  If False (default), return the classic NeuralColony.
+        seed:     RNG seed for PlasticConnectome substrate initialisation.
+
+    Returns:
+        NeuralColony  when plastic=False  (original behaviour, unchanged)
+        PlasticConnectome when plastic=True  (STDP-based, drop-in replacement)
+
+    Example:
+        # Classic (no change to existing code):
+        colony = make_connectome(data_dir)
+
+        # Upgraded with STDP learning:
+        colony = make_connectome(data_dir, plastic=True)
+    """
+    if plastic:
+        from opensable.core.plastic_connectome import PlasticConnectome
+        return PlasticConnectome(data_dir=data_dir, seed=seed)
+    return NeuralColony(data_dir=data_dir)

@@ -699,9 +699,10 @@ class SableAgent:
         await self.git_brain.initialize()
 
     async def _init_connectome(self):
-        from .connectome import NeuralColony
-        self.connectome = NeuralColony(
-            data_dir=Path(self._data_dir) / "connectome"
+        from .connectome import make_connectome
+        self.connectome = make_connectome(
+            data_dir=Path(self._data_dir) / "connectome",
+            plastic=True,
         )
 
     async def _init_deep_planner(self):
