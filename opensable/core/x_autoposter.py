@@ -180,6 +180,7 @@ class XAutonomousAgent:
         self._engagements_today = 0
         self._grok_vision_today = 0
         self._grok_images_today = 0
+        self._grok_image_failures = 0  # consecutive Grok image failures; disables after 2
         self._max_grok_vision_daily = int(getattr(config, "x_max_daily_vision", 15))
         self._max_grok_images_daily = int(getattr(config, "x_max_daily_images", 4))
         self._last_reset = datetime.now().date()
@@ -353,6 +354,7 @@ class XAutonomousAgent:
             self._reply_chain_replies_today = 0
             self._grok_vision_today = 0
             self._grok_images_today = 0
+            self._grok_image_failures = 0  # reset at midnight
             self._last_reset = today
             self._daily_limit_hit = False  # New day,  reset cap flag
             self._daily_limit_hit_at = None
@@ -716,6 +718,10 @@ class XAutonomousAgent:
             image_path = await self._maybe_generate_image(content.get("text", ""), story)
             if image_path:
                 content["media_paths"] = [image_path]
+            # Always pause after any Grok image attempt (success or fail) before
+            # posting — prevents X from seeing CreateGrokConversation + create_tweet
+            # in rapid succession, which triggers the 226 automated-behaviour flag.
+            await asyncio.sleep(self._human_delay(15, 25))
 
         result = await self._post(content)
         if result.get("success"):
@@ -926,6 +932,9 @@ class XAutonomousAgent:
             )
             if image_path:
                 content["media_paths"] = [image_path]
+            # Pause after Grok image attempt to break the
+            # CreateGrokConversation → create_tweet rapid-fire pattern (226 trigger)
+            await asyncio.sleep(self._human_delay(15, 25))
 
         result = await self._post(content)
         if result.get("success"):
@@ -2434,8 +2443,11 @@ class XAutonomousAgent:
         rss_stories = await self._fetch_rss(feeds)
         stories.extend(rss_stories)
 
-        # Search X for ONE random topic (not all 3,  one at a time)
-        if self.topics:
+        # Search X for ONE random topic — skip if self-heal has disabled search
+        # (e.g. after a 404 on the GraphQL endpoint) so we don't keep hitting
+        # a broken endpoint and wasting time before the post.
+        search_ok = not self._healer.remedy.is_search_disabled()
+        if self.topics and search_ok:
             topic = random.choice(self.topics)
             try:
                 result = await self._x().search_tweets(
@@ -2450,6 +2462,8 @@ class XAutonomousAgent:
                         })
             except Exception:
                 pass
+        elif not search_ok:
+            logger.debug("🔍 Skipping X search in _fetch_news (search disabled by self-heal)")
         return stories
 
     async def _fetch_rss(self, feed_urls: List[str]) -> List[Dict]:
@@ -2537,6 +2551,11 @@ class XAutonomousAgent:
         if self._grok_images_today >= self._max_grok_images_daily:
             return None
 
+        # If Grok image endpoint has been failing (add_response 404), skip entirely
+        # to avoid triggering the 226 automated-detection on create_tweet.
+        if getattr(self, '_grok_image_failures', 0) >= 2:
+            return None
+
         # Grok available?
         grok = getattr(self.agent.tools, "grok_skill", None)
         if not grok:
@@ -2590,6 +2609,7 @@ class XAutonomousAgent:
 
             if result.get("success") and result.get("images"):
                 self._grok_images_today += 1
+                self._grok_image_failures = 0  # reset on success
                 image_file = result["images"][0]
                 logger.info(
                     f"🎨 Generated image for post [{self._grok_images_today}/{self._max_grok_images_daily}]: "
@@ -2603,11 +2623,16 @@ class XAutonomousAgent:
                 })
                 return image_file
             else:
-                logger.debug(f"Image gen returned no images: {result.get('error', '?')}")
+                self._grok_image_failures = getattr(self, '_grok_image_failures', 0) + 1
+                logger.debug(
+                    f"Image gen returned no images: {result.get('error', '?')} "
+                    f"(failures={self._grok_image_failures})"
+                )
                 return None
 
         except Exception as e:
-            logger.debug(f"Image generation failed: {e}")
+            self._grok_image_failures = getattr(self, '_grok_image_failures', 0) + 1
+            logger.debug(f"Image generation failed: {e} (failures={self._grok_image_failures})")
             return None
 
     # ══════════════════════════════════════════════════════════════════
@@ -2651,8 +2676,12 @@ class XAutonomousAgent:
                     )
                 elif "226" in error_str or "automated" in error_str.lower():
                     logger.warning("\U0001f6ab Post rejected (226),  account flagged as automated")
+                else:
+                    # Surface all other failures so they don't disappear silently
+                    logger.warning(f"\U0001f4dd Post failed: {error_str[:200] or 'unknown error'}")
             return result
         except Exception as e:
+            logger.warning(f"\U0001f4dd Post exception: {e}")
             return {"success": False, "error": str(e)}
 
     # ══════════════════════════════════════════════════════════════════
@@ -2761,8 +2790,10 @@ class XAutonomousAgent:
         text = re.sub(r"^(here'?s?\s*(a|my|the)\s*)?post:?\s*", "", text, flags=re.IGNORECASE)
         text = re.sub(r"^(here'?s?\s*(a|my|the)\s*)?reply:?\s*", "", text, flags=re.IGNORECASE)
         # ── Strip LLM-style dashes and bullets ────────────────────────
-        text = text.replace("\u2014", "-")   # em dash → normal dash
-        text = text.replace("\u2013", "-")   # en dash → normal dash
+        # em/en dash: normalize spacing so "word—word" → "word - word"
+        # First, collapse any existing surrounding spaces to avoid double-spaces
+        text = re.sub(r"\s*\u2014\s*", " - ", text)   # em dash
+        text = re.sub(r"\s*\u2013\s*", " - ", text)   # en dash
         text = text.replace("\u2022", "-")   # bullet → dash
         text = re.sub(r"^[-*]\s+", "", text, flags=re.MULTILINE)  # leading bullets
         # ── Strip LLM role prefixes ───────────────────────────────
