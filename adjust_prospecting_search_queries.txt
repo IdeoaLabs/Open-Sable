@@ -1,0 +1,7 @@
+Elasticsearch Slow Match Duration Filter Optimization:
+
+1. Use term queries for exact values - ID, status code, enum, or identifier fields should use term with .keyword, never match.
+2. Use filter instead of must for conditional logic - filter queries skip scoring, enable caching, and reduce per-document work.
+3. When filtering records rather than ranking, filter is always the right choice.
+4. Avoid deep from/size pagination on large indices.
+5. Replace deep pagination with search_after for consistent, scalable performance.

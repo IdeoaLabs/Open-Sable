@@ -2724,7 +2724,10 @@ class AutonomousMode:
             # ── 48. Entropic sentinel,  entropy measurement ──
             if self.entropic_sentinel:
                 try:
-                    if self.entropic_sentinel.should_intervene():
+                    sentinel_check = self.entropic_sentinel.should_intervene()
+                    if isinstance(sentinel_check, dict) and sentinel_check.get("should_intervene"):
+                        logger.info(f"⚠️ Entropic sentinel: entropy={sentinel_check.get('global_entropy', '?'):.2f} trend={sentinel_check.get('trend', '?')} critical={sentinel_check.get('critical_count', 0)}")
+                    elif sentinel_check is True:
                         logger.info("⚠️ Entropic sentinel recommends intervention")
                 except Exception as e:
                     logger.debug(f"Entropic sentinel tick: {e}")

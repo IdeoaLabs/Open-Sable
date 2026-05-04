@@ -218,6 +218,15 @@ start_desktop() {
     webchat_host=$(grep -E '^WEBCHAT_HOST=' "$DIR/.env" 2>/dev/null | cut -d= -f2 | tr -d '[:space:]')
     webchat_token=$(grep -E '^WEBCHAT_TOKEN=' "$DIR/.env" 2>/dev/null | cut -d= -f2 | tr -d '[:space:]')
 
+    # Kill ANY existing desktop instances before starting (prevents duplicates on restart)
+    pkill -9 -f "electron.*$(basename "$deskdir")" 2>/dev/null
+    sleep 1
+    # Double-check nothing is still alive
+    if pgrep -f "electron.*$(basename "$deskdir")" >/dev/null 2>&1; then
+        pkill -9 -f "electron.*$(basename "$deskdir")" 2>/dev/null
+        sleep 1
+    fi
+
     echo "🖥️  Starting Desktop..."
     WEBCHAT_PORT="${webchat_port:-8789}" \
     WEBCHAT_HOST="${webchat_host:-localhost}" \

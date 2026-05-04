@@ -98,6 +98,18 @@ def _launch_desktop():
     if os.environ.get("DESKTOP_ENABLED", "").lower() == "false":
         return
 
+    # Skip if start.sh already launched the desktop (pidfile exists and process is alive)
+    base = Path(__file__).resolve().parent.parent
+    desktop_pidfile = base / ".desktop.pid"
+    if desktop_pidfile.exists():
+        try:
+            existing_pid = int(desktop_pidfile.read_text().strip())
+            import signal
+            os.kill(existing_pid, 0)  # raises if not alive
+            return  # already running, don't spawn another
+        except (ValueError, OSError):
+            pass  # pidfile stale, fall through and launch
+
     _log = logging.getLogger("opensable")
 
     def _open():

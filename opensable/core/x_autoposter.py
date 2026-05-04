@@ -746,7 +746,10 @@ class XAutonomousAgent:
                 "post_number": self._posts_today,
                 "mode": "news_take",
             })
-            logger.info(f"\U0001f4dd Posted #{self._posts_today}: {result.get('url', 'ok')}")
+            if result.get("tombstone"):
+                logger.info(f"\U0001f4dd Posted #{self._posts_today}: [tombstoned \u2014 hidden by X]")
+            else:
+                logger.info(f"\U0001f4dd Posted #{self._posts_today}: {result.get('url', 'ok')}")
 
     async def _do_post_intel(self) -> bool:
         """Post an intelligence observation from the Zunvra OSINT dashboard.
@@ -957,7 +960,10 @@ class XAutonomousAgent:
                 "post_number": self._posts_today,
                 "mode": mode,
             })
-            logger.info(f"\U0001f4dd Posted #{self._posts_today} [{mode}]: {result.get('url', 'ok')}")
+            if result.get("tombstone"):
+                logger.info(f"\U0001f4dd Posted #{self._posts_today} [{mode}]: [tombstoned \u2014 hidden by X]")
+            else:
+                logger.info(f"\U0001f4dd Posted #{self._posts_today} [{mode}]: {result.get('url', 'ok')}")
 
     # ══════════════════════════════════════════════════════════════════
     #  ACTIVITY: BROWSE & ENGAGE (scroll, like, retweet, reply, follow)
@@ -1017,9 +1023,16 @@ class XAutonomousAgent:
             if source["type"] == "timeline":
                 tab = source.get("value", "latest")
                 result = await self._x().get_home_timeline(count=15, tab=tab)
+                if not result.get("success"):
+                    logger.warning(f"\U0001f4f1 Timeline ({tab}) failed: {result.get('error', '?')[:120]} — retrying with foryou")
+                    # Try the other tab as fallback
+                    alt_tab = "foryou" if tab == "latest" else "latest"
+                    result = await self._x().get_home_timeline(count=15, tab=alt_tab)
                 tweets = result.get("tweets", []) if result.get("success") else []
                 if tweets:
-                    logger.info(f"📱 Scrolling {tab} feed,  {len(tweets)} tweets")
+                    logger.info(f"\U0001f4f1 Scrolling {tab} feed, {len(tweets)} tweets")
+                else:
+                    logger.warning(f"\U0001f4f1 Timeline ({tab}) returned 0 tweets")
                 return tweets
 
             elif source["type"] == "topic":
@@ -1028,7 +1041,12 @@ class XAutonomousAgent:
                     search_type=random.choice(["Latest", "Top"]),
                     count=10,
                 )
-                return result.get("tweets", []) if result.get("success") else []
+                tweets = result.get("tweets", []) if result.get("success") else []
+                if not tweets and not result.get("success"):
+                    logger.warning(f"\U0001f50d Topic search '{source['value']}' failed — falling back to timeline")
+                    fallback = await self._x().get_home_timeline(count=15, tab="foryou")
+                    tweets = fallback.get("tweets", []) if fallback.get("success") else []
+                return tweets
 
             elif source["type"] == "account":
                 result = await self._x().get_user_tweets(source["value"], count=10)
@@ -1050,7 +1068,7 @@ class XAutonomousAgent:
                         result = await self._x().search_tweets(trend_name, count=10)
                         return result.get("tweets", []) if result.get("success") else []
         except Exception as e:
-            logger.debug(f"Discover tweets error: {e}")
+            logger.warning(f"\U0001f4f1 Discover tweets error ({source.get('type', '?')}): {e}")
         return []
 
     async def _analyze_tweet_media(self, tweet: Dict) -> Optional[str]:
@@ -2666,7 +2684,12 @@ class XAutonomousAgent:
             # Check for error codes in result
             error_str = str(result.get("error", ""))
             if not result.get("success"):
-                if "344" in error_str or "daily limit" in error_str.lower():
+                if result.get("tombstone"):
+                    # Tweet reached X but was immediately tombstoned (226 shadow still active).
+                    # Count it as posted so we don't retry and double-post.
+                    logger.warning("⚠️ Tweet tombstoned — sent to X but hidden (226 shadow active)")
+                    return {"success": True, "tweet_id": None, "url": None, "tombstone": True}
+                elif "344" in error_str or "daily limit" in error_str.lower():
                     self._daily_limit_hit = True
                     self._daily_limit_hit_at = datetime.now()
                     self._save_state()
@@ -2936,7 +2959,7 @@ class XAutonomousAgent:
                 f"{self._engagements_today} engagements today"
             )
         except Exception as e:
-            logger.debug(f"Load state failed: {e}")
+            logger.warning(f"Load state failed: {e}")
 
     def get_status(self) -> Dict[str, Any]:
         posts_remaining = self.max_daily_posts - self._posts_today
