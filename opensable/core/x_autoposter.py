@@ -982,6 +982,7 @@ class XAutonomousAgent:
         random.shuffle(tweets)
         # Only engage with 1-3 tweets per browse (like a human scrolling)
         batch_size = random.randint(1, 3)
+        logger.info(f"\U0001f4f1 engage: {len(tweets)} tweets found, picking {batch_size}")
 
         for tweet in tweets[:batch_size]:
             if not self.running or self._engagements_today >= self.max_daily_engagements:
@@ -1012,6 +1013,11 @@ class XAutonomousAgent:
         choices.append({"type": "trending", "value": "trending"})
         return random.choice(choices) if choices else {"type": "timeline", "value": "latest"}
 
+    def _x_skill(self):
+        """Return the underlying XSkill impl (bypasses XApiQueue wrapper for read-only calls)."""
+        x = self._x()
+        return getattr(x, '_impl', x) or x
+
     async def _discover_tweets(self, source: Dict) -> List[Dict]:
         """Discover tweets to engage with."""
         # If search is disabled by self-heal (404), skip search-based sources
@@ -1022,12 +1028,11 @@ class XAutonomousAgent:
         try:
             if source["type"] == "timeline":
                 tab = source.get("value", "latest")
-                result = await self._x().get_home_timeline(count=15, tab=tab)
+                result = await self._x_skill().get_home_timeline(count=15, tab=tab)
                 if not result.get("success"):
                     logger.warning(f"\U0001f4f1 Timeline ({tab}) failed: {result.get('error', '?')[:120]} — retrying with foryou")
-                    # Try the other tab as fallback
                     alt_tab = "foryou" if tab == "latest" else "latest"
-                    result = await self._x().get_home_timeline(count=15, tab=alt_tab)
+                    result = await self._x_skill().get_home_timeline(count=15, tab=alt_tab)
                 tweets = result.get("tweets", []) if result.get("success") else []
                 if tweets:
                     logger.info(f"\U0001f4f1 Scrolling {tab} feed, {len(tweets)} tweets")
@@ -1044,8 +1049,12 @@ class XAutonomousAgent:
                 tweets = result.get("tweets", []) if result.get("success") else []
                 if not tweets and not result.get("success"):
                     logger.warning(f"\U0001f50d Topic search '{source['value']}' failed — falling back to timeline")
-                    fallback = await self._x().get_home_timeline(count=15, tab="foryou")
+                    fallback = await self._x_skill().get_home_timeline(count=15, tab="foryou")
                     tweets = fallback.get("tweets", []) if fallback.get("success") else []
+                    if tweets:
+                        logger.info(f"\U0001f4f1 Scrolling foryou feed (fallback), {len(tweets)} tweets")
+                    else:
+                        logger.warning(f"\U0001f4f1 Timeline fallback returned 0 tweets (success={fallback.get('success')}, err={fallback.get('error','?')[:80]})")
                 return tweets
 
             elif source["type"] == "account":
@@ -1445,6 +1454,7 @@ class XAutonomousAgent:
 
         # Is this tweet relevant/interesting to our persona?
         if not self._is_relevant(tweet_text):
+            logger.info(f"\U0001f4f1 skip (not relevant): @{username}: {tweet_text[:60]}")
             return  # Scroll past,  real users don't engage with everything
 
         # ── FEEL the tweet (fast path,  no AI call) ───────────────────
@@ -1466,7 +1476,7 @@ class XAutonomousAgent:
         # ── LIKE ──────────────────────────────────────────────────────
         like_p = self.p_like + (arousal_boost if valence > -0.3 else 0)
         if random.random() < like_p:
-            result = await self._safe_action("like", getattr(self._x(), 'like_tweet', None), tweet_id)
+            result = await self._safe_action("like", getattr(self._x_skill(), 'like_tweet', None), tweet_id)
             if result:
                 actions_taken.append("liked")
                 self._engagements_today += 1
@@ -1476,7 +1486,7 @@ class XAutonomousAgent:
         # ── RETWEET (less frequent, but boosted when excited/inspired) ────
         rt_p = self.p_retweet + (arousal_boost if valence > 0.2 else 0)
         if random.random() < rt_p and tweet.get("retweets", 0) > 3:
-            result = await self._safe_action("retweet", getattr(self._x(), 'retweet', None), tweet_id)
+            result = await self._safe_action("retweet", getattr(self._x_skill(), 'retweet', None), tweet_id)
             if result:
                 actions_taken.append("retweeted")
                 self._engagements_today += 1
@@ -1491,7 +1501,7 @@ class XAutonomousAgent:
             reply_text = await self._generate_reply(tweet_text, username, media_description=media_desc)
             if reply_text:
                 result = await self._safe_action(
-                    "reply", getattr(self._x(), 'reply', None), tweet_id, reply_text
+                    "reply", getattr(self._x_skill(), 'reply', None), tweet_id, reply_text
                 )
                 if result:
                     actions_taken.append("replied")
@@ -1511,7 +1521,7 @@ class XAutonomousAgent:
                 quote_text = await self._generate_quote(tweet_text, username, media_description=media_desc)
                 if quote_text:
                     result = await self._safe_action(
-                        "quote", getattr(self._x(), 'quote_tweet', None), tweet_id, quote_text
+                        "quote", getattr(self._x_skill(), 'quote_tweet', None), tweet_id, quote_text
                     )
                     if result:
                         actions_taken.append("quoted")
@@ -1525,7 +1535,7 @@ class XAutonomousAgent:
             and random.random() < self.p_follow
             and tweet.get("likes", 0) > 10
         ):
-            result = await self._safe_action("follow", getattr(self._x(), 'follow_user', None), username)
+            result = await self._safe_action("follow", getattr(self._x_skill(), 'follow_user', None), username)
             if result:
                 self._followed_users.add(username)
                 actions_taken.append(f"followed @{username}")
@@ -1593,7 +1603,7 @@ class XAutonomousAgent:
     async def _safe_action(self, name: str, func, *args) -> Optional[Dict]:
         """Execute an X action safely, respecting dry_run and 226 blocks."""
         if func is None:
-            logger.debug(f"Action {name} skipped,  method not available")
+            logger.warning(f"\u26a0\ufe0f Action {name} skipped: method not available (check _x_skill impl)")
             return None
         if self.dry_run:
             logger.info(f"\U0001f3dc\ufe0f DRY RUN,  {name}: {args[:2]}")
@@ -1605,17 +1615,20 @@ class XAutonomousAgent:
             return None
 
         try:
+            logger.info(f"\U0001f4f1 attempting {name}: {str(args[0])[:30] if args else ''}")
             result = await func(*args)
             if result and result.get("success"):
+                logger.info(f"\u2705 {name} succeeded")
                 return result
             # Check for 226 error in the result
-            error_str = str(result.get("error", ""))
+            error_str = str(result.get("error", "") if result else "")
             if "226" in error_str or "automated" in error_str.lower():
                 logger.warning(f"\U0001f6ab 226 detected on {name},  triggering stealth mode")
-                # Don't retry, the self-heal loop will pick it up from the log
+            else:
+                logger.warning(f"\U0001f4f1 {name} failed: {error_str[:100]}")
             return None
         except Exception as e:
-            logger.debug(f"Action {name} failed: {e}")
+            logger.warning(f"\U0001f4f1 {name} exception: {e}")
             return None
 
     # ══════════════════════════════════════════════════════════════════
@@ -1673,7 +1686,7 @@ class XAutonomousAgent:
             await asyncio.sleep(self._human_delay(8, 15))
             reply_text = await self._generate_mention_reply(mention_text, mentioner)
             if reply_text:
-                result = await self._safe_action("mention_reply", getattr(self._x(), 'reply', None), tweet_id, reply_text)
+                result = await self._safe_action("mention_reply", getattr(self._x_skill(), 'reply', None), tweet_id, reply_text)
                 self._engaged_tweet_ids.add(tweet_id)
                 self._engagements_today += 1
                 self._mention_replies_today += 1
@@ -1822,7 +1835,7 @@ class XAutonomousAgent:
                     if chain_reply:
                         result = await self._safe_action(
                             "reply",
-                            getattr(self._x(), 'reply', None),
+                            getattr(self._x_skill(), 'reply', None),
                             best_reply["id"],
                             chain_reply,
                         )
