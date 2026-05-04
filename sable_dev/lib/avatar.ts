@@ -1,5 +1,5 @@
 /**
- * Avatar System — Procedural AI Companion
+ * Avatar System,  Procedural AI Companion
  * 
  * Deterministic sprite generation seeded from username hash (Mulberry32 PRNG).
  * Produces a unique companion per user with:
@@ -144,7 +144,7 @@ const RARITY_DISPLAY: Record<Rarity, string> = {
 // ─── Mulberry32 PRNG ──────────────────────────────────────
 
 /**
- * Mulberry32 — Deterministic PRNG seeded from a 32-bit integer.
+ * Mulberry32,  Deterministic PRNG seeded from a 32-bit integer.
  * Same seed = same sequence every time.
  */
 function mulberry32(seed: number): () => number {

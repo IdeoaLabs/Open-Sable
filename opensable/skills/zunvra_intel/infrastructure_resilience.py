@@ -1,5 +1,5 @@
 """
-#23 — Infrastructure Resilience Monitor
+#23,  Infrastructure Resilience Monitor
 
 DHS / CISA / NSA-CSD capability.  Monitors critical infrastructure
 status by correlating internet outages, ransomware campaigns, and

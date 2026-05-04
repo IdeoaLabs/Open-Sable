@@ -1,5 +1,5 @@
 """
-#16 — Wargaming / What-If Simulator
+#16,  Wargaming / What-If Simulator
 
 "What happens if Iran blocks the Strait of Hormuz?"
 "What if China establishes an Air Defense Identification Zone over Taiwan?"
@@ -186,7 +186,7 @@ class WargamingSimulator:
     # ── world state update ────────────────────────────────────────────
 
     def update_world_state(self, snapshot: IntelSnapshot):
-        """Update current world state from latest snapshot — deep entity-level extraction."""
+        """Update current world state from latest snapshot,  deep entity-level extraction."""
         import math
 
         mil_regions = self._count_military_regions(snapshot)
@@ -231,7 +231,7 @@ class WargamingSimulator:
     def auto_wargame(self, snapshot: IntelSnapshot) -> List[WargameScenario]:
         """
         Automatically detect and simulate scenarios that MATCH CURRENT LIVE DATA.
-        This is the key upgrade — the simulator now reacts to what's actually
+        This is the key upgrade,  the simulator now reacts to what's actually
         happening in the world, not just pre-built templates.
         """
         self.update_world_state(snapshot)
@@ -269,7 +269,7 @@ class WargamingSimulator:
                                             hormuz_lat, hormuz_lon) < 500)
         if hormuz_mil > 5 or hormuz_ships > 20 or hormuz_jam > 0:
             triggers.append({
-                "trigger": "Strait of Hormuz escalation — elevated military activity detected",
+                "trigger": "Strait of Hormuz escalation,  elevated military activity detected",
                 "region": "Middle East",
                 "template_key": "strait_hormuz_blockade",
                 "evidence": {"military_flights": hormuz_mil, "ships": hormuz_ships,
@@ -287,7 +287,7 @@ class WargamingSimulator:
                                                  taiwan_lat, taiwan_lon) < 1000)
         if taiwan_mil > 8 or taiwan_carriers > 0:
             triggers.append({
-                "trigger": "Taiwan Strait tension — military buildup detected",
+                "trigger": "Taiwan Strait tension,  military buildup detected",
                 "region": "Indo-Pacific",
                 "template_key": "taiwan_adiz",
                 "evidence": {"military_flights": taiwan_mil, "carriers": taiwan_carriers},
@@ -304,7 +304,7 @@ class WargamingSimulator:
                                     ["estonia", "latvia", "lithuania", "finland", "sweden", "denmark"]))
         if baltic_outages > 0:
             triggers.append({
-                "trigger": "Baltic infrastructure concern — internet outages in Northern Europe",
+                "trigger": "Baltic infrastructure concern,  internet outages in Northern Europe",
                 "region": "Europe / Baltic",
                 "template_key": "baltic_cable_cut",
                 "evidence": {"outages": baltic_outages, "ships_in_area": baltic_ships},
@@ -318,7 +318,7 @@ class WargamingSimulator:
                                             suez_lat, suez_lon) < 200)
         if suez_ships > 30:
             triggers.append({
-                "trigger": "Suez Canal congestion — abnormal vessel concentration detected",
+                "trigger": "Suez Canal congestion,  abnormal vessel concentration detected",
                 "region": "Middle East / Global",
                 "template_key": "suez_blockage",
                 "evidence": {"ships_near_suez": suez_ships},
@@ -335,7 +335,7 @@ class WargamingSimulator:
                                            scs_lat, scs_lon) < 500)
         if scs_mil > 5 or scs_ships > 50:
             triggers.append({
-                "trigger": "South China Sea incident risk — elevated military presence",
+                "trigger": "South China Sea incident risk,  elevated military presence",
                 "region": "Indo-Pacific",
                 "template_key": "south_china_sea_incident",
                 "evidence": {"military_flights": scs_mil, "ships": scs_ships},
@@ -352,7 +352,7 @@ class WargamingSimulator:
                                       ["houthi", "yemen", "red sea", "bab"]))
         if redsea_mil > 3 or redsea_conflicts > 0:
             triggers.append({
-                "trigger": "Red Sea / Houthi escalation — active threat environment",
+                "trigger": "Red Sea / Houthi escalation,  active threat environment",
                 "region": "Red Sea / Horn of Africa",
                 "template_key": "houthi_chokepoint_escalation",
                 "evidence": {"military_flights": redsea_mil, "conflicts": redsea_conflicts},
@@ -365,7 +365,7 @@ class WargamingSimulator:
         total_cyber = len(snapshot.cyber_threats)
         if total_mil > 30 and total_jam > 2 and total_cyber > 5:
             triggers.append({
-                "trigger": "Multi-domain escalation — concurrent military surge / EW / cyber activity",
+                "trigger": "Multi-domain escalation,  concurrent military surge / EW / cyber activity",
                 "region": "Global",
                 "template_key": None,
                 "evidence": {"military_flights": total_mil, "gps_jamming": total_jam,

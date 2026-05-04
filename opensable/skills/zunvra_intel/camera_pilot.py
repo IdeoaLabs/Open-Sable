@@ -1,21 +1,21 @@
 """
-Zunvra Intelligence — Autonomous Camera Pilot
+Zunvra Intelligence,  Autonomous Camera Pilot
 
 Sable takes control of the Central Intelligence dashboard map autonomously,
 flying to regions of interest, changing zoom, switching visual styles,
 highlighting alerts, and narrating its investigation as it goes.
 
-The camera moves with purpose — it's not random. Each move is driven by
+The camera moves with purpose,  it's not random. Each move is driven by
 the intelligence findings from the 26 analysis modules. Sable acts like
 a human analyst who drags the map, zooms in, switches to thermal overlay,
 and leans forward when something catches their eye.
 
 Movement behaviors:
-  PATROL    — Slow orbit across strategic watch regions
-  REACT     — Snap to a high-severity alert location
-  DWELL     — Hold position and zoom tight on a finding
-  SWEEP     — Progressive scan across a geographic cluster
-  CINEMATIC — Dramatic zoom out → style change → zoom in sequence
+  PATROL   ,  Slow orbit across strategic watch regions
+  REACT    ,  Snap to a high-severity alert location
+  DWELL    ,  Hold position and zoom tight on a finding
+  SWEEP    ,  Progressive scan across a geographic cluster
+  CINEMATIC,  Dramatic zoom out → style change → zoom in sequence
 
 Usage:
     pilot = AutonomousCameraPilot(remote_control)
@@ -42,8 +42,8 @@ from .operation_diary import get_diary
 logger = logging.getLogger(__name__)
 
 
-# ── Style palette — ALWAYS SATELLITE for clean imagery ─────────────
-# The user wants ONLY satellite view — no NVG, CRT, THERMAL, etc.
+# ── Style palette,  ALWAYS SATELLITE for clean imagery ─────────────
+# The user wants ONLY satellite view,  no NVG, CRT, THERMAL, etc.
 # All domains map to SATELLITE for a consistent real-world view.
 
 DOMAIN_STYLE_MAP: Dict[str, str] = {k: "SATELLITE" for k in [
@@ -56,7 +56,7 @@ DOMAIN_STYLE_MAP: Dict[str, str] = {k: "SATELLITE" for k in [
 
 # ── Domain → appropriate zoom level ──────────────────────────────────
 
-# Zoom levels raised — minimum 5.0 so Sable never stares at empty ocean
+# Zoom levels raised,  minimum 5.0 so Sable never stares at empty ocean
 DOMAIN_ZOOM_MAP: Dict[str, float] = {
     "nuclear": 10.0,      # Facility level
     "fires": 7.0,         # Cluster level
@@ -76,7 +76,7 @@ DOMAIN_ZOOM_MAP: Dict[str, float] = {
 }
 
 # ── Strategic watch regions for patrol mode ──────────────────────────
-# Comprehensive global coverage — every continent, every ocean, every hotspot.
+# Comprehensive global coverage,  every continent, every ocean, every hotspot.
 # Sable is the Eye of God; it sees EVERYTHING.
 
 PATROL_WAYPOINTS: List[Dict[str, Any]] = [
@@ -177,7 +177,7 @@ class AutonomousCameraPilot:
 
     The pilot receives analysis results from run_cycle() and the raw
     IntelSnapshot, then generates a sequence of purposeful camera
-    movements — each one matching a finding to a location, zoom level,
+    movements,  each one matching a finding to a location, zoom level,
     and visual style.
     """
 
@@ -187,7 +187,7 @@ class AutonomousCameraPilot:
         *,
         move_delay: float = 2.5,       # Seconds between moves (minimum)
         dwell_default: float = 4.0,    # Default seconds to stay on a finding
-        max_moves_per_cycle: int = 25,  # Cap — raised to cover all data sources
+        max_moves_per_cycle: int = 25,  # Cap,  raised to cover all data sources
         enable_style_changes: bool = True,
         enable_highlights: bool = True,
         enable_toasts: bool = True,
@@ -215,12 +215,12 @@ class AutonomousCameraPilot:
         self._total_moves: int = 0
         self._last_move_time: float = 0.0
         self._move_history: List[Dict[str, Any]] = []
-        # Eye of God — diversity tracking (PERSISTENT across restarts)
+        # Eye of God,  diversity tracking (PERSISTENT across restarts)
         self._visited_cells_path = Path(__file__).parent / "data" / "visited_cells.json"
         self._visited_cells: Set[Tuple[int, int]] = self._load_visited_cells()
         self._cycle_count: int = 0  # How many narrate_cycle() invocations
         self._last_opening_coords: Tuple[float, float] = (0.0, 0.0)
-        # Live camera tracking — avoid showing the same cam repeatedly
+        # Live camera tracking,  avoid showing the same cam repeatedly
         self._shown_live_cameras: Set[str] = set()  # URLs already shown this session
         self._live_camera_cooldown: float = 0.0      # Timestamp of last live stream open
         # Operation diary / dossier tracking (persistent via OperationDiary)
@@ -228,14 +228,14 @@ class AutonomousCameraPilot:
         self._diary_entries: List[Dict[str, Any]] = []
         self._dossier_entries: List[Dict[str, Any]] = []
 
-        # ── Story tracking — follow-up system across cycles ──
+        # ── Story tracking,  follow-up system across cycles ──
         # Maps story_id → {title, domain, severity, first_seen, last_seen,
         #   cycle_count, lat, lng, keywords, last_detail}
         self._tracked_stories: Dict[str, Dict[str, Any]] = {}
         self._tracked_stories_path = Path(__file__).parent / "data" / "tracked_stories.json"
         self._load_tracked_stories()
 
-    # ── Main entry point — narrate a full analysis cycle ─────────────
+    # ── Main entry point,  narrate a full analysis cycle ─────────────
 
     async def narrate_cycle(
         self,
@@ -258,7 +258,7 @@ class AutonomousCameraPilot:
         self._eligible_move_count = 0
         moves: List[CameraMove] = []
 
-        # ── 0. ADAPTIVE move budget — Sable decides how many moves based on data ──
+        # ── 0. ADAPTIVE move budget,  Sable decides how many moves based on data ──
         # Instead of a hardcoded cap, the budget scales with threat level
         # and number of critical/error-severity findings.
         # Low threat (0-1): 3-5 moves (quick scan, leave camera free for user)
@@ -268,7 +268,7 @@ class AutonomousCameraPilot:
         adaptive_budget = self._calculate_move_budget(results, snapshot)
         logger.info("Adaptive camera budget: %d moves (threat=%d/5)", adaptive_budget, threat_level)
 
-        # ── 1. Opening move — RANDOMIZED, never the same spot ──
+        # ── 1. Opening move,  RANDOMIZED, never the same spot ──
         opening = self._pick_random_opening(snapshot)
         moves.append(CameraMove(
             lat=opening[0], lng=opening[1], zoom=4.0,
@@ -284,14 +284,14 @@ class AutonomousCameraPilot:
         finding_moves = self._generate_finding_moves(results, snapshot, module_alerts)
         moves.extend(finding_moves)
 
-        # ── 3. Patrol — only if budget allows and findings are sparse ──
+        # ── 3. Patrol,  only if budget allows and findings are sparse ──
         remaining = adaptive_budget - len(moves)
         if remaining > 1:
             patrol_count = min(2, remaining - 1)  # Leave 1 slot for closing
             patrol_moves = self._generate_patrol_moves(patrol_count, snapshot)
             moves.extend(patrol_moves)
 
-        # ── 4. Closing move — RANDOMIZED location ──
+        # ── 4. Closing move,  RANDOMIZED location ──
         # Close at a different region than opening
         closing = self._pick_random_closing(snapshot, opening)
         moves.append(CameraMove(
@@ -300,7 +300,7 @@ class AutonomousCameraPilot:
             label="Intelligence sweep complete",
             domain="threat_fusion",
             dwell_seconds=2.0,
-            toast_message=f"Sweep #{self._cycle_count} complete — Threat Level {threat_level}/5: {results.get('threat_name', '?')}",
+            toast_message=f"Sweep #{self._cycle_count} complete,  Threat Level {threat_level}/5: {results.get('threat_name', '?')}",
             severity="warning" if threat_level >= 3 else "info",
         ))
 
@@ -311,7 +311,7 @@ class AutonomousCameraPilot:
         try:
             brief = self._build_intel_brief(results, snapshot, moves, module_alerts)
 
-            # ── 5b-ii. Active web research — YouTube + news search ──
+            # ── 5b-ii. Active web research,  YouTube + news search ──
             if brief.get("intelEvents"):
                 try:
                     enriched = await self._enrich_with_web_research(brief["intelEvents"])
@@ -372,7 +372,7 @@ class AutonomousCameraPilot:
                         dwell_seconds=4.0,
                         highlight_radius=100_000,
                         highlight_color="#ff6600",
-                        toast_message=f"EW activity — GPS jamming detected",
+                        toast_message=f"EW activity,  GPS jamming detected",
                     ))
 
         # --- Military flight concentrations ---
@@ -381,7 +381,7 @@ class AutonomousCameraPilot:
             moves.append(CameraMove(
                 lat=cluster["lat"], lng=cluster["lng"], zoom=8.0,
                 style="SATELLITE",
-                label=f"Military activity — {cluster['count']} aircraft",
+                label=f"Military activity,  {cluster['count']} aircraft",
                 domain="military",
                 severity="warning" if cluster["count"] > 10 else "info",
                 dwell_seconds=5.0,
@@ -422,7 +422,7 @@ class AutonomousCameraPilot:
                     dwell_seconds=5.0,
                     highlight_radius=50_000,
                     highlight_color="#ff4400",
-                    toast_message=f"Monitoring nuclear facility — {fac.get('name', 'unknown')}",
+                    toast_message=f"Monitoring nuclear facility,  {fac.get('name', 'unknown')}",
                 ))
 
         # --- Wargaming live scenarios ---
@@ -460,7 +460,7 @@ class AutonomousCameraPilot:
                             dwell_seconds=5.0,
                             highlight_radius=150_000,
                             highlight_color="#ff0044",
-                            toast_message="Kill chain tracker — phase advancement detected",
+                            toast_message="Kill chain tracker,  phase advancement detected",
                         ))
                         break  # Just one
 
@@ -504,7 +504,7 @@ class AutonomousCameraPilot:
                         dwell_seconds=4.0,
                         highlight_radius=300_000,
                         highlight_color="#ff8800",
-                        toast_message=f"Internet outage detected — {outage.get('country', '?')}",
+                        toast_message=f"Internet outage detected,  {outage.get('country', '?')}",
                     ))
 
         # --- Ship concentrations (chokepoints) ---
@@ -514,14 +514,14 @@ class AutonomousCameraPilot:
                 moves.append(CameraMove(
                     lat=cluster["lat"], lng=cluster["lng"], zoom=9.0,
                     style="SATELLITE",
-                    label=f"Maritime concentration — {cluster['count']} vessels",
+                    label=f"Maritime concentration,  {cluster['count']} vessels",
                     domain="ships",
                     severity="info",
                     dwell_seconds=4.0,
                     toast_message=f"Analyzing {cluster['count']} vessels in chokepoint",
                 ))
 
-        # --- Environmental — major earthquakes ---
+        # --- Environmental,  major earthquakes ---
         major_quakes = [q for q in snapshot.earthquakes
                         if float(q.get("mag", q.get("magnitude", 0))) >= 5.5]
         for quake in major_quakes[:2]:
@@ -538,12 +538,12 @@ class AutonomousCameraPilot:
                     dwell_seconds=4.0,
                     highlight_radius=100_000,
                     highlight_color="#ff6600",
-                    toast_message=f"Seismic event — magnitude {mag}",
+                    toast_message=f"Seismic event,  magnitude {mag}",
                 ))
 
         # --- FININT dark fleet ---
         if results.get("finint_alerts", 0) > 0 and snapshot.ships:
-            # Suspicious vessels — look at low-speed ships
+            # Suspicious vessels,  look at low-speed ships
             suspicious = [s for s in snapshot.ships
                           if float(s.get("speed", s.get("sog", 99))) < 2.0]
             if suspicious:
@@ -571,7 +571,7 @@ class AutonomousCameraPilot:
                     moves.append(CameraMove(
                         lat=cluster["lat"], lng=cluster["lng"], zoom=7.0,
                         style="SATELLITE",
-                        label=f"Fire cluster — {cluster['count']} hotspots",
+                        label=f"Fire cluster,  {cluster['count']} hotspots",
                         domain="fires",
                         severity="info",
                         dwell_seconds=3.0,
@@ -579,10 +579,10 @@ class AutonomousCameraPilot:
                     ))
 
         # ═══════════════════════════════════════════════════════════════
-        # EYE OF GOD — New data sources for complete global coverage
+        # EYE OF GOD,  New data sources for complete global coverage
         # ═══════════════════════════════════════════════════════════════
 
-        # --- CCTV cameras — fly to and inspect ---
+        # --- CCTV cameras,  fly to and inspect ---
         if snapshot.cctv:
             cctv_with_coords = [c for c in snapshot.cctv if self._extract_coords(c)]
             if cctv_with_coords:
@@ -599,11 +599,11 @@ class AutonomousCameraPilot:
                         domain="cyber",
                         severity="info",
                         dwell_seconds=5.0,
-                        toast_message=f"Inspecting CCTV camera — {cam_name}",
+                        toast_message=f"Inspecting CCTV camera,  {cam_name}",
                         media_url=cam_url,
                     ))
 
-        # --- Open cameras (DOT / Webcams) — fly to and show feed ---
+        # --- Open cameras (DOT / Webcams),  fly to and show feed ---
         if snapshot.open_cameras:
             oc_with_coords = [c for c in snapshot.open_cameras if self._extract_coords(c)]
             if oc_with_coords:
@@ -620,7 +620,7 @@ class AutonomousCameraPilot:
                         domain="infrastructure",
                         severity="info",
                         dwell_seconds=4.0,
-                        toast_message=f"Viewing DOT webcam — {cam_name}",
+                        toast_message=f"Viewing DOT webcam,  {cam_name}",
                         media_url=cam_url,
                     ))
 
@@ -636,13 +636,13 @@ class AutonomousCameraPilot:
                     moves.append(CameraMove(
                         lat=lat, lng=lng, zoom=8.0,
                         style="SATELLITE",
-                        label=f"Conflict: {event_type} — {location}",
+                        label=f"Conflict: {event_type},  {location}",
                         domain="military",
                         severity="warning",
                         dwell_seconds=4.0,
                         highlight_radius=100_000,
                         highlight_color="#ff2200",
-                        toast_message=f"Active conflict — {event_type} in {location}",
+                        toast_message=f"Active conflict,  {event_type} in {location}",
                     ))
 
         # --- Carrier / USNI fleet positions ---
@@ -661,7 +661,7 @@ class AutonomousCameraPilot:
                         dwell_seconds=5.0,
                         highlight_radius=200_000,
                         highlight_color="#0066ff",
-                        toast_message=f"Tracking carrier group — {name}",
+                        toast_message=f"Tracking carrier group,  {name}",
                     ))
 
         # --- Cyber threats (geographic origin) ---
@@ -681,7 +681,7 @@ class AutonomousCameraPilot:
                         dwell_seconds=4.0,
                         highlight_radius=150_000,
                         highlight_color="#00ffcc",
-                        toast_message=f"Cyber threat origin — {threat_type}",
+                        toast_message=f"Cyber threat origin,  {threat_type}",
                     ))
 
         # --- Ransomware clusters ---
@@ -701,7 +701,7 @@ class AutonomousCameraPilot:
                     dwell_seconds=5.0,
                     highlight_radius=100_000,
                     highlight_color="#ff00ff",
-                    toast_message=f"Ransomware activity — {group_name} targeting {victim}",
+                    toast_message=f"Ransomware activity,  {group_name} targeting {victim}",
                 ))
 
         # --- GDELT events ---
@@ -725,7 +725,7 @@ class AutonomousCameraPilot:
                         domain="causal",
                         severity="info",
                         dwell_seconds=3.0,
-                        toast_message=f"Global event — {title}",
+                        toast_message=f"Global event,  {title}",
                     ))
 
         # --- News feed geolocations (freshness-biased, less repetitive) ---
@@ -757,7 +757,7 @@ class AutonomousCameraPilot:
                         domain="narrative_warfare",
                         severity=sev,
                         dwell_seconds=dwell,
-                        toast_message=f"News ({'fresh' if sev == 'warning' else 'context'}) — {headline}",
+                        toast_message=f"News ({'fresh' if sev == 'warning' else 'context'}),  {headline}",
                     ))
 
         # --- Prediction markets (if geographic data) ---
@@ -776,10 +776,10 @@ class AutonomousCameraPilot:
                     domain="wargaming",
                     severity="info",
                     dwell_seconds=3.0,
-                    toast_message=f"Prediction market signal — {question}",
+                    toast_message=f"Prediction market signal,  {question}",
                 ))
 
-        # --- Dark intel (dict — may contain nested lists with coords) ---
+        # --- Dark intel (dict,  may contain nested lists with coords) ---
         if snapshot.dark_intel and isinstance(snapshot.dark_intel, dict):
             dark_items = []
             for _dk, _dv in snapshot.dark_intel.items():
@@ -798,14 +798,14 @@ class AutonomousCameraPilot:
                     dwell_seconds=5.0,
                     highlight_radius=100_000,
                     highlight_color="#8800ff",
-                    toast_message="Dark web activity detected — analyzing origin",
+                    toast_message="Dark web activity detected,  analyzing origin",
                 ))
 
         # --- Mine snapshot.raw for ANY remaining datasets with coordinates ---
         raw_extra_moves = self._mine_raw_for_coords(snapshot, max_extra=3)
         moves.extend(raw_extra_moves)
 
-        # --- LiveUAMap — active conflict events ---
+        # --- LiveUAMap,  active conflict events ---
         if snapshot.liveuamap:
             lua_with_coords = [e for e in snapshot.liveuamap if self._extract_coords(e)]
             if lua_with_coords:
@@ -818,7 +818,7 @@ class AutonomousCameraPilot:
                         label=f"LiveUA: {title}", domain="military",
                         severity="warning", dwell_seconds=4.0,
                         highlight_radius=50_000, highlight_color="#ff4400",
-                        toast_message=f"LiveUAMap conflict event — {title}",
+                        toast_message=f"LiveUAMap conflict event,  {title}",
                     ))
 
         # --- Emergency squawks (7500/7600/7700) ---
@@ -834,7 +834,7 @@ class AutonomousCameraPilot:
                         label=f"SQUAWK {code}: {callsign}", domain="military",
                         severity="critical", dwell_seconds=5.0,
                         highlight_radius=80_000, highlight_color="#ff0000",
-                        toast_message=f"Emergency squawk {code} — {callsign}",
+                        toast_message=f"Emergency squawk {code},  {callsign}",
                     ))
 
         # --- Radiation monitors ---
@@ -849,7 +849,7 @@ class AutonomousCameraPilot:
                     label=f"Radiation: {name}", domain="nuclear",
                     severity="warning", dwell_seconds=4.0,
                     highlight_radius=50_000, highlight_color="#ffff00",
-                    toast_message=f"Radiation monitoring — {name}",
+                    toast_message=f"Radiation monitoring,  {name}",
                 ))
 
         # --- GDACS disasters ---
@@ -865,7 +865,7 @@ class AutonomousCameraPilot:
                         label=f"Disaster: {title}", domain="environmental",
                         severity="error", dwell_seconds=4.0,
                         highlight_radius=150_000, highlight_color="#ff6600",
-                        toast_message=f"GDACS disaster — {title}",
+                        toast_message=f"GDACS disaster,  {title}",
                     ))
 
         # --- EONET events (NASA natural events) ---
@@ -879,7 +879,7 @@ class AutonomousCameraPilot:
                     lat=lat, lng=lng, zoom=7.0, style="SATELLITE",
                     label=f"EONET: {title}", domain="environmental",
                     severity="warning", dwell_seconds=3.0,
-                    toast_message=f"NASA EONET event — {title}",
+                    toast_message=f"NASA EONET event,  {title}",
                 ))
 
         # --- NOTAMs / TFR (airspace restrictions) ---
@@ -894,7 +894,7 @@ class AutonomousCameraPilot:
                     label=f"NOTAM: {desc}", domain="military",
                     severity="info", dwell_seconds=3.0,
                     highlight_radius=80_000, highlight_color="#ff8800",
-                    toast_message=f"Airspace restriction — {desc}",
+                    toast_message=f"Airspace restriction,  {desc}",
                 ))
 
         # --- Piracy incidents ---
@@ -909,7 +909,7 @@ class AutonomousCameraPilot:
                     label=f"Piracy: {desc}", domain="piracy",
                     severity="warning", dwell_seconds=4.0,
                     highlight_radius=100_000, highlight_color="#ff0066",
-                    toast_message=f"Maritime piracy — {desc}",
+                    toast_message=f"Maritime piracy,  {desc}",
                 ))
 
         # --- ISS position ---
@@ -921,7 +921,7 @@ class AutonomousCameraPilot:
                     moves.append(CameraMove(
                         lat=float(iss_lat), lng=float(iss_lng), zoom=5.0,
                         style="SATELLITE",
-                        label="ISS — International Space Station",
+                        label="ISS,  International Space Station",
                         domain="space", severity="info", dwell_seconds=3.0,
                         highlight_radius=300_000, highlight_color="#00ccff",
                         toast_message="Tracking ISS ground position",
@@ -935,7 +935,7 @@ class AutonomousCameraPilot:
 
         return moves
 
-    # ── Patrol mode — dynamic global sweep, never repeating ────────────
+    # ── Patrol mode,  dynamic global sweep, never repeating ────────────
 
     def _generate_patrol_moves(self, count: int = 3, snapshot=None) -> List[CameraMove]:
         """
@@ -945,7 +945,7 @@ class AutonomousCameraPilot:
         """
         candidates: List[Dict[str, Any]] = []
 
-        # 1. Static waypoints — shuffled, not sequential
+        # 1. Static waypoints,  shuffled, not sequential
         shuffled_wp = list(PATROL_WAYPOINTS)
         random.shuffle(shuffled_wp)
         candidates.extend(shuffled_wp)
@@ -975,18 +975,18 @@ class AutonomousCameraPilot:
                 label=f"Patrol: {wp['name']}",
                 domain="default",
                 dwell_seconds=3.0,
-                toast_message=f"Eye of God — scanning {wp['name']}",
+                toast_message=f"Eye of God,  scanning {wp['name']}",
                 severity="info",
             ))
             # Mark as visited
             self._mark_visited(wp["lat"], wp["lng"])
         return moves
 
-    # ── Eye of God — helper methods for global coverage ──────────────
+    # ── Eye of God,  helper methods for global coverage ──────────────
 
     @staticmethod
     def _extract_coords(entity: Any) -> Optional[Tuple[float, float]]:
-        """Universal coordinate extractor — handles every format we've seen."""
+        """Universal coordinate extractor,  handles every format we've seen."""
         if entity is None:
             return None
         if isinstance(entity, dict):
@@ -1082,7 +1082,7 @@ class AutonomousCameraPilot:
 
         # Base budget from threat level
         if threat <= 1:
-            base = 4      # Quick scan — leave camera to user
+            base = 4      # Quick scan,  leave camera to user
         elif threat == 2:
             base = 6
         elif threat == 3:
@@ -1104,10 +1104,10 @@ class AutonomousCameraPilot:
         bonus = min(3, critical_count)
         budget = base + bonus
 
-        # Hard ceiling — never exceed self.max_moves (env override) or 15
+        # Hard ceiling,  never exceed self.max_moves (env override) or 15
         ceiling = min(self.max_moves, 15)
         budget = min(budget, ceiling)
-        # Hard floor — at least 3 (open + 1 finding + close)
+        # Hard floor,  at least 3 (open + 1 finding + close)
         budget = max(budget, 3)
         return budget
 
@@ -1283,7 +1283,7 @@ class AutonomousCameraPilot:
         return terms
 
     def _pick_random_opening(self, snapshot) -> Tuple[float, float]:
-        """Pick a random opening location — never the same as last time."""
+        """Pick a random opening location,  never the same as last time."""
         # Gather candidate openings from data
         candidates: List[Tuple[float, float]] = []
 
@@ -1315,7 +1315,7 @@ class AutonomousCameraPilot:
         return choice
 
     def _pick_random_closing(self, snapshot, opening: Tuple[float, float]) -> Tuple[float, float]:
-        """Pick a closing location on LAND — never leave the camera staring at ocean.
+        """Pick a closing location on LAND,  never leave the camera staring at ocean.
 
         Priority order:
           1. A real data point from the snapshot (city, event, facility, camera)
@@ -1349,7 +1349,7 @@ class AutonomousCameraPilot:
                 if coords:
                     candidates.append((coords[0], coords[1], label))
 
-        # ── 2. Add patrol waypoints (curated — always on land) ──
+        # ── 2. Add patrol waypoints (curated,  always on land) ──
         for wp in PATROL_WAYPOINTS:
             candidates.append((wp["lat"], wp["lng"], wp["name"]))
 
@@ -1369,7 +1369,7 @@ class AutonomousCameraPilot:
             logger.debug("Closing move on land: %s (%.2f, %.2f)", pick[2], pick[0], pick[1])
             return (pick[0], pick[1])
 
-        # ── 5. Absolute fallback — major world cities ──
+        # ── 5. Absolute fallback,  major world cities ──
         fallback_cities = [
             (51.5, -0.12),   # London
             (40.7, -74.0),   # New York
@@ -1388,7 +1388,7 @@ class AutonomousCameraPilot:
     def _likely_on_land(lat: float, lng: float) -> bool:
         """Quick heuristic: reject coordinates that are almost certainly ocean.
 
-        This is NOT a full land/water mask — it's a cheap check for the most
+        This is NOT a full land/water mask,  it's a cheap check for the most
         common ocean pitfalls (mid-Atlantic, mid-Pacific, Southern Ocean, etc.).
         False positives (saying "ocean" for coastal land) are acceptable because
         we have plenty of candidates; false negatives (saying "land" for ocean)
@@ -1428,7 +1428,7 @@ class AutonomousCameraPilot:
     def _extract_data_waypoints(self, snapshot) -> List[Dict[str, Any]]:
         """
         Mine ALL live data for geographic points to use as patrol targets.
-        This is what makes Sable the Eye of God — it visits real data, not
+        This is what makes Sable the Eye of God,  it visits real data, not
         just the same 10 hardcoded coordinates.
         """
         waypoints: List[Dict[str, Any]] = []
@@ -1519,7 +1519,7 @@ class AutonomousCameraPilot:
     def _mine_raw_for_coords(self, snapshot, max_extra: int = 3) -> List[CameraMove]:
         """
         Scan snapshot.raw for datasets NOT covered by the typed fields.
-        This catches everything — radiation monitors, datacenters, fleet tracker,
+        This catches everything,  radiation monitors, datacenters, fleet tracker,
         weather, etc. Sable sees it ALL.
         """
         moves: List[CameraMove] = []
@@ -1557,7 +1557,7 @@ class AutonomousCameraPilot:
                     domain="default",
                     severity="info",
                     dwell_seconds=3.0,
-                    toast_message=f"Scanning {key} — {label}",
+                    toast_message=f"Scanning {key},  {label}",
                 ))
                 if len(moves) >= max_extra:
                     break
@@ -1652,13 +1652,13 @@ class AutonomousCameraPilot:
                     move.label, move.lat, move.lng, move.zoom, move.style,
                 )
 
-                # ── Live camera check — open a nearby stream if available ──
+                # ── Live camera check,  open a nearby stream if available ──
                 await self._try_open_live_camera(move)
 
-                # ── Operation diary — record what we're seeing ──
+                # ── Operation diary,  record what we're seeing ──
                 await self._record_diary_entry(move)
 
-                # ── Dossier capture — log structured intel ──
+                # ── Dossier capture,  log structured intel ──
                 await self._record_dossier_entry(move)
 
                 # ── Push live intel event for ticker ──
@@ -1682,7 +1682,7 @@ class AutonomousCameraPilot:
                     except Exception:
                         pass  # Non-critical
 
-                # Dwell — hold position before next move
+                # Dwell,  hold position before next move
                 await asyncio.sleep(move.dwell_seconds)
 
                 # Minimum delay between moves
@@ -1711,7 +1711,7 @@ class AutonomousCameraPilot:
         if url in self._shown_live_cameras:
             return
 
-        # Cooldown — don't spam the viewer
+        # Cooldown,  don't spam the viewer
         now = time.time()
         if now - self._live_camera_cooldown < 10.0:
             return
@@ -1737,7 +1737,7 @@ class AutonomousCameraPilot:
         except Exception as e:
             logger.debug("Failed to open camera feed: %s", e)
 
-    # ── Operation diary — automatic observation logging ──────────────
+    # ── Operation diary,  automatic observation logging ──────────────
 
     async def _record_diary_entry(self, move) -> None:
         """Record what Sable is observing at this location in the operation diary."""
@@ -1796,11 +1796,11 @@ class AutonomousCameraPilot:
         except Exception as e:
             logger.debug("Diary entry send failed: %s", e)
 
-    # ── Dossier capture — structured intel collection ────────────────
+    # ── Dossier capture,  structured intel collection ────────────────
 
     async def _record_dossier_entry(self, move) -> None:
         """Capture structured dossier data for critical/warning findings."""
-        # Only capture for warning+ severity — dossier is for notable items
+        # Only capture for warning+ severity,  dossier is for notable items
         if move.severity not in ("warning", "error", "critical"):
             return
 
@@ -1871,7 +1871,7 @@ class AutonomousCameraPilot:
         except Exception as e:
             logger.debug("Dossier entry send failed: %s", e)
 
-    # ── Helper — cluster entities by geographic grid ─────────────────
+    # ── Helper,  cluster entities by geographic grid ─────────────────
 
     def _cluster_entities(
         self,
@@ -1920,7 +1920,7 @@ class AutonomousCameraPilot:
         """
         Construct a full intelligence brief from analysis results, snapshot,
         and planned camera moves. This brief feeds the IntelOverlay panel
-        in the dashboard — threat matrix, wargame scenarios, intel events,
+        in the dashboard,  threat matrix, wargame scenarios, intel events,
         and sensor stats.
         """
         now_iso = datetime.now(timezone.utc).isoformat()
@@ -2084,7 +2084,7 @@ class AutonomousCameraPilot:
             "details": f"{fire_count} fires, {eq_count} earthquakes",
         })
 
-        # Wargaming domain — based on active scenarios
+        # Wargaming domain,  based on active scenarios
         wg_count = results.get("wargame_live_scenarios", 0)
         wg_risks = results.get("wargame_escalation_risks", [])
         wg_level = 0.0
@@ -2156,7 +2156,7 @@ class AutonomousCameraPilot:
         events = []
         now_iso = datetime.now(timezone.utc).isoformat()
 
-        # From camera moves — each significant move becomes an event
+        # From camera moves,  each significant move becomes an event
         for move in moves:
             if move.domain and move.domain != "default" and move.label:
                 sev = "info"
@@ -2175,7 +2175,7 @@ class AutonomousCameraPilot:
                     "lng": move.lng,
                 })
 
-        # From module alerts — handle both dicts and dataclass objects
+        # From module alerts,  handle both dicts and dataclass objects
         if module_alerts:
             for module_name, alerts in module_alerts.items():
                 for alert in (alerts or [])[:3]:
@@ -2199,7 +2199,7 @@ class AutonomousCameraPilot:
                         "lng": a_lng,
                     })
 
-        # From snapshot — significant items
+        # From snapshot,  significant items
         if snapshot.gps_jamming:
             for zone in snapshot.gps_jamming[:3]:
                 lat = zone.get("lat", zone.get("latitude", 0))
@@ -2295,7 +2295,7 @@ class AutonomousCameraPilot:
         if n <= 4: return "#f97316"
         return "#ef4444"
 
-    # ── Helper — match scenario trigger text to coordinates ──────────
+    # ── Helper,  match scenario trigger text to coordinates ──────────
 
     @staticmethod
     def _match_scenario_to_coords(trigger: str) -> Optional[Tuple[float, float]]:
@@ -2318,7 +2318,7 @@ class AutonomousCameraPilot:
                 return coords
         return None
 
-    # ── Story tracking — persistent follow-up system ───────────────
+    # ── Story tracking,  persistent follow-up system ───────────────
 
     def _load_tracked_stories(self):
         """Load tracked stories from disk."""
@@ -2384,7 +2384,7 @@ class AutonomousCameraPilot:
                 ev["followUp"] = True
                 ev["storyId"] = matched_sid
             else:
-                # New story — start tracking
+                # New story,  start tracking
                 self._tracked_stories[story_id] = {
                     "title": ev["title"],
                     "domain": ev.get("domain", ""),
@@ -2411,7 +2411,7 @@ class AutonomousCameraPilot:
         self._save_tracked_stories()
         return events
 
-    # ── Video enrichment — find related video URLs from news feeds ───
+    # ── Video enrichment,  find related video URLs from news feeds ───
 
     def _enrich_with_videos(self, events: list, snapshot) -> list:
         """Try to attach related video URLs to intel events from news feeds.
@@ -2492,7 +2492,7 @@ class AutonomousCameraPilot:
 
         return events
 
-    # ── Active web research — YouTube + news search for intel events ─
+    # ── Active web research,  YouTube + news search for intel events ─
 
     # Rate limits: max searches per cycle to protect API quotas
     _MAX_VIDEO_SEARCHES_PER_CYCLE = 5
@@ -2591,7 +2591,7 @@ class AutonomousCameraPilot:
         if len(title.split()) < 3 and domain:
             title = f"{domain} {title}"
 
-        # Cap query length — search engines work best with ~5-8 words
+        # Cap query length,  search engines work best with ~5-8 words
         words = title.split()[:8]
         query = " ".join(words)
 
@@ -2696,14 +2696,14 @@ class AutonomousCameraPilot:
                 if src_lat and src_lng:
                     to_lat, to_lng = src_lat, src_lng
             elif src_lat and src_lng:
-                # We know where it landed but not where it came from — estimate
+                # We know where it landed but not where it came from,  estimate
                 from_lat = src_lat + random.uniform(1.0, 3.0) * random.choice([-1, 1])
                 from_lng = src_lng + random.uniform(1.0, 3.0) * random.choice([-1, 1])
                 to_lat, to_lng = src_lat, src_lng
             else:
                 continue  # Can't determine trajectory without coordinates
 
-            # Build intercept point — slightly before target if intercepted
+            # Build intercept point,  slightly before target if intercepted
             intercept_lat = intercept_lng = None
             if is_intercepted:
                 t = random.uniform(0.6, 0.85)

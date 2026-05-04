@@ -371,7 +371,7 @@ do_start() {
         if python "$DIR/scripts/depshield.py" --root "$DIR" scan 2>/dev/null; then
             echo "  ✅ Supply chain clean"
         else
-            echo "  ⚠️  Dependency changes detected — review with: python scripts/depshield.py audit"
+            echo "  ⚠️  Dependency changes detected,  review with: python scripts/depshield.py audit"
         fi
     fi
 
@@ -588,7 +588,7 @@ do_run() {
         start_dev_studio
     fi
 
-    # Cleanup trap — kills everything when this process exits
+    # Cleanup trap,  kills everything when this process exits
     _foreground_cleanup() {
         echo ""
         echo "🛑 Shutting down all services..."
@@ -606,7 +606,7 @@ do_run() {
 
     echo "🚀 Starting Open-Sable [profile: $PROFILE]..."
 
-    # Run agent in foreground — blocks until Ctrl+C / SIGTERM / terminal close
+    # Run agent in foreground,  blocks until Ctrl+C / SIGTERM / terminal close
     SABLE_PROFILE="$PROFILE" python -m opensable --profile "$PROFILE" 2>&1 | tee -a "$LOGFILE"
 
     # When agent exits, trap fires and cleans up everything

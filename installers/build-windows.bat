@@ -5,7 +5,7 @@ REM  Run from the installers/ directory
 REM ═══════════════════════════════════════════════════════════
 setlocal
 
-echo ===== OpenSable Installer — Windows Build =====
+echo ===== OpenSable Installer,  Windows Build =====
 echo.
 
 where pyinstaller >nul 2>&1

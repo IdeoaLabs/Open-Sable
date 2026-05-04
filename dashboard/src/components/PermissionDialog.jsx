@@ -23,7 +23,7 @@ const ACTION_ICONS = {
 const ACTION_DESCRIPTIONS = {
   browser_navigate: 'The agent wants to open a web page. This allows it to browse, scrape, or interact with websites on your behalf.',
   file_write: 'The agent wants to create or modify a file on your system. Review the path below to make sure it\'s expected.',
-  file_delete: 'The agent wants to permanently delete a file. This action cannot be undone — review carefully.',
+  file_delete: 'The agent wants to permanently delete a file. This action cannot be undone,  review carefully.',
   system_command: 'The agent wants to run a shell command on your machine. Only allow if you trust the command shown below.',
   email_send: 'The agent wants to send an email from your account. Check the recipient and content before approving.',
   email_read: 'The agent wants to read emails from your inbox. This lets it access message contents and metadata.',

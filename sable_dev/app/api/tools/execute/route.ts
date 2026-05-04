@@ -1,5 +1,5 @@
 /**
- * POST /api/tools/execute — Execute a sandbox tool.
+ * POST /api/tools/execute,  Execute a sandbox tool.
  * 
  * Called by the AI streaming routes when the model wants to
  * read files, edit code, run commands, or search.

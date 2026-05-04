@@ -3,7 +3,7 @@
  * 
  * Handles:
  * - Retryable errors (429, 503, timeout) with exponential backoff
- * - Non-retryable errors (auth, not found) — fail immediately
+ * - Non-retryable errors (auth, not found),  fail immediately
  * - Conversation interruption detection and recovery
  * - Auto-fix loop: build errors → re-invoke model with error context
  */
@@ -39,7 +39,7 @@ export function classifyError(error: any): ErrorCategory {
     return 'rate_limit';
   }
 
-  // Context overflow — need to reduce context, not retry blindly
+  // Context overflow,  need to reduce context, not retry blindly
   if (message.includes('context length') || message.includes('token limit') || 
       message.includes('maximum context') || message.includes('too long')) {
     return 'context_overflow';
@@ -81,12 +81,12 @@ export async function withRetry<T>(
       attempt++;
       const category = classifyError(error);
 
-      // Permanent errors — don't retry
+      // Permanent errors,  don't retry
       if (category === 'permanent') {
         throw error;
       }
 
-      // Context overflow — don't retry (caller needs to reduce context)
+      // Context overflow,  don't retry (caller needs to reduce context)
       if (category === 'context_overflow') {
         throw Object.assign(error, { isContextOverflow: true });
       }

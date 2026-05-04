@@ -1,5 +1,5 @@
 """
-Zunvra social network tool implementations — mixin for ToolRegistry.
+Zunvra social network tool implementations,  mixin for ToolRegistry.
 """
 
 import json

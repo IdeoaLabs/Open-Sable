@@ -984,7 +984,7 @@ def get_llm(config):
         except Exception as e:
             logger.info(f"Ollama not reachable at {ollama_url}: {e}")
     else:
-        logger.info("OLLAMA_BASE_URL is empty — skipping local Ollama")
+        logger.info("OLLAMA_BASE_URL is empty,  skipping local Ollama")
 
     if ollama_available:
         try:
@@ -1050,7 +1050,7 @@ def get_llm(config):
         except Exception as e:
             logger.warning(f"Failed to initialize Ollama LLM: {e}")
 
-    # ── Ollama not available — fall back to cloud providers ───────────────
+    # ── Ollama not available,  fall back to cloud providers ───────────────
     logger.info("Looking for cloud/remote LLM providers...")
     for provider in CloudLLM._provider_order(config, include_fm_when_openwebui=False):
         if CloudLLM.is_provider_configured(config, provider):
@@ -1710,7 +1710,7 @@ class CloudLLM:
             text = resp.message.content[0].text if resp.message.content else ""
         return {"tool_call": None, "tool_calls": [], "text": text}
 
-    # ── Open WebUI (aiohttp — Cloudflare blocks openai SDK's httpx) ─────
+    # ── Open WebUI (aiohttp,  Cloudflare blocks openai SDK's httpx) ─────
 
     async def _openwebui_invoke(self, messages: List[Dict], tools: List[Dict]) -> Dict[str, Any]:
         """Call Open WebUI via aiohttp (bypasses Cloudflare httpx block).
@@ -1730,10 +1730,10 @@ class CloudLLM:
             if now < self._circuit_open_until:
                 wait = int(self._circuit_open_until - now)
                 raise RuntimeError(
-                    f"OpenWebUI circuit breaker open — {self._consecutive_failures} "
+                    f"OpenWebUI circuit breaker open,  {self._consecutive_failures} "
                     f"consecutive failures. Retrying in {wait}s."
                 )
-            # Cooldown expired — allow a single probe
+            # Cooldown expired,  allow a single probe
             logger.info("OpenWebUI circuit breaker: attempting probe request...")
 
         url = getattr(self, "_openwebui_base_url", "") + "/chat/completions"
@@ -1742,7 +1742,7 @@ class CloudLLM:
             "Content-Type": "application/json",
         }
         body: dict = {"model": self.current_model, "messages": messages}
-        # NOTE: tools deliberately omitted — Ollama/OWUI backends return 400
+        # NOTE: tools deliberately omitted,  Ollama/OWUI backends return 400
 
         try:
             async with aiohttp.ClientSession() as session:
@@ -1827,7 +1827,7 @@ class CloudLLM:
         "kimi",
         "qwen",
         "openrouter",
-        # NOTE: "openwebui" intentionally excluded — Cloudflare blocks the
+        # NOTE: "openwebui" intentionally excluded,  Cloudflare blocks the
         # openai SDK's httpx transport; we use aiohttp for OpenWebUI instead.
     }
 
@@ -1839,7 +1839,7 @@ class CloudLLM:
             return await self._invoke_with_failover(messages, tools, e)
 
     async def plain_chat(self, messages: List[Dict]) -> Dict[str, Any]:
-        """Simple chat without tools — used for the no-tools fast-path.
+        """Simple chat without tools,  used for the no-tools fast-path.
 
         Cloud providers handle an empty tools list fine, so we just
         call invoke_with_tools with no tools.

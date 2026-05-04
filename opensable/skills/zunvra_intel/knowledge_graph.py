@@ -1,5 +1,5 @@
 """
-#11 — Knowledge Graph Engine (Entity Relationship Intelligence)
+#11,  Knowledge Graph Engine (Entity Relationship Intelligence)
 
 The CORE capability that makes Palantir, Palantir.  An in-memory directed
 graph that maps every entity (aircraft, vessel, person, organization,
@@ -7,7 +7,7 @@ facility, IP address, location) to every other entity through observed
 relationships: co-location, ownership, communication, shared-route,
 temporal-proximity, sanctions-link, etc.
 
-This is NOT a simple adjacency list — it supports:
+This is NOT a simple adjacency list,  it supports:
   - Weighted, time-decaying edges
   - Multi-hop path discovery (6-degree queries)
   - Community detection (find clusters/cells)
@@ -335,7 +335,7 @@ class KnowledgeGraphEngine:
                            if n.lat is not None and n.lon is not None
                            and n.entity_type in ("aircraft", "vessel")]
 
-        # O(n²) but bounded by entity types — typically <5000 positioned nodes
+        # O(n²) but bounded by entity types,  typically <5000 positioned nodes
         for i, (nid1, n1) in enumerate(positioned_nodes):
             for nid2, n2 in positioned_nodes[i + 1:]:
                 if n1.entity_type == n2.entity_type:

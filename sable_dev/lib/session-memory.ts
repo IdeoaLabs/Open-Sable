@@ -251,7 +251,7 @@ async function extractWithAI(
 - Files that are important to the project
 - Errors that were resolved and how
 
-Output as a bullet list. Be concise — one line per fact. Only include genuinely useful insights.
+Output as a bullet list. Be concise,  one line per fact. Only include genuinely useful insights.
 
 Conversation:
 ${recentMessages}`;

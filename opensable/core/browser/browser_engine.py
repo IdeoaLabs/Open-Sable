@@ -1,10 +1,10 @@
 """
-Browser automation engine — PinchTab preferred, Playwright fallback.
+Browser automation engine,  PinchTab preferred, Playwright fallback.
 
 When PinchTab is available (local binary or external server), all browsing
 goes through its token-efficient HTTP API (~800 tokens/page, stealth mode,
 persistent sessions).  When PinchTab is not reachable, the engine falls back
-to bundled Playwright automatically — zero config change needed.
+to bundled Playwright automatically,  zero config change needed.
 
 Ref: https://github.com/pinchtab/pinchtab
 """
@@ -47,7 +47,7 @@ def sanitize_web_content(text: str) -> str:
 
 
 class BrowserEngine:
-    """Browser automation engine — PinchTab first, Playwright fallback."""
+    """Browser automation engine,  PinchTab first, Playwright fallback."""
 
     def __init__(self):
         self.playwright = None
@@ -113,7 +113,7 @@ class BrowserEngine:
                 return False
 
     async def initialize(self) -> bool:
-        """Initialize browser engine — PinchTab first, Playwright fallback."""
+        """Initialize browser engine,  PinchTab first, Playwright fallback."""
         if self._initialized:
             return True
 
@@ -138,7 +138,7 @@ class BrowserEngine:
 
                 self.playwright = await async_playwright().start()
 
-                # Respect BROWSER_HEADLESS env var — allows watching the agent work
+                # Respect BROWSER_HEADLESS env var,  allows watching the agent work
                 headless = os.environ.get("BROWSER_HEADLESS", "true").lower() not in ("false", "0", "no")
                 self._headless = headless
 
@@ -284,7 +284,7 @@ class BrowserEngine:
         # ── Playwright path ──────────────────────────────────────────
 
         if not self.browser:
-            # PinchTab-only mode — Playwright was never initialized
+            # PinchTab-only mode,  Playwright was never initialized
             try:
                 from playwright.async_api import async_playwright
                 pw = await async_playwright().start()

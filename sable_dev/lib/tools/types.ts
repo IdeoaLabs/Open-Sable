@@ -61,7 +61,7 @@ export interface PermissionRule {
 }
 
 /**
- * Default permission rules — deny dangerous operations, allow safe reads
+ * Default permission rules,  deny dangerous operations, allow safe reads
  */
 export const DEFAULT_PERMISSIONS: PermissionRule[] = [
   // Always deny dangerous operations

@@ -1,5 +1,5 @@
 """
-OpenSable Zunvra Intelligence Suite — v3.1.0
+OpenSable Zunvra Intelligence Suite,  v3.1.0
 =============================================
 
 A standalone skill package that brings 26 autonomous intelligence
@@ -8,33 +8,33 @@ Zunvra/Central Intelligence real-time OSINT dashboard.
 
 Features
 --------
- 1. Natural Language OSINT Analyst — chat with live intelligence data
- 2. Cross-Domain Causal Correlation — detect non-obvious causal chains
- 3. Swarm Intelligence Threat Assessment — multi-agent debate on threats
- 4. Autonomous OSINT Hunter — proactive external source scanning
- 5. Predictive World Model — trend analysis and forecasting
- 6. Temporal Pattern Memory (Déjà Vu) — historical pattern matching
- 7. Dream Engine Retrospective — creative offline analysis
- 8. Entity Deep Dossier — autonomous entity research and risk scoring
- 9. Cognitive Map Annotations — floating intelligence notes on the map
-10. Multi-Agent Intelligence Fusion — SIGINT/GEOINT/HUMINT convergence
-11. Knowledge Graph Engine — entity/relationship graph with community detection
-12. Pattern of Life Analyzer — behavioral baselines and anomaly detection
-13. Geofence Tripwire System — critical zone monitoring with enter/exit/loiter
-14. Kill Chain Tracker — geopolitical kill chain phase tracking
-15. Timeline Reconstructor — event timeline with gap detection
-16. Wargaming Simulator — multi-order consequence modeling
-17. Counter-Surveillance Detector — evasion behavior detection
-18. Narrative Warfare Monitor — information operations detection
-19. SIGINT/EW Pattern Analyzer — GPS jamming & electronic warfare
-20. Financial Intelligence (FININT) Tracker — sanctions evasion & dark fleet
-21. Nuclear Proliferation Monitor — facility & seismic-test detection
-22. Space Domain Awareness — satellite tracking & ASAT detection
-23. Infrastructure Resilience Monitor — cyber/outage cascading failures
-24. Environmental Threat Intel — scorched earth & climate-conflict nexus
-25. Force Projection Tracker — carrier groups & naval disposition
-26. Threat Fusion Dashboard — unified DEFCON-style threat picture
- ⭐ Remote Control — move camera, select entities, change styles from agent
+ 1. Natural Language OSINT Analyst,  chat with live intelligence data
+ 2. Cross-Domain Causal Correlation,  detect non-obvious causal chains
+ 3. Swarm Intelligence Threat Assessment,  multi-agent debate on threats
+ 4. Autonomous OSINT Hunter,  proactive external source scanning
+ 5. Predictive World Model,  trend analysis and forecasting
+ 6. Temporal Pattern Memory (Déjà Vu),  historical pattern matching
+ 7. Dream Engine Retrospective,  creative offline analysis
+ 8. Entity Deep Dossier,  autonomous entity research and risk scoring
+ 9. Cognitive Map Annotations,  floating intelligence notes on the map
+10. Multi-Agent Intelligence Fusion,  SIGINT/GEOINT/HUMINT convergence
+11. Knowledge Graph Engine,  entity/relationship graph with community detection
+12. Pattern of Life Analyzer,  behavioral baselines and anomaly detection
+13. Geofence Tripwire System,  critical zone monitoring with enter/exit/loiter
+14. Kill Chain Tracker,  geopolitical kill chain phase tracking
+15. Timeline Reconstructor,  event timeline with gap detection
+16. Wargaming Simulator,  multi-order consequence modeling
+17. Counter-Surveillance Detector,  evasion behavior detection
+18. Narrative Warfare Monitor,  information operations detection
+19. SIGINT/EW Pattern Analyzer,  GPS jamming & electronic warfare
+20. Financial Intelligence (FININT) Tracker,  sanctions evasion & dark fleet
+21. Nuclear Proliferation Monitor,  facility & seismic-test detection
+22. Space Domain Awareness,  satellite tracking & ASAT detection
+23. Infrastructure Resilience Monitor,  cyber/outage cascading failures
+24. Environmental Threat Intel,  scorched earth & climate-conflict nexus
+25. Force Projection Tracker,  carrier groups & naval disposition
+26. Threat Fusion Dashboard,  unified DEFCON-style threat picture
+ ⭐ Remote Control,  move camera, select entities, change styles from agent
 
 Quick Start
 -----------
@@ -92,16 +92,16 @@ from .environmental_threat import EnvironmentalThreatIntel, EnvAlert, FireCluste
 from .force_projection import ForceProjectionTracker, ForceAlert, CarrierGroup
 from .threat_fusion import ThreatFusionDashboard, ThreatPicture, FusionAlert
 
-# Remote control — agent → dashboard UI command channel
+# Remote control,  agent → dashboard UI command channel
 from .remote_control import RemoteControl
 
-# Intelligence broadcaster — OSINT → social media autonomous poster
+# Intelligence broadcaster,  OSINT → social media autonomous poster
 from .intel_broadcaster import IntelBroadcaster, IntelFinding
 
-# Autonomous camera pilot — Sable drives the dashboard map
+# Autonomous camera pilot,  Sable drives the dashboard map
 from .camera_pilot import AutonomousCameraPilot, CameraMove
 
-# Web research skills — active YouTube & news search for intel enrichment
+# Web research skills,  active YouTube & news search for intel enrichment
 try:
     from opensable.skills.social.youtube_skill import YouTubeSkill
     _YOUTUBE_AVAILABLE = True
@@ -291,7 +291,7 @@ class ZunvraIntelSkill:
         # Autonomous camera pilot (agent drives the map)
         self.camera_pilot: Optional[AutonomousCameraPilot] = None
 
-        # Web research skills (YouTube + news — injected into camera pilot)
+        # Web research skills (YouTube + news,  injected into camera pilot)
         self._youtube_skill = None
         self._news_reader_skill = None
 
@@ -365,16 +365,16 @@ class ZunvraIntelSkill:
         self.force_projection = ForceProjectionTracker(data_dir=self.data_dir)
         self.threat_fusion = ThreatFusionDashboard(data_dir=self.data_dir)
 
-        # Remote control — agent ↔ dashboard UI
+        # Remote control,  agent ↔ dashboard UI
         self.remote = RemoteControl(base_url=self.base_url)
 
-        # Intelligence broadcaster — OSINT → social media
+        # Intelligence broadcaster,  OSINT → social media
         self.broadcaster = IntelBroadcaster(
             connector=self.connector,
             remote_control=self.remote,
         )
 
-        # ── Web research skills — active search for intel enrichment ──
+        # ── Web research skills,  active search for intel enrichment ──
         # These are injected into the camera pilot so it can actively
         # search YouTube for related videos and news for source articles.
         video_searcher_fn = None
@@ -415,7 +415,7 @@ class ZunvraIntelSkill:
             except Exception as e:
                 logger.debug("News reader skill init failed: %s", e)
 
-        # Autonomous camera pilot — Sable drives the dashboard map
+        # Autonomous camera pilot,  Sable drives the dashboard map
         self.camera_pilot = AutonomousCameraPilot(
             remote=self.remote,
             move_delay=2.5,
@@ -571,7 +571,7 @@ class ZunvraIntelSkill:
         except Exception as e:
             logger.warning("Timeline ingest failed: %s", e)
 
-        # Wargaming — auto-detect live scenarios from real data
+        # Wargaming,  auto-detect live scenarios from real data
         try:
             live_scenarios = self.wargaming.auto_wargame(snapshot)
             results["wargame_live_scenarios"] = len(live_scenarios)
@@ -684,7 +684,7 @@ class ZunvraIntelSkill:
         except Exception as e:
             logger.warning("Threat fusion failed: %s", e)
 
-        # ── Autonomous camera tour — Sable drives the map ──────────
+        # ── Autonomous camera tour,  Sable drives the map ──────────
         if self.camera_pilot and self.remote:
             try:
                 _module_alerts = {

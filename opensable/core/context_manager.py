@@ -220,7 +220,7 @@ Summary:"""
         # Calculate ratio and truncate proportionally
         ratio = budget / max(tokens, 1)
         char_limit = max(100, int(len(text) * ratio))
-        return text[:char_limit] + f"\n... [truncated — {tokens} tokens → ~{budget}]"
+        return text[:char_limit] + f"\n... [truncated,  {tokens} tokens → ~{budget}]"
 
     def get_segment_usage(self) -> Dict[str, Any]:
         """Detailed per-segment token accounting."""

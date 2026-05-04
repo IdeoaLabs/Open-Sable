@@ -30,7 +30,7 @@ export default function DevStudioPanel({ onClose }) {
       // -3 = ERR_ABORTED (normal), -6 = ERR_FILE_NOT_FOUND (HMR), -2 = ERR_FAILED (transient)
       const ignoreCodes = [-3, -6, -2, -501]
       if (e.errorCode && !ignoreCodes.includes(e.errorCode)) {
-        // Auto-retry — Next.js cold start on Windows can take 20-60s
+        // Auto-retry,  Next.js cold start on Windows can take 20-60s
         if (retryCountRef.current < maxRetries) {
           retryCountRef.current++
           const delay = retryCountRef.current <= 5 ? 3000 : 5000

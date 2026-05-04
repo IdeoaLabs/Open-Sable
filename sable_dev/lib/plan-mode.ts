@@ -76,7 +76,7 @@ export function shouldSuggestPlan(prompt: string): boolean {
   
   const matchCount = planKeywords.filter(kw => lower.includes(kw)).length;
   
-  // Also check prompt length — long prompts usually need planning
+  // Also check prompt length,  long prompts usually need planning
   const isLong = prompt.length > 200;
   
   // Multiple file references

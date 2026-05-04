@@ -1,4 +1,4 @@
-"""WifiSurvivalSkill — Autonomous WiFi hunting and survival for Sable.
+"""WifiSurvivalSkill,  Autonomous WiFi hunting and survival for Sable.
 
 Inspired by Pwnagotchi's AI-driven offline→online cycle.
 When internet is lost, the skill automatically activates, scans for whitelisted
@@ -424,7 +424,7 @@ class WifiSurvivalSkill:
         self._creds = CredentialStore(creds_path)
         self._ai    = HunterAI()
 
-        # Shared state dict — read by the gateway handler
+        # Shared state dict,  read by the gateway handler
         self._state: Dict[str, Any] = {
             "running":        False,
             "online":         True,
@@ -462,7 +462,7 @@ class WifiSurvivalSkill:
             logger.info("WifiSurvivalSkill: disabled (set WIFI_HUNT_ENABLED=true to enable)")
             return True
         if not self._whitelist:
-            logger.warning("WifiSurvivalSkill: WIFI_WHITELIST is empty — passive monitoring only")
+            logger.warning("WifiSurvivalSkill: WIFI_WHITELIST is empty,  passive monitoring only")
         self._task = asyncio.create_task(self._main_loop(), name="wifi-survival")
         self._state["running"] = True
         self._write_hud_state()
@@ -497,7 +497,7 @@ class WifiSurvivalSkill:
                 else:
                     if self._offline_since is None:
                         self._offline_since = time.time()
-                        logger.info("WifiSurvivalSkill: internet lost — activating hunt mode")
+                        logger.info("WifiSurvivalSkill: internet lost,  activating hunt mode")
                     await self._handle_offline()
 
                 self._state["ai"] = self._ai.to_dict()
@@ -568,7 +568,7 @@ class WifiSurvivalSkill:
                 self._on_connected(target.ssid)
                 return
 
-        # Need a handshake — requires monitor mode tools
+        # Need a handshake,  requires monitor mode tools
         if self._state["tools"]["airodump"] and await self._start_monitor():
             await self._hunt(target)
         else:

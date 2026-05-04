@@ -74,7 +74,7 @@ class ComputerTools:
             except ValueError:
                 continue
 
-        # Outside workspace — re-anchor: strip leading / and resolve relative
+        # Outside workspace,  re-anchor: strip leading / and resolve relative
         relative = path.lstrip("/")
         workspace_p = (ws / relative).resolve()
         try:
@@ -702,7 +702,7 @@ class ComputerTools:
             try:
                 regex = re.compile(pattern, regex_flags)
             except re.error:
-                # Invalid regex — treat pattern as literal string
+                # Invalid regex,  treat pattern as literal string
                 regex = re.compile(re.escape(pattern), regex_flags)
 
             for item in dir_path.rglob("*"):

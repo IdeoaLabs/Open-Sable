@@ -1,16 +1,16 @@
 """
-Dream Engine v2 — 4-Phase Knowledge Graph Refinement
+Dream Engine v2,  4-Phase Knowledge Graph Refinement
 
 Upgrades over v1 (creative replay):
-  Phase 1: Duplicate Merging     — FAISS similarity ≥0.93, merge entities
-  Phase 2: Description Enrichment — LLM enriches thin entity descriptions
-  Phase 3: Relationship Inference — discover missing links between co-occurring entities
-  Phase 4: Confidence Decay       — age-based decay on stale relations
+  Phase 1: Duplicate Merging    ,  FAISS similarity ≥0.93, merge entities
+  Phase 2: Description Enrichment,  LLM enriches thin entity descriptions
+  Phase 3: Relationship Inference,  discover missing links between co-occurring entities
+  Phase 4: Confidence Decay      ,  age-based decay on stale relations
 
 Plus: Rejection cache (7-day), hub diversity caps, batch rotation,
 anti-contamination, Ollama busy check, dream journal logging.
 
-Works alongside original DreamEngine (creative dreams) — this handles
+Works alongside original DreamEngine (creative dreams),  this handles
 structured graph maintenance.
 """
 from __future__ import annotations
@@ -251,7 +251,7 @@ class DreamEngineV2:
                 f"Available relation types: {relation_list}\n"
                 f"If yes, respond with JSON: {{\"relation\": \"type\", \"description\": \"...\"}}\n"
                 f"If no clear relationship, respond with: {{\"relation\": null}}\n"
-                f"Be conservative — only infer if clearly implied."
+                f"Be conservative,  only infer if clearly implied."
             )
 
             try:

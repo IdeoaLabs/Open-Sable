@@ -1,5 +1,5 @@
 """
-Zunvra Intelligence — Operation Diary
+Zunvra Intelligence,  Operation Diary
 
 Sable's autonomous operation journal.  Every analysis cycle, Sable writes
 what it observed, its assessment, predictions, and threat opinions.
@@ -9,7 +9,7 @@ Entries are:
  • Persisted to a JSON file so they survive restarts
  • Available via API for the frontend diary panel
 
-The diary is NOT just a log — it's Sable's *opinion*.  The LLM generates
+The diary is NOT just a log,  it's Sable's *opinion*.  The LLM generates
 analytical commentary based on what the camera pilot found.
 """
 
@@ -36,7 +36,7 @@ DOSSIER_FILE = DIARY_DIR / "operation_dossier.json"
 
 @dataclass
 class DiaryEntry:
-    """A single diary entry — Sable's autonomous analysis note."""
+    """A single diary entry,  Sable's autonomous analysis note."""
     timestamp: str                # ISO 8601
     title: str                    # Short heading
     content: str                  # Full analysis / opinion / observation
@@ -52,7 +52,7 @@ class DiaryEntry:
 
 @dataclass
 class DossierEntry:
-    """A dossier capture — structured intel snapshot."""
+    """A dossier capture,  structured intel snapshot."""
     timestamp: str
     category: str                 # cctv | aircraft | ship | attack | cyber | nuclear | custom
     title: str

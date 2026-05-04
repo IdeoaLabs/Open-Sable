@@ -417,7 +417,7 @@ export async function POST(request: NextRequest) {
         const message = `data: ${JSON.stringify(data)}\n\n`;
         await writer.write(encoder.encode(message));
       } catch {
-        // Client disconnected — ignore write errors
+        // Client disconnected,  ignore write errors
       }
     };
 

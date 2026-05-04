@@ -3,7 +3,7 @@ Polymarket BTC 5-Min Up/Down Scalper
 
 Trades the Polymarket 5-minute BTC up/down binary market by buying
 shares (YES or NO) when they're cheap and selling before the 5-min
-window resolves.  Does NOT wait for resolution — it scalps the
+window resolves.  Does NOT wait for resolution,  it scalps the
 order-book spread and price momentum within each round.
 
 Strategy:
@@ -13,7 +13,7 @@ Strategy:
         valuable.  Buy YES early (when cheap) and sell once the
         share price moves up.  Vice-versa for downtrends.
     3.  Use order-book imbalance + BTC momentum as the signal.
-    4.  Exit quickly — take small profits (3-8 %) per round and
+    4.  Exit quickly,  take small profits (3-8 %) per round and
         cut losses at -5 %.  Never hold through resolution unless
         the position is already deep in profit.
 
@@ -100,7 +100,7 @@ class PolymarketBtc5MinStrategy(Strategy):
     """
 
     name = "polymarket_btc_5min"
-    description = "Scalps Polymarket 5-min BTC up/down — buys low, sells high before resolution"
+    description = "Scalps Polymarket 5-min BTC up/down,  buys low, sells high before resolution"
     version = "1.0.0"
     supported_markets = ["prediction"]
 
@@ -183,7 +183,7 @@ class PolymarketBtc5MinStrategy(Strategy):
         elapsed = time.time() - round_start if round_start else 999
         remaining = max(300 - elapsed, 0)
 
-        # Don't enter new positions in the last 60 s — too risky
+        # Don't enter new positions in the last 60 s,  too risky
         if remaining < 60:
             return []
 
@@ -277,7 +277,7 @@ class PolymarketBtc5MinStrategy(Strategy):
         return signals
 
     # ------------------------------------------------------------------
-    # Exit logic — fast exits, never hold through resolution
+    # Exit logic,  fast exits, never hold through resolution
     # ------------------------------------------------------------------
 
     async def should_exit(

@@ -1,5 +1,5 @@
 /**
- * Glob Tool — Find files by pattern matching.
+ * Glob Tool,  Find files by pattern matching.
  * 
  * Uses shell glob patterns to find files in the sandbox.
  * Useful for discovering project structure and finding files by extension.

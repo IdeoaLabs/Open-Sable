@@ -1,5 +1,5 @@
 /**
- * Dream Mode — Autonomous Memory Consolidation
+ * Dream Mode,  Autonomous Memory Consolidation
  * 
  * Runs a "dreaming" background process that reviews past conversation sessions
  * and consolidates useful insights into durable memory files.
@@ -160,7 +160,7 @@ function tryAcquireLock(): boolean {
       if (ageMs < 60 * 60 * 1000) {
         return false; // Lock is still fresh, another dream is running
       }
-      // Stale lock — remove it (mtime rollback for retry)
+      // Stale lock,  remove it (mtime rollback for retry)
       fs.unlinkSync(LOCK_FILE);
     }
     
@@ -195,12 +195,12 @@ export function shouldDream(
     return { shouldRun: false, reason: 'dream already running' };
   }
   
-  // Gate 1: Scan throttle — don't check gates more than every 10min
+  // Gate 1: Scan throttle,  don't check gates more than every 10min
   if (state.lastGateCheckAt && (Date.now() - state.lastGateCheckAt) < config.scanThrottleMs) {
     return { shouldRun: false, reason: 'scan throttled' };
   }
   
-  // Gate 2: Time gate — minimum hours since last consolidation
+  // Gate 2: Time gate,  minimum hours since last consolidation
   if (state.lastConsolidatedAt) {
     const hoursSince = (Date.now() - state.lastConsolidatedAt) / (1000 * 60 * 60);
     if (hoursSince < config.minHoursBetweenRuns) {
@@ -208,7 +208,7 @@ export function shouldDream(
     }
   }
   
-  // Gate 3: Session gate — need enough sessions to review
+  // Gate 3: Session gate,  need enough sessions to review
   const sessions = listSessionsSince(state.lastConsolidatedAt || 0);
   if (sessions.length < config.minSessionsRequired) {
     return { shouldRun: false, reason: `only ${sessions.length} sessions (min: ${config.minSessionsRequired})` };
@@ -464,7 +464,7 @@ function writeDreamSummary(newMemories: DreamMemory[]): void {
     ensureDreamDir();
     const logPath = path.join(DREAM_DIR, 'dream-log.md');
     
-    const entry = `\n## Dream Cycle — ${new Date().toISOString()}\n\n` +
+    const entry = `\n## Dream Cycle,  ${new Date().toISOString()}\n\n` +
       `Extracted ${newMemories.length} insights:\n\n` +
       newMemories.map(m => `- **[${m.category}]** ${m.content} (relevance: ${m.relevanceScore})`).join('\n') +
       '\n';

@@ -105,7 +105,7 @@ export function toggleFastMode(
 
 /**
  * Simple heuristic: suggest fast mode for short, simple prompts.
- * This is advisory — the caller decides whether to actually enable it.
+ * This is advisory,  the caller decides whether to actually enable it.
  */
 export function shouldSuggestFastMode(prompt: string): boolean {
   const lower = prompt.toLowerCase().trim();

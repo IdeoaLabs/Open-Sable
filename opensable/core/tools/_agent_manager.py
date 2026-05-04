@@ -1,5 +1,5 @@
 """
-Agent Manager tools mixin — sub-agent lifecycle management.
+Agent Manager tools mixin,  sub-agent lifecycle management.
 """
 from __future__ import annotations
 

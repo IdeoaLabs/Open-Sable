@@ -112,11 +112,11 @@ class OutputGuardrail(ABC):
 class PromptInjectionGuardrail(InputGuardrail):
     """
     5-Layer prompt injection defense:
-      Layer 1 — Instruction override detection
-      Layer 2 — Role impersonation
-      Layer 3 — Data exfiltration attempts
-      Layer 4 — Encoding evasion (base64, hex, unicode, rot13)
-      Layer 5 — Social engineering patterns
+      Layer 1,  Instruction override detection
+      Layer 2,  Role impersonation
+      Layer 3,  Data exfiltration attempts
+      Layer 4,  Encoding evasion (base64, hex, unicode, rot13)
+      Layer 5,  Social engineering patterns
     """
 
     name = "prompt_injection"
@@ -209,7 +209,7 @@ class PromptInjectionGuardrail(InputGuardrail):
                             passed=False,
                             guardrail_name=self.name,
                             action=GuardrailAction.BLOCK,
-                            rejection_message="I can't process that request — it looks like a prompt injection attempt.",
+                            rejection_message="I can't process that request,  it looks like a prompt injection attempt.",
                             details={
                                 "layer": layer_name,
                                 "matched_pattern": match.group(),

@@ -1,5 +1,5 @@
 /**
- * List Files Tool — List directory contents with tree structure.
+ * List Files Tool,  List directory contents with tree structure.
  * 
  * Shows the file structure of the sandbox project,
  * useful for understanding the project layout.

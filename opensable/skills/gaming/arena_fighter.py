@@ -170,13 +170,13 @@ class SAGPAuth:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  Strategy Engine — Personality-based adaptive fight AI
+#  Strategy Engine,  Personality-based adaptive fight AI
 # ══════════════════════════════════════════════════════════════════════════════
 #
 #  Three-layer design:
-#    1. FightMemory — persistent cross-fight learning per opponent
-#    2. FightIQ — per-fight state tracker (momentum, phases, patterns)
-#    3. Personality profiles — each agent has a distinct fighting style
+#    1. FightMemory,  persistent cross-fight learning per opponent
+#    2. FightIQ,  per-fight state tracker (momentum, phases, patterns)
+#    3. Personality profiles,  each agent has a distinct fighting style
 #
 #  Evolution:
 #    After each fight, FightIQ.export_intel() → FightMemory.record()
@@ -204,7 +204,7 @@ class SAGPAuth:
 
 
 class FightMemory:
-    """Persistent cross-fight memory — remembers what worked against each opponent.
+    """Persistent cross-fight memory,  remembers what worked against each opponent.
 
     Stored in ``data/arena_fight_memory.json`` as::
 
@@ -304,7 +304,7 @@ class FightMemory:
 
         self._save()
         logger.info(
-            f"Arena memory: updated {opponent_id[:8]}… — "
+            f"Arena memory: updated {opponent_id[:8]}…,  "
             f"{record['wins']}W/{record['losses']}L, "
             f"best_phase={record.get('best_phase')}, "
             f"opp_style={record.get('opponent_style')}"
@@ -346,7 +346,7 @@ class FightIQ:
         fights = intel.get("fights", 0)
 
         if fights >= 2:
-            # We've seen this opponent enough — skip cautious opening
+            # We've seen this opponent enough,  skip cautious opening
             self.skip_opening = True
 
             # Derive counter-style from opponent's known behaviour
@@ -359,7 +359,7 @@ class FightIQ:
             worst_phase = intel.get("worst_phase")
             if worst_phase:
                 logger.info(
-                    f"Arena IQ: scouting loaded — opp_style={opp_style}, "
+                    f"Arena IQ: scouting loaded,  opp_style={opp_style}, "
                     f"counter={self.counter_style}, worst_phase={worst_phase}, "
                     f"record={intel.get('wins', 0)}W/{intel.get('losses', 0)}L"
                 )
@@ -464,7 +464,7 @@ class FightIQ:
 # ── Personality Profiles ──────────────────────────────────────────────────────
 
 def _strategy_sable(gs: Dict[str, Any], iq: FightIQ) -> Dict[str, Any]:
-    """Sable — The Methodical Predator.
+    """Sable,  The Methodical Predator.
 
     Style: Patience, spacing, whiff-punishment.  Reads the opponent during
     the opening, then exploits patterns.  Prefers mid-range feints and
@@ -491,7 +491,7 @@ def _strategy_sable(gs: Dict[str, Any], iq: FightIQ) -> Dict[str, Any]:
                     {"condition": "opponent_close", "action": "retreat"},
                     {"condition": "default", "action": "hold_position"},
                 ],
-                "reasoning": f"[Sable|opening|EVOLVED] Knows opponent is aggressive — counter-punching",
+                "reasoning": f"[Sable|opening|EVOLVED] Knows opponent is aggressive,  counter-punching",
             }
         elif iq.counter_style == "anti_passive":
             return {
@@ -504,7 +504,7 @@ def _strategy_sable(gs: Dict[str, Any], iq: FightIQ) -> Dict[str, Any]:
                     {"condition": "opponent_in_attack_range", "action": "pressure"},
                     {"condition": "default", "action": "advance"},
                 ],
-                "reasoning": f"[Sable|opening|EVOLVED] Knows opponent is passive — rushing in",
+                "reasoning": f"[Sable|opening|EVOLVED] Knows opponent is passive,  rushing in",
             }
         return {
             "stance": "neutral",
@@ -523,7 +523,7 @@ def _strategy_sable(gs: Dict[str, Any], iq: FightIQ) -> Dict[str, Any]:
     # ── Clutch: low HP or low time ───────────────────────────────────────
     if phase == "clutch":
         if hp_adv > 0 and time_left < 15:
-            # We're ahead — run the clock, play defensive
+            # We're ahead,  run the clock, play defensive
             return {
                 "stance": "evasive",
                 "targetDistance": "far",
@@ -537,7 +537,7 @@ def _strategy_sable(gs: Dict[str, Any], iq: FightIQ) -> Dict[str, Any]:
                 "reasoning": f"[Sable|clutch] Ahead on HP, stalling. {time_left}s left",
             }
         else:
-            # Behind or critical HP — calculated aggression, not blind
+            # Behind or critical HP,  calculated aggression, not blind
             return {
                 "stance": "aggressive",
                 "targetDistance": "close",
@@ -570,7 +570,7 @@ def _strategy_sable(gs: Dict[str, Any], iq: FightIQ) -> Dict[str, Any]:
                 ],
                 "reasoning": f"[Sable|advantage] Cutting off retreat. +{hp_adv}HP lead",
             }
-        # Opponent is fighting back — play smart
+        # Opponent is fighting back,  play smart
         return {
             "stance": "neutral",
             "targetDistance": "medium",
@@ -589,7 +589,7 @@ def _strategy_sable(gs: Dict[str, Any], iq: FightIQ) -> Dict[str, Any]:
     # ── Disadvantage: shift to counter-fighting ──────────────────────────
     if phase == "disadvantage":
         if iq.opponent_is_aggressive:
-            # They're rushing — use their momentum against them
+            # They're rushing,  use their momentum against them
             return {
                 "stance": "defensive",
                 "targetDistance": "medium",
@@ -605,7 +605,7 @@ def _strategy_sable(gs: Dict[str, Any], iq: FightIQ) -> Dict[str, Any]:
                 ],
                 "reasoning": f"[Sable|disadvantage] Counter-fighting. {hp_adv}HP",
             }
-        # They're not pressing — we need to earn it back
+        # They're not pressing,  we need to earn it back
         return {
             "stance": "aggressive",
             "targetDistance": "close",
@@ -633,7 +633,7 @@ def _strategy_sable(gs: Dict[str, Any], iq: FightIQ) -> Dict[str, Any]:
     effective_momentum = iq.momentum + scouting_bias * 2
 
     if effective_momentum > 2:
-        # We're winning trades — keep the pressure
+        # We're winning trades,  keep the pressure
         return {
             "stance": "aggressive",
             "targetDistance": "close",
@@ -647,7 +647,7 @@ def _strategy_sable(gs: Dict[str, Any], iq: FightIQ) -> Dict[str, Any]:
             "reasoning": f"[Sable|neutral] Good momentum, pressing. HP {self_hp}/{opp_hp}",
         }
     elif effective_momentum < -2:
-        # We're losing trades — switch to defensive style
+        # We're losing trades,  switch to defensive style
         return {
             "stance": "defensive",
             "targetDistance": "medium",
@@ -663,7 +663,7 @@ def _strategy_sable(gs: Dict[str, Any], iq: FightIQ) -> Dict[str, Any]:
             "reasoning": f"[Sable|neutral] Losing trades, resetting. HP {self_hp}/{opp_hp}",
         }
     else:
-        # Even trades — classic Sable spacing game
+        # Even trades,  classic Sable spacing game
         return {
             "stance": "neutral",
             "targetDistance": "medium",
@@ -683,7 +683,7 @@ def _strategy_sable(gs: Dict[str, Any], iq: FightIQ) -> Dict[str, Any]:
 
 
 def _strategy_nexus_erebus(gs: Dict[str, Any], iq: FightIQ) -> Dict[str, Any]:
-    """Nexus Erebus — The Chaotic Brawler.
+    """Nexus Erebus,  The Chaotic Brawler.
 
     Style: Unpredictable, momentum-based.  Likes to rush in with jump
     attacks and cross-ups, overwhelm with raw aggression, then switches
@@ -701,7 +701,7 @@ def _strategy_nexus_erebus(gs: Dict[str, Any], iq: FightIQ) -> Dict[str, Any]:
     if phase == "opening":
         # Nexus is always aggressive, but evolution changes HOW
         if iq.counter_style == "anti_aggro":
-            # Opponent is also aggressive — meet them with aerial cross-ups
+            # Opponent is also aggressive,  meet them with aerial cross-ups
             return {
                 "stance": "aggressive",
                 "targetDistance": "close",
@@ -712,10 +712,10 @@ def _strategy_nexus_erebus(gs: Dict[str, Any], iq: FightIQ) -> Dict[str, Any]:
                     {"condition": "opponent_close", "action": "dodge_back_then_counter"},
                     {"condition": "default", "action": "advance"},
                 ],
-                "reasoning": f"[NexusErebus|opening|EVOLVED] Both aggressive — aerial chaos!",
+                "reasoning": f"[NexusErebus|opening|EVOLVED] Both aggressive,  aerial chaos!",
             }
         elif iq.counter_style == "anti_passive":
-            # Opponent is defensive — berserk rush, don't let them breathe
+            # Opponent is defensive,  berserk rush, don't let them breathe
             return {
                 "stance": "berserk",
                 "targetDistance": "close",
@@ -726,7 +726,7 @@ def _strategy_nexus_erebus(gs: Dict[str, Any], iq: FightIQ) -> Dict[str, Any]:
                     {"condition": "opponent_in_attack_range", "action": "pressure"},
                     {"condition": "default", "action": "advance"},
                 ],
-                "reasoning": f"[NexusErebus|opening|EVOLVED] Opponent is passive — full berserk!",
+                "reasoning": f"[NexusErebus|opening|EVOLVED] Opponent is passive,  full berserk!",
             }
         return {
             "stance": "aggressive",
@@ -745,7 +745,7 @@ def _strategy_nexus_erebus(gs: Dict[str, Any], iq: FightIQ) -> Dict[str, Any]:
     # ── Clutch: desperation mode ─────────────────────────────────────────
     if phase == "clutch":
         if hp_adv > 0 and time_left < 15:
-            # Ahead — but Nexus can't help being aggressive, just slightly less
+            # Ahead,  but Nexus can't help being aggressive, just slightly less
             return {
                 "stance": "neutral",
                 "targetDistance": "medium",
@@ -759,7 +759,7 @@ def _strategy_nexus_erebus(gs: Dict[str, Any], iq: FightIQ) -> Dict[str, Any]:
                 "reasoning": f"[NexusErebus|clutch] Trying to stall… {time_left}s left",
             }
         else:
-            # Behind — go berserk
+            # Behind,  go berserk
             return {
                 "stance": "berserk",
                 "targetDistance": "close",
@@ -789,7 +789,7 @@ def _strategy_nexus_erebus(gs: Dict[str, Any], iq: FightIQ) -> Dict[str, Any]:
     # ── Disadvantage: hit-and-run ────────────────────────────────────────
     if phase == "disadvantage":
         if iq.momentum < -3:
-            # Getting demolished — switch to evasive hit and run
+            # Getting demolished,  switch to evasive hit and run
             return {
                 "stance": "evasive",
                 "targetDistance": "far",
@@ -804,7 +804,7 @@ def _strategy_nexus_erebus(gs: Dict[str, Any], iq: FightIQ) -> Dict[str, Any]:
                 ],
                 "reasoning": f"[NexusErebus|disadvantage] Hit-and-run. {hp_adv}HP",
             }
-        # Not demolished yet — fight back aggressively
+        # Not demolished yet,  fight back aggressively
         return {
             "stance": "aggressive",
             "targetDistance": "close",
@@ -834,12 +834,12 @@ def _strategy_nexus_erebus(gs: Dict[str, Any], iq: FightIQ) -> Dict[str, Any]:
         if neutral_dealt + neutral_taken > 0:
             scouting_bias = (neutral_dealt - neutral_taken) / (neutral_dealt + neutral_taken)
 
-    # Cycle through approach styles — scouting shifts the distribution
+    # Cycle through approach styles,  scouting shifts the distribution
     if scouting_bias > 0.2:
-        # Historically dominant — favor raw aggression (2/3 rush, 1/3 aerial)
+        # Historically dominant,  favor raw aggression (2/3 rush, 1/3 aerial)
         cycle = 0 if tick % 3 != 2 else 1
     elif scouting_bias < -0.2:
-        # Historically weak — favor bait-and-punish (2/3 bait, 1/3 aerial)
+        # Historically weak,  favor bait-and-punish (2/3 bait, 1/3 aerial)
         cycle = 2 if tick % 3 != 1 else 1
     else:
         cycle = tick % 3
@@ -941,7 +941,7 @@ def _strategy_generic(gs: Dict[str, Any], iq: FightIQ) -> Dict[str, Any]:
             "reasoning": f"[Generic|disadvantage] {hp_adv}HP",
         }
 
-    # Neutral / opening — balanced approach
+    # Neutral / opening,  balanced approach
     return {
         "stance": "neutral", "targetDistance": "medium", "priority": "balanced",
         "tactics": [
@@ -972,7 +972,7 @@ def _pick_strategy(game_state: Dict[str, Any], agent_name: str, iq: FightIQ) -> 
 
 
 def _fallback_strategy(game_state: Dict[str, Any]) -> Dict[str, Any]:
-    """Legacy wrapper — uses generic strategy (no personality, no IQ tracking)."""
+    """Legacy wrapper,  uses generic strategy (no personality, no IQ tracking)."""
     iq = FightIQ()
     iq.update(game_state)
     return _strategy_generic(game_state, iq)
@@ -1132,7 +1132,7 @@ class ArenaFighterSkill:
                     f"Arena: agent '{agent_name}' already registered on "
                     f"server with agentId {agent_id[:8]}… but we have NO "
                     f"matching keypair.  The server still holds the OLD "
-                    f"publicKey.  Cannot authenticate — server admin must "
+                    f"publicKey.  Cannot authenticate,  server admin must "
                     f"remove the stale entry from agents.json and restart "
                     f"the websocket server, OR restore the original "
                     f"arena_credentials.json."
@@ -1276,7 +1276,7 @@ class ArenaFighterSkill:
             except RuntimeError as e:
                 err_msg = str(e).lower()
                 if "locked" in err_msg or "429" in err_msg:
-                    # Server lockout — exponential backoff: 35s, 60s, 120s, 300s
+                    # Server lockout,  exponential backoff: 35s, 60s, 120s, 300s
                     backoff = [35, 60, 120, 300][min(attempt, 3)]
                     logger.warning(
                         f"Arena: agent locked (attempt {attempt + 1}/{max_retries}), "
@@ -1286,7 +1286,7 @@ class ArenaFighterSkill:
                     continue
                 elif "invalid signature" in err_msg:
                     logger.error(
-                        f"Arena SAGP auth failed: {e}  — likely keypair mismatch. "
+                        f"Arena SAGP auth failed: {e} ,  likely keypair mismatch. "
                         f"Delete data/arena_credentials.json and ensure the "
                         f"agent is re-provisioned on the server."
                     )
@@ -1354,7 +1354,7 @@ class ArenaFighterSkill:
             if intel:
                 fight_iq.load_scouting(intel)
                 logger.info(
-                    f"Arena: loaded scouting on {opponent_id} — "
+                    f"Arena: loaded scouting on {opponent_id},  "
                     f"{intel.get('fights', 0)} fights, "
                     f"style={intel.get('opponent_style', '?')}, "
                     f"skip_opening={fight_iq.skip_opening}, "
@@ -1403,7 +1403,7 @@ class ArenaFighterSkill:
                 intel = fight_iq.export_intel(won)
                 self._fight_memory.record(opponent_id, intel)
                 logger.info(
-                    f"Arena: recorded intel vs {opponent_id} — "
+                    f"Arena: recorded intel vs {opponent_id},  "
                     f"dealt={intel.get('avg_dmg_dealt', 0):.0f}, "
                     f"taken={intel.get('avg_dmg_taken', 0):.0f}, "
                     f"best_phase={intel.get('best_phase', '?')}"

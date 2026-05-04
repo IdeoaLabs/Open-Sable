@@ -316,7 +316,7 @@ chmod +x install-pi.sh
 ```
 
 The installer will:
-1. Verify the architecture (ARM64 required — ARMv6/ARMv7 are rejected with a clear error)
+1. Verify the architecture (ARM64 required,  ARMv6/ARMv7 are rejected with a clear error)
 2. Install system packages (`python3-venv`, `build-essential`, `git`, `libopenblas-dev`, etc.)
 3. Create a Python venv and install all core packages
 4. Run a post-install import verification for every package, auto-repairing any that fail
@@ -334,7 +334,7 @@ The installer doubles as a diagnostic and repair tool:
 ./install-pi.sh --display   # Configure the 3.5" SPI display only (skip Python setup)
 ```
 
-`--repair` re-runs the full verification loop and reinstalls any package whose `import` fails — useful after SD card corruption, partial writes, or package version conflicts.
+`--repair` re-runs the full verification loop and reinstalls any package whose `import` fails,  useful after SD card corruption, partial writes, or package version conflicts.
 
 ### Torch-Free Core
 
@@ -344,8 +344,8 @@ The Pi installer only installs the **torch-free** core stack. The agent loop, LL
 |---|---|
 | `aiohttp` / `asyncio` | Native wheel ✅ |
 | `chromadb` (uses `onnxruntime`) | ARM64 wheel ✅ |
-| `sentence-transformers` | Lazy import — only loaded if the RAG skill is invoked |
-| `torch` | **Not required** for core — optional voice/vision extras only |
+| `sentence-transformers` | Lazy import,  only loaded if the RAG skill is invoked |
+| `torch` | **Not required** for core,  optional voice/vision extras only |
 
 ### 3.5" SPI Display (MPI3501 / XPT2046 / ILI9486)
 
@@ -357,15 +357,15 @@ For generic 3.5" 480×320 SPI TFT displays sold under the MPI3501 / XPT2046 form
 
 This will:
 1. Auto-detect the boot config path (`/boot/firmware/config.txt` on newer Pi OS, `/boot/config.txt` on older releases)
-2. Download `tft35a.dtbo` from the [goodtft/LCD-show](https://github.com/goodtft/LCD-show) driver repository — the canonical driver for this display family — with a `git clone` fallback if the direct download fails
+2. Download `tft35a.dtbo` from the [goodtft/LCD-show](https://github.com/goodtft/LCD-show) driver repository,  the canonical driver for this display family,  with a `git clone` fallback if the direct download fails
 3. Append the correct overlay block to `config.txt`:
    ```ini
    dtparam=spi=on
    dtoverlay=tft35a:rotate=90,penirq=17
    # note: tft35a already includes the ADS7846 touch controller internally;
-   # do NOT add a separate ads7846 overlay — it will conflict on GPIO17/SPI0.1
+   # do NOT add a separate ads7846 overlay,  it will conflict on GPIO17/SPI0.1
    ```
-4. Install `sable-display.service` — a systemd unit that runs the live HUD on `/dev/fb1`
+4. Install `sable-display.service`,  a systemd unit that runs the live HUD on `/dev/fb1`
 5. Prompt to reboot
 
 **Pin mapping (confirmed against MPI3501 datasheet via lcdwiki.com):**
@@ -389,12 +389,12 @@ ls -la /dev/fb*                       # confirm /dev/fb1 was created by the driv
 
 #### HUD Dashboard (`scripts/display_hud.py`)
 
-The live dashboard renders directly to `/dev/fb1` using PIL TrueType fonts and NumPy-accelerated RGB565 conversion — no X11 or display server required. It shows:
+The live dashboard renders directly to `/dev/fb1` using PIL TrueType fonts and NumPy-accelerated RGB565 conversion,  no X11 or display server required. It shows:
 
-- **Header bar** — agent name, blinking LIVE indicator, real-time clock
-- **Status cards** — agent online/offline, uptime counter, active model + API host, Telegram bot status
-- **System stats** — CPU and RAM progress bars (via `psutil`)
-- **Recent activity** — last N log lines, color-coded: green=OK, red=error, yellow=warning, cyan=tool calls, gray=debug
+- **Header bar**,  agent name, blinking LIVE indicator, real-time clock
+- **Status cards**,  agent online/offline, uptime counter, active model + API host, Telegram bot status
+- **System stats**,  CPU and RAM progress bars (via `psutil`)
+- **Recent activity**,  last N log lines, color-coded: green=OK, red=error, yellow=warning, cyan=tool calls, gray=debug
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
@@ -415,7 +415,7 @@ The live dashboard renders directly to `/dev/fb1` using PIL TrueType fonts and N
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-No fonts need to be installed separately — the script finds DejaVu, Liberation, or Noto Mono automatically. If none are found it falls back to PIL's built-in bitmap font.
+No fonts need to be installed separately,  the script finds DejaVu, Liberation, or Noto Mono automatically. If none are found it falls back to PIL's built-in bitmap font.
 
 Configurable via environment variables:
 
@@ -3282,7 +3282,7 @@ GROQ_API_KEY=gsk_...
 
 [OpenWebUI](https://github.com/open-webui/open-webui) is a self-hosted web interface for Ollama and other local models. Open-Sable can use any OpenWebUI instance as its LLM backend via its built-in OpenAI-compatible `/chat/completions` endpoint.
 
-**Configuration** — add these three variables to `agents/<name>/profile.env`:
+**Configuration**,  add these three variables to `agents/<name>/profile.env`:
 
 ```bash
 # URL of your OpenWebUI instance (no trailing slash)

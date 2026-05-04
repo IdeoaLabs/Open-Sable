@@ -1,5 +1,5 @@
 """
-Dynamic Agent Manager — spawn, stop, and destroy sub-agents at runtime.
+Dynamic Agent Manager,  spawn, stop, and destroy sub-agents at runtime.
 
 Features:
   - Auto-start:   When a parent starts, all ``{parent}-*`` children start too.

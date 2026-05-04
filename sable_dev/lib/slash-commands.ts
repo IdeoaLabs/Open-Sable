@@ -51,7 +51,7 @@ function getBuiltinCommands(): SlashCommand[] {
       usage: '/help',
       handler: () => {
         const commands = getBuiltinCommands();
-        const lines = commands.map(c => `  /${c.name} — ${c.description}`);
+        const lines = commands.map(c => `  /${c.name},  ${c.description}`);
         return {
           handled: true,
           message: `Available commands:\n${lines.join('\n')}`,
@@ -304,7 +304,7 @@ function getBuiltinCommands(): SlashCommand[] {
       handler: (args) => {
         const focus = args.trim();
         return {
-          handled: false, // Don't consume — let it go to AI with a special prompt
+          handled: false, // Don't consume,  let it go to AI with a special prompt
           message: '',
           data: {
             action: 'review',

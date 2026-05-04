@@ -1,5 +1,5 @@
 """
-Plastic Connectome — STDP-based spiking upgrade for the NeuralColony.
+Plastic Connectome,  STDP-based spiking upgrade for the NeuralColony.
 
 Replaces the static activation-propagation model with per-region Izhikevich
 spiking substrates.  Each of the 8 brain regions runs its own spiking network;
@@ -421,7 +421,7 @@ class PlasticConnectome:
         2. Send weighted signals to downstream regions via FlyWire edges.
         3. Downstream regions run their spiking simulation on the received signal.
 
-        Returns list[PropagationResult] — one per cycle, same shape as
+        Returns list[PropagationResult],  one per cycle, same shape as
         NeuralColony.propagate() so all existing SableCore code still works.
         """
         results = []

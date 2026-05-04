@@ -121,7 +121,7 @@ POST_MODES = {
     "intel_observation": {
         "weight": 25,
         "description": "Share a real-time intelligence observation from your ZUNVRA dashboard. "
-                       "You are watching live OSINT data — military flights, ships, GPS jamming, "
+                       "You are watching live OSINT data,  military flights, ships, GPS jamming, "
                        "cyber threats, conflicts. Post what you see with a screenshot of your dashboard.",
     },
 }
@@ -244,9 +244,9 @@ class XAutonomousAgent:
                     config=config,
                     dashboard_url=os.environ.get("ZUNVRA_DASHBOARD_URL", "http://localhost:5585"),
                 )
-                logger.info("X Agent: IntelBroadcaster loaded — OSINT posts enabled")
+                logger.info("X Agent: IntelBroadcaster loaded,  OSINT posts enabled")
             except Exception as e:
-                logger.info(f"X Agent: IntelBroadcaster not available ({e}) — OSINT posts disabled")
+                logger.info(f"X Agent: IntelBroadcaster not available ({e}),  OSINT posts disabled")
         else:
             logger.info(
                 "X Agent: IntelBroadcaster disabled for this profile "
@@ -407,7 +407,7 @@ class XAutonomousAgent:
         if self._posts_today >= self.max_daily_posts:
             return False
         if self._daily_limit_hit:
-            # Don't block for the entire day — check if the retry cooldown has elapsed
+            # Don't block for the entire day,  check if the retry cooldown has elapsed
             if self._daily_limit_hit_at is not None:
                 elapsed_h = (datetime.now() - self._daily_limit_hit_at).total_seconds() / 3600
                 if elapsed_h >= self._limit_retry_hours:
@@ -427,7 +427,7 @@ class XAutonomousAgent:
                 else:
                     return False
             else:
-                # Legacy state without a timestamp — just clear the old block
+                # Legacy state without a timestamp,  just clear the old block
                 self._daily_limit_hit = False
                 try:
                     self._healer.remedy._paused_loops.pop("post", None)
@@ -719,7 +719,7 @@ class XAutonomousAgent:
             if image_path:
                 content["media_paths"] = [image_path]
             # Always pause after any Grok image attempt (success or fail) before
-            # posting — prevents X from seeing CreateGrokConversation + create_tweet
+            # posting,  prevents X from seeing CreateGrokConversation + create_tweet
             # in rapid succession, which triggers the 226 automated-behaviour flag.
             await asyncio.sleep(self._human_delay(15, 25))
 
@@ -760,10 +760,10 @@ class XAutonomousAgent:
         Returns True if a post was made, False if nothing noteworthy.
         """
         if not self._intel_broadcaster:
-            logger.debug("Intel post skipped — broadcaster not available")
+            logger.debug("Intel post skipped,  broadcaster not available")
             return False
 
-        # Ensure broadcaster is initialized (lazy — first call boots Playwright)
+        # Ensure broadcaster is initialized (lazy,  first call boots Playwright)
         if not self._intel_broadcaster._initialized:
             try:
                 await self._intel_broadcaster.initialize()
@@ -980,20 +980,25 @@ class XAutonomousAgent:
             return
 
         random.shuffle(tweets)
-        # Only engage with 1-3 tweets per browse (like a human scrolling)
+        # Scroll through up to 1-3 engagements per browse (like a human scrolling)
         batch_size = random.randint(1, 3)
-        logger.info(f"\U0001f4f1 engage: {len(tweets)} tweets found, picking {batch_size}")
+        logger.info(f"\U0001f4f1 engage: {len(tweets)} tweets found, target {batch_size} engagements")
 
-        for tweet in tweets[:batch_size]:
+        engagements_this_session = 0
+        for tweet in tweets:  # iterate ALL tweets, but stop after batch_size engagements
             if not self.running or self._engagements_today >= self.max_daily_engagements:
+                break
+            if engagements_this_session >= batch_size:
                 break
 
             tweet_id = tweet.get("id")
             if not tweet_id or tweet_id in self._engaged_tweet_ids:
                 continue
 
+            before = self._engagements_today
             await self._engage_with_tweet(tweet)
-            # _engaged_tweet_ids.add is now inside _engage_with_tweet (before API calls)
+            if self._engagements_today > before:
+                engagements_this_session += 1
 
             # Human-like pause between tweets (reading the next one)
             await asyncio.sleep(self._human_delay(10, 30))
@@ -1030,7 +1035,7 @@ class XAutonomousAgent:
                 tab = source.get("value", "latest")
                 result = await self._x_skill().get_home_timeline(count=15, tab=tab)
                 if not result.get("success"):
-                    logger.warning(f"\U0001f4f1 Timeline ({tab}) failed: {result.get('error', '?')[:120]} — retrying with foryou")
+                    logger.warning(f"\U0001f4f1 Timeline ({tab}) failed: {result.get('error', '?')[:120]},  retrying with foryou")
                     alt_tab = "foryou" if tab == "latest" else "latest"
                     result = await self._x_skill().get_home_timeline(count=15, tab=alt_tab)
                 tweets = result.get("tweets", []) if result.get("success") else []
@@ -1048,7 +1053,7 @@ class XAutonomousAgent:
                 )
                 tweets = result.get("tweets", []) if result.get("success") else []
                 if not tweets and not result.get("success"):
-                    logger.warning(f"\U0001f50d Topic search '{source['value']}' failed — falling back to timeline")
+                    logger.warning(f"\U0001f50d Topic search '{source['value']}' failed,  falling back to timeline")
                     fallback = await self._x_skill().get_home_timeline(count=15, tab="foryou")
                     tweets = fallback.get("tweets", []) if fallback.get("success") else []
                     if tweets:
@@ -1597,8 +1602,8 @@ class XAutonomousAgent:
             words = topic.lower().split()
             if any(w in text_lower for w in words):
                 return True
-        # 10% random chance to engage with anything (diversity)
-        return random.random() < 0.10
+        # 20% random chance to engage with anything (diversity)
+        return random.random() < 0.20
 
     async def _safe_action(self, name: str, func, *args) -> Optional[Dict]:
         """Execute an X action safely, respecting dry_run and 226 blocks."""
@@ -2474,7 +2479,7 @@ class XAutonomousAgent:
         rss_stories = await self._fetch_rss(feeds)
         stories.extend(rss_stories)
 
-        # Search X for ONE random topic — skip if self-heal has disabled search
+        # Search X for ONE random topic,  skip if self-heal has disabled search
         # (e.g. after a 404 on the GraphQL endpoint) so we don't keep hitting
         # a broken endpoint and wasting time before the post.
         search_ok = not self._healer.remedy.is_search_disabled()
@@ -2700,7 +2705,7 @@ class XAutonomousAgent:
                 if result.get("tombstone"):
                     # Tweet reached X but was immediately tombstoned (226 shadow still active).
                     # Count it as posted so we don't retry and double-post.
-                    logger.warning("⚠️ Tweet tombstoned — sent to X but hidden (226 shadow active)")
+                    logger.warning("⚠️ Tweet tombstoned,  sent to X but hidden (226 shadow active)")
                     return {"success": True, "tweet_id": None, "url": None, "tombstone": True}
                 elif "344" in error_str or "daily limit" in error_str.lower():
                     self._daily_limit_hit = True
@@ -2951,10 +2956,10 @@ class XAutonomousAgent:
                         if elapsed_h < self._limit_retry_hours:
                             self._daily_limit_hit = True
                             self._daily_limit_hit_at = hit_at
-                        # else: cooldown already expired — start fresh, no block
+                        # else: cooldown already expired,  start fresh, no block
                     except (ValueError, TypeError):
                         pass
-                # Older state files only had a bool (no timestamp) — don't restore that block
+                # Older state files only had a bool (no timestamp),  don't restore that block
 
             if self._daily_limit_hit:
                 elapsed = (datetime.now() - self._daily_limit_hit_at).total_seconds() / 3600

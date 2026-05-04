@@ -1,5 +1,5 @@
 """
-#2 — Cross-Domain Causal Correlation Engine
+#2,  Cross-Domain Causal Correlation Engine
 
 Ingests periodic Zunvra snapshots and uses LLM-assisted causal extraction
 to discover cause→effect chains that span multiple intelligence domains.
@@ -226,7 +226,7 @@ class CausalCorrelationEngine:
             except Exception as e:
                 logger.warning("LLM causal extraction failed: %s", e)
 
-        # Phase 3: Chain building — find multi-hop sequences
+        # Phase 3: Chain building,  find multi-hop sequences
         if len(triggered_links) >= 2:
             chain = self._build_chain(triggered_links, now)
             if chain:
@@ -302,7 +302,7 @@ class CausalCorrelationEngine:
             "You are a causal reasoning engine for the Zunvra OSINT intelligence platform.\n"
             "Given the current state of global intelligence feeds, extract cause→effect relationships.\n\n"
             f"Current state:\n{snapshot.summary_text(1500)}\n\n"
-            "Output ONLY valid JSON — an array of objects:\n"
+            "Output ONLY valid JSON,  an array of objects:\n"
             "[\n"
             '  {"cause_domain": "gps_jamming", "cause": "GPS gaps in Black Sea",\n'
             '   "effect_domain": "military_flights", "effect": "Russian military surge",\n'

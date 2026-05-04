@@ -658,7 +658,7 @@ class TelegramInterface:
             is_owner = user_id == self.pairing.owner_id()
             if not is_owner:
                 await message.answer(
-                    "Hey — I only chat inside the group. "
+                    "Hey,  I only chat inside the group. "
                     "Come talk to me there!"
                 )
                 return
@@ -688,7 +688,7 @@ class TelegramInterface:
 
         # ── Group intelligence layer ───────────────────────────────────
         if is_group:
-            # Always observe — even if we don't respond
+            # Always observe,  even if we don't respond
             self._group_memory.observe(
                 group_id, username, user_id, text, is_bot=False,
             )
@@ -750,7 +750,7 @@ class TelegramInterface:
                     f"mention={is_mentioned}, reply={is_reply_to_bot})"
                 )
 
-        # ── Session — per user, per channel ────────────────────────────
+        # ── Session,  per user, per channel ────────────────────────────
         channel_key = f"telegram_group_{group_id}" if is_group else "telegram"
         session = self.session_manager.get_or_create_session(
             user_id=user_id,

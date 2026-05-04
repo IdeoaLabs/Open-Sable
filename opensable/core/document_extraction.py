@@ -1,13 +1,13 @@
 """
-Document Extraction Pipeline — Map-Reduce Entity Extraction
+Document Extraction Pipeline,  Map-Reduce Entity Extraction
 
 Extracts structured entities and relationships from documents (PDF, DOCX,
 TXT, Markdown, HTML) into the Knowledge Graph v2.
 
 Architecture:
-  1. Reader   — convert any supported format to plain text chunks
-  2. Map      — LLM extracts entities/relations from each chunk
-  3. Reduce   — deduplicate, merge, and insert into knowledge graph
+  1. Reader  ,  convert any supported format to plain text chunks
+  2. Map     ,  LLM extracts entities/relations from each chunk
+  3. Reduce  ,  deduplicate, merge, and insert into knowledge graph
 
 Supports:
   - Chunking with configurable overlap (handles long docs)
@@ -68,7 +68,7 @@ def read_pdf(path: Path) -> str:
                 pages.append(t)
         return "\n\n".join(pages)
     except ImportError:
-        logger.warning("pypdf not installed — cannot extract PDF. pip install pypdf")
+        logger.warning("pypdf not installed,  cannot extract PDF. pip install pypdf")
         return ""
     except Exception as e:
         logger.error(f"PDF read error: {e}")
@@ -81,7 +81,7 @@ def read_docx(path: Path) -> str:
         doc = Document(str(path))
         return "\n\n".join(p.text for p in doc.paragraphs if p.text.strip())
     except ImportError:
-        logger.warning("python-docx not installed — cannot extract DOCX. pip install python-docx")
+        logger.warning("python-docx not installed,  cannot extract DOCX. pip install python-docx")
         return ""
     except Exception as e:
         logger.error(f"DOCX read error: {e}")
@@ -211,7 +211,7 @@ class DocumentExtractor:
         # Step 2: Chunk
         chunks = chunk_text(text)[:self.MAX_CHUNKS_PER_DOC]
 
-        # Step 3: Map — extract from each chunk
+        # Step 3: Map,  extract from each chunk
         all_entities: List[ExtractedEntity] = []
         all_relations: List[ExtractedRelation] = []
 
@@ -223,7 +223,7 @@ class DocumentExtractor:
                 result.errors.append(f"Chunk {i}: {err}")
             result.chunks_processed += 1
 
-        # Step 4: Reduce — deduplicate and merge into KG
+        # Step 4: Reduce,  deduplicate and merge into KG
         self._reduce_into_kg(all_entities, all_relations, str(file_path))
 
         result.entities = all_entities

@@ -1,5 +1,5 @@
 """
-#24 — Environmental Threat Intelligence
+#24,  Environmental Threat Intelligence
 
 Military METOC / NGA / FEMA capability.  Correlates fire and earthquake
 data with conflict zones to identify scorched-earth campaigns, detect

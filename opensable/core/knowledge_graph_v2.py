@@ -1,5 +1,5 @@
 """
-Knowledge Graph v2 — Typed Relations, FAISS Semantic Search, Auto-Recall
+Knowledge Graph v2,  Typed Relations, FAISS Semantic Search, Auto-Recall
 
 Upgrades over v1:
   - 67 typed directional relations with 60+ aliases
@@ -50,7 +50,7 @@ except ImportError:
 
 
 # ══════════════════════════════════════════════════════════════════════
-#  Relation Vocabulary — 67 typed relations + 60 aliases
+#  Relation Vocabulary,  67 typed relations + 60 aliases
 # ══════════════════════════════════════════════════════════════════════
 
 RELATION_TYPES: Dict[str, str] = {
@@ -174,7 +174,7 @@ class FAISSIndex:
 
     @staticmethod
     def _trigram_embed(text: str) -> "np.ndarray":
-        """Deterministic trigram hash embedding — zero external models."""
+        """Deterministic trigram hash embedding,  zero external models."""
         vec = np.zeros(FAISSIndex.DIM, dtype=np.float32)
         text = text.lower().strip()
         for i in range(len(text) - 2):
@@ -460,7 +460,7 @@ class KnowledgeGraphV2:
                 frontier = next_frontier
 
         # Format context
-        lines = ["[Memory — Knowledge Graph Context]"]
+        lines = ["[Memory,  Knowledge Graph Context]"]
         for ent in expanded.values():
             line = f"• {ent.name} ({ent.entity_type})"
             if ent.description:

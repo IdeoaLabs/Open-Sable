@@ -1,5 +1,5 @@
 """
-main.py — Sable entry point wrapper.
+main.py,  Sable entry point wrapper.
 The real implementation lives in opensable/__main__.py
 Run with: python main.py  OR  python -m opensable
 """

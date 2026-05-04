@@ -1029,7 +1029,7 @@ class SableAgent:
             if self.llm:
                 self.dream_engine_v2.set_llm(self.llm)
         else:
-            logger.warning("Dream Engine v2 requires Knowledge Graph v2 — skipped")
+            logger.warning("Dream Engine v2 requires Knowledge Graph v2,  skipped")
 
     async def _init_shell_safety(self):
         from .shell_safety import ShellSafety
@@ -1043,7 +1043,7 @@ class SableAgent:
             if self.llm:
                 self.document_extractor.set_llm(self.llm)
         else:
-            logger.warning("Document extractor requires Knowledge Graph v2 — skipped")
+            logger.warning("Document extractor requires Knowledge Graph v2,  skipped")
 
     async def _init_wiki_vault(self):
         from .wiki_vault import WikiVault
@@ -1052,7 +1052,7 @@ class SableAgent:
             vault_dir = Path(self._data_dir) / "wiki_vault"
             self.wiki_vault = WikiVault(kg=kg_v2, vault_dir=vault_dir)
         else:
-            logger.warning("Wiki vault requires Knowledge Graph v2 — skipped")
+            logger.warning("Wiki vault requires Knowledge Graph v2,  skipped")
 
     async def _init_iot_controller(self):
         from .iot_controller import IoTController
@@ -1788,7 +1788,7 @@ class SableAgent:
                 from .shell_safety import Tier
                 tier, reason = self.shell_safety.classify(cmd)
                 if tier == Tier.BLOCKED:
-                    logger.warning(f"Shell command BLOCKED: {cmd!r} — {reason}")
+                    logger.warning(f"Shell command BLOCKED: {cmd!r},  {reason}")
                     return f"**{name}:** 🚫 Command blocked for safety: {reason}"
 
         # ── HITL: approval gate (skip for benchmark users) ──

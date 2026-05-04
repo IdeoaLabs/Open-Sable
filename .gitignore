@@ -141,7 +141,7 @@ desktop/release/
 desktop/out/
 desktop/.env
 .desktop.pid
-# Agent runtime data — NEVER commit (conversations, memory, state, vectordb, etc.)
+# Agent runtime data,  NEVER commit (conversations, memory, state, vectordb, etc.)
 agents/*/data
 !agents/_template/data/
 agents/nexus_erebus/
@@ -201,5 +201,5 @@ validation_framework.json
 .depshield.json
 installers/build/
 installers/__pycache__/
-# Keep installer binaries in dist — force-add with git add -f
+# Keep installer binaries in dist,  force-add with git add -f
 

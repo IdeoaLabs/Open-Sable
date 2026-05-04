@@ -1,5 +1,5 @@
 """
-Zunvra Central Intelligence — API Connector
+Zunvra Central Intelligence,  API Connector
 
 Persistent async client for all Zunvra/Central Intelligence backend endpoints.
 Handles GZip, ETag caching, SSE streaming, and automatic reconnection.
@@ -229,7 +229,7 @@ class IntelSnapshot:
         if not isinstance(gps_jamming, list):
             gps_jamming = []
 
-        # Helper — safely extract a list or dict, falling back to default
+        # Helper,  safely extract a list or dict, falling back to default
         def _lst(key: str, alt: str = "", default=None):
             """Get a list field, trying key then alt."""
             val = data.get(key, data.get(alt, [] if default is None else default))
@@ -522,7 +522,7 @@ class ZunvraConnector:
                     logger.warning("Zunvra %s returned %s", path, resp.status)
             except Exception as e:
                 wait = 2 ** attempt
-                logger.warning("Zunvra request %s failed (attempt %d): %s — retry in %ds",
+                logger.warning("Zunvra request %s failed (attempt %d): %s,  retry in %ds",
                                path, attempt + 1, e, wait)
                 await asyncio.sleep(wait)
         return None

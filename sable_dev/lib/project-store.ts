@@ -1,5 +1,5 @@
 /**
- * Project Store — Persistent file storage for sandbox projects.
+ * Project Store,  Persistent file storage for sandbox projects.
  * 
  * Saves ALL project files to .sable-dev/projects/{sandboxId}/ on disk
  * so they survive process restarts and can be fully restored.

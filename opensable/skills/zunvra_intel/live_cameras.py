@@ -1,5 +1,5 @@
 """
-Zunvra Intelligence — Live Camera Sources
+Zunvra Intelligence,  Live Camera Sources
 
 Camera system disabled.  Windy embeds removed (only showed weather maps,
 not real camera feeds).  The infrastructure remains for when a real
@@ -31,7 +31,7 @@ class LiveCamera:
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# CAMERA SYSTEM DISABLED — no embeddable source available
+# CAMERA SYSTEM DISABLED,  no embeddable source available
 # ═══════════════════════════════════════════════════════════════════════
 
 def generate_camera_for_location(
@@ -41,7 +41,7 @@ def generate_camera_for_location(
     city: str = "",
     country: str = "",
 ) -> Optional[LiveCamera]:
-    """Disabled — returns None. No embeddable camera source available."""
+    """Disabled,  returns None. No embeddable camera source available."""
     return None
 
 

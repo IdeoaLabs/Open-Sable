@@ -1,5 +1,5 @@
 """
-Zunvra Intelligence Loop — Background task that runs the full 26-module
+Zunvra Intelligence Loop,  Background task that runs the full 26-module
 analysis pipeline + autonomous camera pilot on a recurring schedule.
 
 This is the bridge between SableCore boot and the ZunvraIntelSkill.
@@ -58,7 +58,7 @@ class IntelLoop:
     async def start(self):
         """Initialize the skill and start the recurring loop."""
         self.running = True
-        logger.info("🛰️  Intel Loop starting — initializing ZunvraIntelSkill...")
+        logger.info("🛰️  Intel Loop starting,  initializing ZunvraIntelSkill...")
 
         try:
             from opensable.skills.zunvra_intel import ZunvraIntelSkill
@@ -70,7 +70,7 @@ class IntelLoop:
             self.skill = ZunvraIntelSkill(
                 base_url=self.backend_url,
                 data_dir=os.environ.get("ZUNVRA_INTEL_DATA_DIR", default_data_dir),
-                enable_llm=False,  # Pure algorithmic — no LLM needed for analysis
+                enable_llm=False,  # Pure algorithmic,  no LLM needed for analysis
             )
             await self.skill.initialize()
 
@@ -89,7 +89,7 @@ class IntelLoop:
                 logger.info("🎥 Camera pilot disabled (ZUNVRA_CAMERA_ENABLED=false)")
 
             logger.info(
-                "🛰️  ZunvraIntelSkill v%s initialized — 26 modules + remote + camera + broadcaster",
+                "🛰️  ZunvraIntelSkill v%s initialized,  26 modules + remote + camera + broadcaster",
                 self.skill.__class__.__module__.rsplit(".", 1)[0]
                 and getattr(__import__("opensable.skills.zunvra_intel", fromlist=["__version__"]), "__version__", "?"),
             )
@@ -128,7 +128,7 @@ class IntelLoop:
                 camera_moves = results.get("camera_moves", 0)
 
                 logger.info(
-                    "🛰️  Intel cycle #%d complete in %.1fs — "
+                    "🛰️  Intel cycle #%d complete in %.1fs,  "
                     "%d findings, DEFCON %s %s, %d camera moves",
                     self._cycle_count - 1, elapsed, findings,
                     threat_level, threat_name, camera_moves,
@@ -172,7 +172,7 @@ class IntelLoop:
             except Exception:
                 pass
         logger.info(
-            "🛰️  Intel Loop stopped — %d cycles, %d total findings",
+            "🛰️  Intel Loop stopped,  %d cycles, %d total findings",
             self._cycle_count, self._total_findings,
         )
 

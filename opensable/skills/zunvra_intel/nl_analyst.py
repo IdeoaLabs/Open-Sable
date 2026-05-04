@@ -1,5 +1,5 @@
 """
-#1 — Natural Language Intelligence Analyst
+#1,  Natural Language Intelligence Analyst
 
 Chat-based interface that lets a user query the live Zunvra OSINT data
 in plain English. Uses OpenSable's ReAct-style tool chaining to:
@@ -103,7 +103,7 @@ class AnalystResponse:
     confidence: float = 0.0
 
     def to_text(self, max_chars: int = 4000) -> str:
-        lines = [f"INTELLIGENCE RESPONSE — {self.timestamp}"]
+        lines = [f"INTELLIGENCE RESPONSE,  {self.timestamp}"]
         lines.append(f"Query: {self.query}")
         lines.append(f"Entities found: {self.entities_found}")
         lines.append(f"Confidence: {self.confidence:.0%}")
@@ -275,7 +275,7 @@ class NLIntelAnalyst:
 
         summary = "; ".join(summary_parts) if summary_parts else "No matching entities found."
         if query.region_name:
-            summary = f"Region: {query.region_name.title()} — {summary}"
+            summary = f"Region: {query.region_name.title()},  {summary}"
 
         # Cross-domain insights (rule-based)
         insights = self._cross_domain_insights(results, query)
@@ -332,25 +332,25 @@ class NLIntelAnalyst:
         if mil and ships:
             insights.append(
                 f"Co-location detected: {len(mil)} military aircraft and "
-                f"{len(ships)} vessels in same area — possible naval exercise or deployment."
+                f"{len(ships)} vessels in same area,  possible naval exercise or deployment."
             )
 
         if mil and jamming:
             insights.append(
                 f"SIGINT correlation: {len(jamming)} GPS jamming zones coincide with "
-                f"{len(mil)} military flights — possible electronic warfare activity."
+                f"{len(mil)} military flights,  possible electronic warfare activity."
             )
 
         if cyber and jamming:
             insights.append(
                 f"Multi-domain threat: {len(cyber)} cyber threats and {len(jamming)} "
-                f"GPS jamming zones active simultaneously — potential coordinated operation."
+                f"GPS jamming zones active simultaneously,  potential coordinated operation."
             )
 
         if carriers and mil:
             insights.append(
                 f"Carrier activity: {len(carriers)} carrier strike groups in area with "
-                f"{len(mil)} military aircraft — elevated military posture."
+                f"{len(mil)} military aircraft,  elevated military posture."
             )
 
         if len(results) >= 4:

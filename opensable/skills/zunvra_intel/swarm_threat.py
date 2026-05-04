@@ -1,15 +1,15 @@
 """
-#3 — Swarm Intelligence Threat Assessment
+#3,  Swarm Intelligence Threat Assessment
 
 When an anomaly is detected in Zunvra data, launches multiple parallel
 "thought-agents" that each develop a competing hypothesis about what's
 happening. They vote and produce a consensus assessment with confidence.
 
 Output example:
-  SABLE SWARM ASSESSMENT — Anomaly: Eastern Mediterranean
-  Hypothesis A (military exercise): 0.73 confidence — Agent #1
-  Hypothesis B (escalation): 0.21 — Agent #2
-  Hypothesis C (sensor noise): 0.06 — Agent #3
+  SABLE SWARM ASSESSMENT,  Anomaly: Eastern Mediterranean
+  Hypothesis A (military exercise): 0.73 confidence,  Agent #1
+  Hypothesis B (escalation): 0.21,  Agent #2
+  Hypothesis C (sensor noise): 0.06,  Agent #3
   CONSENSUS: Most likely a scheduled military exercise (73%)
 """
 
@@ -56,7 +56,7 @@ class SwarmAssessment:
 
     def to_text(self) -> str:
         lines = [
-            f"SABLE SWARM ASSESSMENT — {self.assessment_id}",
+            f"SABLE SWARM ASSESSMENT,  {self.assessment_id}",
             f"Trigger: {self.trigger}",
             f"Threat Level: {self.threat_level}",
             f"Timestamp: {self.timestamp}",
@@ -313,7 +313,7 @@ class SwarmThreatAssessor:
                 ))
             return agents
         except Exception as e:
-            logger.warning("LLM swarm failed: %s — falling back to rules", e)
+            logger.warning("LLM swarm failed: %s,  falling back to rules", e)
             return self._rule_swarm(anomaly, snapshot)
 
     # ── Rule-based fallback ───────────────────────────────────────────
@@ -343,14 +343,14 @@ class SwarmThreatAssessor:
                 agent_id="TA-1", hypothesis="Coordinated cyber campaign targeting infrastructure",
                 confidence=0.45, status="concluded"))
             agents.append(ThoughtAgent(
-                agent_id="TA-2", hypothesis="Botnet scan noise — not targeted",
+                agent_id="TA-2", hypothesis="Botnet scan noise,  not targeted",
                 confidence=0.35, status="concluded"))
             agents.append(ThoughtAgent(
                 agent_id="TA-3", hypothesis="C2 feed false positives",
                 confidence=0.20, status="concluded"))
         elif "earthquake" in anomaly.anomaly_type:
             agents.append(ThoughtAgent(
-                agent_id="TA-1", hypothesis="Natural tectonic event — no threat escalation",
+                agent_id="TA-1", hypothesis="Natural tectonic event,  no threat escalation",
                 confidence=0.60, status="concluded"))
             agents.append(ThoughtAgent(
                 agent_id="TA-2", hypothesis="Possible nuclear test disguised as natural event",
@@ -366,7 +366,7 @@ class SwarmThreatAssessor:
                 agent_id="TA-2", hypothesis="Emerging situation requiring closer monitoring",
                 confidence=0.30, status="concluded"))
             agents.append(ThoughtAgent(
-                agent_id="TA-3", hypothesis="Data irregularity — sensor or feed issue",
+                agent_id="TA-3", hypothesis="Data irregularity,  sensor or feed issue",
                 confidence=0.15, status="concluded"))
 
         return agents

@@ -67,7 +67,7 @@
     {
       "id": "entity_dossier",
       "name": "Entity Deep Dossier",
-      "description": "Autonomous research on any entity — aircraft, vessel, satellite, person",
+      "description": "Autonomous research on any entity,  aircraft, vessel, satellite, person",
       "trigger": "on_demand",
       "feature_number": 8
     },

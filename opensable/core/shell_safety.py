@@ -1,9 +1,9 @@
 """
-Shell Safety — 3-Tier Command Classification
+Shell Safety,  3-Tier Command Classification
 
-Tier 1 (safe)    : Read-only, non-destructive — auto-execute
-Tier 2 (moderate): Can modify state — require user confirmation
-Tier 3 (blocked) : Dangerous / destructive — blocked outright
+Tier 1 (safe)    : Read-only, non-destructive,  auto-execute
+Tier 2 (moderate): Can modify state,  require user confirmation
+Tier 3 (blocked) : Dangerous / destructive,  blocked outright
 
 Supports per-task allowlists for background workflows (e.g., a build
 workflow may auto-approve `npm run build` without confirmation).
@@ -20,9 +20,9 @@ logger = logging.getLogger(__name__)
 
 
 class Tier(Enum):
-    SAFE = auto()       # Tier 1 — auto-execute
-    MODERATE = auto()   # Tier 2 — ask user
-    BLOCKED = auto()    # Tier 3 — reject
+    SAFE = auto()       # Tier 1,  auto-execute
+    MODERATE = auto()   # Tier 2,  ask user
+    BLOCKED = auto()    # Tier 3,  reject
 
 
 # ── Command Classification Tables ─────────────────────────────────────
@@ -166,7 +166,7 @@ class ShellSafety:
             return Tier.MODERATE, f"'{base}' can modify system state"
 
         # Step 7: Unknown commands default to moderate
-        return Tier.MODERATE, f"Unknown command '{base}' — requires confirmation"
+        return Tier.MODERATE, f"Unknown command '{base}',  requires confirmation"
 
     def is_allowed(self, command: str, task_id: Optional[str] = None) -> bool:
         """Quick check: is this command safe to auto-execute?"""

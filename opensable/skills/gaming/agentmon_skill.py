@@ -1,12 +1,12 @@
 """
-AgentMon League Skill — Play Pokémon Red on a Game Boy emulator.
+AgentMon League Skill,  Play Pokémon Red on a Game Boy emulator.
 
 OpenSable (https://opensable.com) agent skill for AgentMon League.
 The agent registers once, then plays Pokémon Red via a remote emulator
 API: send button presses, receive game state and screen frames.
 
 The platform runs the emulator server-side; the agent only sends
-actions and reads state — no ROM or emulator runs locally.
+actions and reads state,  no ROM or emulator runs locally.
 
 Auto-registration:
     On first boot the agent registers with the AgentMon League API.
@@ -45,7 +45,7 @@ _DEFAULT_CREDS_FILE = Path("data/agentmon_credentials.json")
 VALID_ACTIONS = {"up", "down", "left", "right", "a", "b", "start", "select", "pass"}
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  NAVIGATION MAP — per-map directional guidance for Pokémon Red
+#  NAVIGATION MAP,  per-map directional guidance for Pokémon Red
 # ══════════════════════════════════════════════════════════════════════════════
 # Pattern matched against mapName (lowercase).  "dir" = primary direction
 # to make progress, "alt" = fallback when primary is blocked.
@@ -114,7 +114,7 @@ _GYM_BADGE_MAP = {
 _WORLD_MAP_PATH = Path("data/agentmon_worldmap.json")
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  WORLD MAP — tile-by-tile mental map built from exploration feedback
+#  WORLD MAP,  tile-by-tile mental map built from exploration feedback
 # ══════════════════════════════════════════════════════════════════════════════
 
 class WorldMap:
@@ -216,7 +216,7 @@ class WorldMap:
                 exits = t.get("exits", {})
                 if d in exits:
                     continue
-                # Check opens FIRST — if we have a proven open,
+                # Check opens FIRST,  if we have a proven open,
                 # use it even if there's a stale wall entry.
                 dest = t["opens"].get(d)
                 if dest is not None:
@@ -228,7 +228,7 @@ class WorldMap:
                 elif d in t["opens"]:
                     continue  # opens[d]=None means cross-map, skip
                 elif d not in t["walls"]:
-                    # Unknown direction — not walled, not opened
+                    # Unknown direction,  not walled, not opened
                     nx, ny = x + self._DX[d], y + self._DY[d]
                     dt = tiles.get((nx, ny))
                     if dt is None or not dt.get("vis"):
@@ -340,7 +340,7 @@ class WorldMap:
                     nbt = tiles.get(nb, {})
                     if nbt and nbt.get("warp") is not None:
                         continue
-                # Unknown direction — speculative edge, slightly higher cost
+                # Unknown direction,  speculative edge, slightly higher cost
                 cost = 2.0  # penalty for uncertainty
                 tg = g[cur] + cost
                 if tg < g.get(nb, float("inf")):
@@ -370,14 +370,14 @@ class WorldMap:
                 continue
             dest = t["opens"].get(d)
             if dest is not None:
-                # Known open direction — use it (ignore stale walls)
+                # Known open direction,  use it (ignore stale walls)
                 pass
             elif d in t["opens"]:
                 continue  # opens[d]=None → cross-map
             elif d in t["walls"]:
                 continue  # walled AND not in opens → real wall
             else:
-                # Direction not yet explored — it's a candidate
+                # Direction not yet explored,  it's a candidate
                 cands.append((-100 + (0 if d == bias else 10), d))
                 continue
             dt = tiles.get(dest, {})
@@ -539,7 +539,7 @@ def _save_credentials(path: Path, creds: Dict[str, Any]) -> None:
 class AgentMonSkill:
     """Async client for the AgentMon League Pokémon Red emulator API."""
 
-    # ── Singleton — survive Tools class re-creation ────────────────
+    # ── Singleton,  survive Tools class re-creation ────────────────
     _instance: Optional["AgentMonSkill"] = None
 
     def __new__(cls, *args, **kwargs):
@@ -566,7 +566,7 @@ class AgentMonSkill:
             or os.getenv("AGENTMON_SPEED", "2")
         )
 
-        # Action throttle — small delay between game actions
+        # Action throttle,  small delay between game actions
         self._action_delay: float = float(
             getattr(config, "agentmon_action_delay", 0)
             or os.getenv("AGENTMON_ACTION_DELAY", "0.5")
@@ -670,7 +670,7 @@ class AgentMonSkill:
         self._building_map_id: int = -1     # mapId of current building
         self._exit_sweep_dir: int = 0       # alternating L/R sweep counter
 
-        # ── WORLD MAP — persistent tile-by-tile exploration map ───────
+        # ── WORLD MAP,  persistent tile-by-tile exploration map ───────
         self._world_map = WorldMap()
         if _WORLD_MAP_PATH.exists():
             if self._world_map.load(str(_WORLD_MAP_PATH)):
@@ -691,7 +691,7 @@ class AgentMonSkill:
             return True
 
         if not AIOHTTP_AVAILABLE:
-            logger.info("AgentMon skill requires aiohttp — pip install aiohttp")
+            logger.info("AgentMon skill requires aiohttp,  pip install aiohttp")
             return False
 
         # Check enabled flag
@@ -709,7 +709,7 @@ class AgentMonSkill:
         ).rstrip("/")
 
         if not self._base_url:
-            logger.info("AgentMon skill disabled — set AGENTMON_URL")
+            logger.info("AgentMon skill disabled,  set AGENTMON_URL")
             return False
 
         try:
@@ -724,7 +724,7 @@ class AgentMonSkill:
                 self._agent_id = cached.get("agentId", "")
                 self._available = True
                 logger.info(
-                    f"✅ AgentMon skill ready (cached) — "
+                    f"✅ AgentMon skill ready (cached),  "
                     f"agent={cached.get('displayName', self._agent_id[:8])}"
                 )
                 # Auto-resume: load the latest save or start new game
@@ -737,10 +737,10 @@ class AgentMonSkill:
             creds = await self._auto_register()
             if not creds:
                 logger.warning(
-                    "🎮 AgentMon: registration failed (API may be down) — "
+                    "🎮 AgentMon: registration failed (API may be down),  "
                     "will retry in background"
                 )
-                # Don't call cleanup() — keep session alive for retries
+                # Don't call cleanup(),  keep session alive for retries
                 return False
 
             self._api_key = creds["apiKey"]
@@ -749,7 +749,7 @@ class AgentMonSkill:
 
             self._available = True
             logger.info(
-                f"✅ AgentMon skill ready (registered) — "
+                f"✅ AgentMon skill ready (registered),  "
                 f"agent={creds.get('displayName', self._agent_id[:8])}"
             )
             # Auto-resume: start a fresh game after first registration
@@ -847,7 +847,7 @@ class AgentMonSkill:
                             return
                     logger.warning(f"AgentMon: resume failed ({result.get('error')}), starting fresh")
 
-            # No saves or resume failed — start fresh
+            # No saves or resume failed,  start fresh
             logger.info("AgentMon: starting fresh game (has_pokedex checkpoint)")
             result = await self.start_game()
             if not result.get("error"):
@@ -912,21 +912,21 @@ class AgentMonSkill:
                 if "moved" in effects:
                     state = result.get("state", {})
                     logger.info(
-                        f"AgentMon: dialogue cleared ({attempt} rounds) — "
+                        f"AgentMon: dialogue cleared ({attempt} rounds),  "
                         f"moved {d} to ({state.get('x')},{state.get('y')})"
                     )
                     return state
 
-            # Still blocked everywhere — press A once to advance dialogue text
+            # Still blocked everywhere,  press A once to advance dialogue text
             # (only if B didn't help)
             if attempt % 3 == 2:
                 await self.step("a")
                 await asyncio.sleep(0.15)
 
-        # Could not clear after 20 attempts — return current state
+        # Could not clear after 20 attempts,  return current state
         state = await self.get_state()
         logger.warning(
-            f"AgentMon: dialogue not fully cleared — "
+            f"AgentMon: dialogue not fully cleared,  "
             f"{state.get('mapName', '?')} ({state.get('x')},{state.get('y')}). "
             f"Play loop will handle it."
         )
@@ -942,7 +942,7 @@ class AgentMonSkill:
         Should return a list of button presses (e.g. ["up", "a", "right"]).
         """
         self._llm_callback = fn
-        logger.info("AgentMon: LLM callback registered — intelligent play enabled")
+        logger.info("AgentMon: LLM callback registered,  intelligent play enabled")
 
     # ── Vision (VLM) helpers ──────────────────────────────────────────
 
@@ -1060,7 +1060,7 @@ class AgentMonSkill:
         )
 
     # ================================================================
-    #  PLAY LOOP — feedback-driven, one step at a time
+    #  PLAY LOOP,  feedback-driven, one step at a time
     # ================================================================
     #
     #  The API returns feedback.effects on EVERY step:
@@ -1075,14 +1075,14 @@ class AgentMonSkill:
     #  a base64 PNG frame.
     #
     #  We send ONE action per step() call and read the feedback
-    #  to know exactly what happened — no more blind guessing.
+    #  to know exactly what happened,  no more blind guessing.
     # ================================================================
 
     _REVERSE = {"up": "down", "down": "up", "left": "right", "right": "left"}
     _DIR_SET = {"up", "down", "left", "right"}
 
     async def _play_loop(self):
-        """Continuous background gameplay — one step at a time with feedback."""
+        """Continuous background gameplay,  one step at a time with feedback."""
         consecutive_errors = 0
         turns_played = 0
 
@@ -1111,7 +1111,7 @@ class AgentMonSkill:
             state = await self._clear_startup_dialogue()
 
             logger.info(
-                f"AgentMon: play loop entering main loop — "
+                f"AgentMon: play loop entering main loop,  "
                 f"{state.get('mapName', '?')} ({state.get('x')},{state.get('y')}) | "
                 f"avail={self._available} active={self._game_active}"
             )
@@ -1213,7 +1213,7 @@ class AgentMonSkill:
                     # -- 7. Use new state for next turn ---
                     state = new_state
 
-                    # -- 7b. Vision (DISABLED — too slow, wastes turns) ---
+                    # -- 7b. Vision (DISABLED,  too slow, wastes turns) ---
                     # VLM calls take 20-30s each and don't help navigation.
                     # Keeping the code but skipping execution.
 
@@ -1275,7 +1275,7 @@ class AgentMonSkill:
                                 f"Attempting recovery (KEEPING map knowledge)..."
                             )
                             # Strategy: Load last save instead of nuking everything.
-                            # The WorldMap is PRESERVED — we never lose map knowledge.
+                            # The WorldMap is PRESERVED,  we never lose map knowledge.
                             recovered = False
                             try:
                                 saves = await self.list_saves()
@@ -1303,9 +1303,9 @@ class AgentMonSkill:
                                 logger.debug(f"AgentMon: save load failed: {e}")
 
                             if not recovered:
-                                # No saves to load — try clearing walls and
+                                # No saves to load,  try clearing walls and
                                 # escaping via B + directions (soft recovery)
-                                logger.info("AgentMon: no saves to load, soft recovery — clearing walls + escaping")
+                                logger.info("AgentMon: no saves to load, soft recovery,  clearing walls + escaping")
                                 mid = state.get("mapId", 0)
                                 pos = (state.get("x", 0), state.get("y", 0))
                                 self._walls.get(mid, {}).pop(pos, None)
@@ -1382,7 +1382,7 @@ class AgentMonSkill:
             e in effects for e in ("blocked", "hit_wall_or_obstacle")
         ):
             # Check if an NPC is blocking this direction.
-            # NPCs move, so NPC-blocked directions are TEMPORARY — do NOT
+            # NPCs move, so NPC-blocked directions are TEMPORARY,  do NOT
             # record them as permanent walls (prevents map corruption).
             dx = {"left": -1, "right": 1, "up": 0, "down": 0}.get(action, 0)
             dy = {"left": 0, "right": 0, "up": -1, "down": 1}.get(action, 0)
@@ -1396,7 +1396,7 @@ class AgentMonSkill:
                 self._consecutive_blocked += 1
                 return
 
-            # Real wall — record it
+            # Real wall,  record it
             self._walls.setdefault(old_mid, {}).setdefault(
                 (old_x, old_y), set()
             ).add(action)
@@ -1413,7 +1413,7 @@ class AgentMonSkill:
             if key not in self._npc_avoid or self._npc_avoid[key] != action:
                 logger.info(
                     f"AgentMon: NPC dialogue triggered by '{action}' from "
-                    f"({old_x},{old_y}) — avoiding that direction for 15 turns"
+                    f"({old_x},{old_y}),  avoiding that direction for 15 turns"
                 )
             self._npc_avoid[key] = action
             self._npc_avoid_until = wm._turn + 15
@@ -1426,7 +1426,7 @@ class AgentMonSkill:
                 self._opens.setdefault(old_mid, {}).setdefault(
                     (old_x, old_y), {}
                 )[action] = (new_x, new_y)
-                # Record forward direction only (no reverse — it corrupts data)
+                # Record forward direction only (no reverse,  it corrupts data)
                 wm.open_dir(old_mid, old_x, old_y, action, (new_x, new_y))
                 # Also remove any stale wall for this direction
                 # (we just moved there, so it's not a wall)
@@ -1465,7 +1465,7 @@ class AgentMonSkill:
             self._consecutive_blocked = 0
 
     # ================================================================
-    #  NAVIGATION — map-aware directional agent brain
+    #  NAVIGATION,  map-aware directional agent brain
     # ================================================================
 
     def _get_nav_for_map(self, state: Dict) -> Optional[Dict[str, str]]:
@@ -1518,11 +1518,11 @@ class AgentMonSkill:
         """
         # -- 1. Battle --
         if state.get("inBattle"):
-            # Count turns in battle — if it lasts 20+ turns pressing A,
+            # Count turns in battle,  if it lasts 20+ turns pressing A,
             # something is wrong (softlock, NPC, tutorial). Try to RUN.
             self._consecutive_dialogue_a += 1
             if self._consecutive_dialogue_a >= 20:
-                # Stuck in battle — try RUN sequence:
+                # Stuck in battle,  try RUN sequence:
                 # B(cancel), DOWN(to RUN), DOWN, RIGHT(to RUN), A(select), A
                 phase = (self._consecutive_dialogue_a - 20) % 6
                 run_seq = ["b", "down", "right", "a", "b", "a"]
@@ -1577,7 +1577,7 @@ class AgentMonSkill:
                     return "a"
 
         # Reset dialogue counter ONLY when we actually moved (not just when 
-        # dialogue flag is false — NPC re-triggers dialogue instantly)
+        # dialogue flag is false,  NPC re-triggers dialogue instantly)
         if not self._in_dialogue:
             # Only reset if last step was a successful move
             if self._step_memory and "moved" in self._step_memory[-1].get("effects", []):
@@ -1594,7 +1594,7 @@ class AgentMonSkill:
             # Clear fake walls from dialogue-blocked state
             self._walls.get(map_id, {}).pop(pos, None)
             self._consecutive_blocked = 0
-            # Press B to dismiss (NOT A — A re-triggers NPC dialogue)
+            # Press B to dismiss (NOT A,  A re-triggers NPC dialogue)
             return "b"
 
         # -- 6. Navigate --
@@ -1608,7 +1608,7 @@ class AgentMonSkill:
         is_building = nav and nav["dir"] == "down"
 
         # -- 6b. NPC AVOIDANCE --
-        # Don't walk into NPCs — they block movement and cause false wall
+        # Don't walk into NPCs,  they block movement and cause false wall
         # recordings. Pick the best alternative direction instead.
         npc_set = self._npc_positions.get(map_id, set())
         if action in self._DIR_SET and npc_set:
@@ -1707,7 +1707,7 @@ class AgentMonSkill:
         return "a"
 
     # ================================================================
-    #  A* PATHFINDING — now delegated to WorldMap
+    #  A* PATHFINDING,  now delegated to WorldMap
     # ================================================================
 
     _DX = {"left": -1, "right": 1, "up": 0, "down": 0}
@@ -1787,7 +1787,7 @@ class AgentMonSkill:
             if npc_dir in order:
                 order = [d for d in order if d != npc_dir] + [npc_dir]
                 logger.debug(
-                    f"AgentMon: deprioritizing '{npc_dir}' at ({x},{y}) — NPC ahead"
+                    f"AgentMon: deprioritizing '{npc_dir}' at ({x},{y}),  NPC ahead"
                 )
 
         # Try directions in priority order
@@ -1809,7 +1809,7 @@ class AgentMonSkill:
     async def _auto_register(self) -> Optional[Dict[str, Any]]:
         """Register with the AgentMon League API.
 
-        Only requires the base URL — no pre-shared secrets needed.
+        Only requires the base URL,  no pre-shared secrets needed.
         The API returns an apiKey + agentId on success.
         """
         try:
@@ -1821,7 +1821,7 @@ class AgentMonSkill:
             display_name = (
                 getattr(self.config, "agentmon_display_name", "")
                 or os.getenv("AGENTMON_DISPLAY_NAME", "")
-                or f"OpenSable — {agent_name}"
+                or f"OpenSable,  {agent_name}"
             )
             description = (
                 getattr(self.config, "agentmon_description", "")
@@ -1900,7 +1900,7 @@ class AgentMonSkill:
                 },
             ) as r:
                 if r.status == 200:
-                    logger.info(f"AgentMon: profile set — {display_name}")
+                    logger.info(f"AgentMon: profile set,  {display_name}")
         except Exception:
             pass  # non-critical
 

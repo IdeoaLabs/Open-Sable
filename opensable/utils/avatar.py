@@ -21,7 +21,7 @@ from pathlib import Path
 _STATE_FILE  = Path(os.environ.get("AVATAR_STATE_FILE", "/tmp/sable-avatar-state.json"))
 _BRAIN_FILE  = Path(os.environ.get("AVATAR_BRAIN_FILE", "/tmp/sable-brain-state.json"))
 
-# Avatar HTTP endpoints — override via env vars to avoid hardcoded IPs
+# Avatar HTTP endpoints,  override via env vars to avoid hardcoded IPs
 # Set AVATAR_PI_URL="" to disable Pi posting entirely
 _HTTP_URL    = os.environ.get("AVATAR_HTTP_URL",  "http://127.0.0.1:7799/state")
 _PI_URL      = os.environ.get("AVATAR_PI_URL",    "")   # empty = disabled by default

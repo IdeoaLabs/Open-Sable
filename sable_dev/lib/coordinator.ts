@@ -1,5 +1,5 @@
 /**
- * Coordinator — Multi-Agent Orchestration
+ * Coordinator,  Multi-Agent Orchestration
  * 
  * Splits complex work across async workers; coordinator synthesizes results.
  * Workers are forked sub-agents that run independently and notify via
@@ -476,7 +476,7 @@ RULES:
 1. Break complex tasks into focused sub-tasks
 2. Assign each sub-task to the appropriate worker role
 3. Wait for ALL workers to complete before synthesizing
-4. ALWAYS synthesize results — don't pass raw worker output to user
+4. ALWAYS synthesize results,  don't pass raw worker output to user
 5. You may launch multiple workers in parallel for independent tasks
 
 AVAILABLE WORKER ROLES:

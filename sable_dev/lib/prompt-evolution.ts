@@ -1,5 +1,5 @@
 /**
- * Prompt Evolution — Self-Improving Prompt System
+ * Prompt Evolution,  Self-Improving Prompt System
  * 
  * Tracks user satisfaction signals (accept, redo, error) and uses them
  * to evolve prompt strategies over time. During dream consolidation,

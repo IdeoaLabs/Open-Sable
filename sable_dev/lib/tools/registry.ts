@@ -1,5 +1,5 @@
 /**
- * Tool Registry — Central registry for all sandbox tools.
+ * Tool Registry,  Central registry for all sandbox tools.
  * 
  * Imports all tool definitions and provides lookup/dispatch.
  * Handles tool execution with permission checking and result tracking.

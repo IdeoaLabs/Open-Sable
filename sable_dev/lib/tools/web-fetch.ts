@@ -1,5 +1,5 @@
 /**
- * WebFetch Tool — Fetch content from URLs with safety checks.
+ * WebFetch Tool,  Fetch content from URLs with safety checks.
  * 
  * Supports:
  *  - HTML pages (returns text content, strips tags)

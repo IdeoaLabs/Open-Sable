@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-depshield — Supply-chain attack detector for any project.
+depshield,  Supply-chain attack detector for any project.
 
 Zero external dependencies. Works with:
   npm / yarn / pnpm, pip / poetry / pipenv, cargo, go, composer, ruby, gradle
@@ -23,7 +23,7 @@ How it works:
 
 This catches supply-chain attacks like the axios/plain-crypto-js incident because
 a compromised package that adds a new transitive dependency will ALWAYS show up
-as a diff — no advisory database needed.
+as a diff,  no advisory database needed.
 
 License: MIT
 """
@@ -51,7 +51,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 VERSION = "1.0.0"
 BASELINE_FILE = ".depshield.json"
 
-# Popular packages per ecosystem — used for typosquatting detection
+# Popular packages per ecosystem,  used for typosquatting detection
 _POPULAR_NPM = {
     "express", "react", "react-dom", "lodash", "axios", "chalk", "commander",
     "webpack", "babel", "typescript", "eslint", "prettier", "vue", "angular",
@@ -87,9 +87,9 @@ _SUSPICIOUS_PATTERNS = [
     (r'\\u[0-9a-fA-F]{4}(?:\\u[0-9a-fA-F]{4}){10,}', "heavy unicode-encoded strings", 9),
     (r'atob\s*\(', "atob() base64 decode", 6),
     (r'Buffer\.from\(.+,\s*[\'"]base64[\'"]\)', "Buffer.from(base64) decode", 7),
-    (r'eval\s*\(', "eval() — dynamic code execution", 9),
-    (r'Function\s*\(', "Function() constructor — dynamic code", 8),
-    (r'fromCharCode', "String.fromCharCode — char-by-char construction", 5),
+    (r'eval\s*\(', "eval(),  dynamic code execution", 9),
+    (r'Function\s*\(', "Function() constructor,  dynamic code", 8),
+    (r'fromCharCode', "String.fromCharCode,  char-by-char construction", 5),
 
     # Filesystem access in libraries that shouldn't need it
     (r'writeFileSync|writeFile\b', "filesystem write", 4),
@@ -230,7 +230,7 @@ def _parse_npm_lock(path: Path) -> List[Dependency]:
             ))
         return deps
 
-    # v1 fallback — "dependencies" key
+    # v1 fallback,  "dependencies" key
     for name, info in data.get("dependencies", {}).items():
         deps.append(Dependency(
             name=name,
@@ -253,7 +253,7 @@ def _parse_npm_lock(path: Path) -> List[Dependency]:
 
 
 def _parse_yarn_lock(path: Path) -> List[Dependency]:
-    """Parse yarn.lock (v1 format — regex-based)."""
+    """Parse yarn.lock (v1 format,  regex-based)."""
     deps = []
     text = path.read_text(encoding="utf-8")
     # Pattern: "package@version": \n  version "x.y.z" \n  resolved "url" \n  integrity "sha..."
@@ -276,7 +276,7 @@ def _parse_yarn_lock(path: Path) -> List[Dependency]:
 
 
 def _parse_pnpm_lock(path: Path) -> List[Dependency]:
-    """Parse pnpm-lock.yaml (basic — no yaml lib needed)."""
+    """Parse pnpm-lock.yaml (basic,  no yaml lib needed)."""
     deps = []
     text = path.read_text(encoding="utf-8")
     # Look for lines like:  /package-name@version:
@@ -309,7 +309,7 @@ def _parse_pip_requirements(path: Path) -> List[Dependency]:
                 direct=True,
             ))
         elif re.match(r'^[A-Za-z0-9_\-.]+$', line):
-            # Unpinned dependency — just a name
+            # Unpinned dependency,  just a name
             deps.append(Dependency(
                 name=line.lower().replace("_", "-"),
                 version="*",
@@ -526,7 +526,7 @@ def diff_deps(
 # ─────────────────────────────────────────────────────────────────────
 
 def _levenshtein(a: str, b: str) -> int:
-    """Levenshtein distance — detects typosquatting."""
+    """Levenshtein distance,  detects typosquatting."""
     if len(a) < len(b):
         return _levenshtein(b, a)
     if len(b) == 0:
@@ -546,7 +546,7 @@ def _levenshtein(a: str, b: str) -> int:
 
 def _check_typosquat(name: str, ecosystem: str) -> Optional[RiskSignal]:
     """Check if a name is suspiciously close to a popular package."""
-    # Check against ALL ecosystems — supply chain attacks cross boundaries
+    # Check against ALL ecosystems,  supply chain attacks cross boundaries
     popular = _POPULAR_NPM | _POPULAR_PYPI
     clean = name.lower().replace("_", "-").split("/")[-1]
 
@@ -560,7 +560,7 @@ def _check_typosquat(name: str, ecosystem: str) -> Optional[RiskSignal]:
                 signal="typosquat",
                 severity="high",
                 score=8,
-                detail=f"Name contains popular package '{pop}' — potential typosquat",
+                detail=f"Name contains popular package '{pop}',  potential typosquat",
             )
         if dist <= 2 and len(clean) > 3:
             return RiskSignal(
@@ -684,7 +684,7 @@ def check_pinning(root: Path) -> List[Dict[str, str]]:
                             "file": "package.json",
                             "package": name,
                             "version": ver,
-                            "issue": "Floating range — auto-pulls new versions",
+                            "issue": "Floating range,  auto-pulls new versions",
                             "fix": f'Pin to exact: "{name}": "{ver.lstrip("^~")}"',
                         })
         except Exception:
@@ -702,7 +702,7 @@ def check_pinning(root: Path) -> List[Dict[str, str]]:
                         "file": req_file.name,
                         "package": line.split(">=")[0].strip(),
                         "version": line,
-                        "issue": "Minimum range (>=) — could pull compromised newer version",
+                        "issue": "Minimum range (>=),  could pull compromised newer version",
                         "fix": f"Pin with ==: {line.split('>=')[0].strip()}=={line.split('>=')[1].split(',')[0].strip()}",
                     })
                 elif re.match(r'^[A-Za-z0-9_\-.\[\]]+$', line):
@@ -710,7 +710,7 @@ def check_pinning(root: Path) -> List[Dict[str, str]]:
                         "file": req_file.name,
                         "package": line,
                         "version": "(unpinned)",
-                        "issue": "No version specified — pulls latest",
+                        "issue": "No version specified,  pulls latest",
                         "fix": f"Pin with ==: {line}==X.Y.Z",
                     })
         except Exception:
@@ -773,7 +773,7 @@ def load_baseline(root: Path) -> Optional[Tuple[dict, List[Dependency]]]:
 
 _PRE_COMMIT_HOOK = """\
 #!/bin/sh
-# depshield pre-commit hook — block commits that introduce risky dependencies
+# depshield pre-commit hook,  block commits that introduce risky dependencies
 # Auto-installed by: depshield.py hooks install
 
 DEPSHIELD="$(git rev-parse --show-toplevel)/scripts/depshield.py"
@@ -782,7 +782,7 @@ if [ ! -f "$DEPSHIELD" ]; then
 fi
 
 if [ -z "$DEPSHIELD" ]; then
-    echo "⚠️  depshield not found — skipping supply-chain check"
+    echo "⚠️  depshield not found,  skipping supply-chain check"
     exit 0
 fi
 
@@ -800,7 +800,7 @@ if [ $CHANGED -eq 0 ]; then
     exit 0
 fi
 
-echo "🛡️  depshield: Lockfile changed — running supply-chain scan..."
+echo "🛡️  depshield: Lockfile changed,  running supply-chain scan..."
 python3 "$DEPSHIELD" scan --strict
 EXIT=$?
 
@@ -869,7 +869,7 @@ def install_hook(root: Path):
     """Install git pre-commit hook."""
     git_dir = root / ".git"
     if not git_dir.is_dir():
-        _error("Not a git repository — run from repo root")
+        _error("Not a git repository,  run from repo root")
         return False
 
     hooks_dir = git_dir / "hooks"
@@ -963,7 +963,7 @@ def _print_risk(signal: RiskSignal):
 
 def cmd_baseline(root: Path):
     """Create or update baseline snapshot."""
-    _header("depshield — Creating Baseline")
+    _header("depshield,  Creating Baseline")
     print(f"  Scanning: {root}\n")
 
     lockfiles, deps = collect_deps(root)
@@ -982,7 +982,7 @@ def cmd_baseline(root: Path):
 
 def cmd_scan(root: Path, strict: bool = False):
     """Compare current state against baseline."""
-    _header("depshield — Supply Chain Scan")
+    _header("depshield,  Supply Chain Scan")
 
     baseline = load_baseline(root)
     if baseline is None:
@@ -1040,18 +1040,18 @@ def cmd_scan(root: Path, strict: bool = False):
         print()
 
     if not any([diff.added, diff.removed, diff.changed, diff.hash_mismatch]):
-        _success("No dependency changes detected — supply chain clean")
+        _success("No dependency changes detected,  supply chain clean")
 
     return exit_code
 
 
 def cmd_audit(root: Path):
     """Full audit: diff + risk analysis on new/changed deps."""
-    _header("depshield — Full Audit")
+    _header("depshield,  Full Audit")
 
     baseline = load_baseline(root)
     if baseline is None:
-        _warn("No baseline found — running first-time audit of all dependencies")
+        _warn("No baseline found,  running first-time audit of all dependencies")
         lockfiles, curr_deps = collect_deps(root)
         if not lockfiles:
             _error("No lockfiles found")
@@ -1094,7 +1094,7 @@ def cmd_audit(root: Path):
 
     # Analyze new deps
     if diff.added:
-        print(f"  {C.RED}{C.BOLD}NEW DEPENDENCIES — RISK ANALYSIS:{C.RESET}\n")
+        print(f"  {C.RED}{C.BOLD}NEW DEPENDENCIES,  RISK ANALYSIS:{C.RESET}\n")
         for dep in diff.added:
             _print_dep(dep, prefix=f"{C.RED}+ {C.RESET}")
             signals = analyze_risks(dep, root)
@@ -1110,7 +1110,7 @@ def cmd_audit(root: Path):
 
     # Analyze changed deps
     if diff.changed:
-        print(f"  {C.YELLOW}{C.BOLD}CHANGED DEPENDENCIES — RISK ANALYSIS:{C.RESET}\n")
+        print(f"  {C.YELLOW}{C.BOLD}CHANGED DEPENDENCIES,  RISK ANALYSIS:{C.RESET}\n")
         for old, new in diff.changed:
             print(f"    {C.BOLD}{old.name}{C.RESET}  {old.version} → {C.YELLOW}{new.version}{C.RESET}")
             signals = analyze_risks(new, root)
@@ -1126,7 +1126,7 @@ def cmd_audit(root: Path):
     if diff.hash_mismatch:
         print(f"  {C.RED}{C.BOLD}⚠️  INTEGRITY VIOLATIONS:{C.RESET}\n")
         for old, new in diff.hash_mismatch:
-            print(f"    {C.RED}{C.BOLD}{old.name}{C.RESET}  — hash changed without version bump!")
+            print(f"    {C.RED}{C.BOLD}{old.name}{C.RESET} ,  hash changed without version bump!")
             total_risk_score += 10
             high_risk += 1
         print()
@@ -1134,7 +1134,7 @@ def cmd_audit(root: Path):
     # Summary
     print(f"\n{'─' * 60}")
     if not any([diff.added, diff.changed, diff.hash_mismatch]):
-        _success("Supply chain clean — no changes since baseline")
+        _success("Supply chain clean,  no changes since baseline")
     else:
         changes = len(diff.added) + len(diff.changed) + len(diff.hash_mismatch)
         print(f"  {C.BOLD}Changes:          {changes}{C.RESET}")
@@ -1150,7 +1150,7 @@ def cmd_audit(root: Path):
 
 def cmd_lockcheck(root: Path):
     """Check for floating version ranges."""
-    _header("depshield — Version Pin Check")
+    _header("depshield,  Version Pin Check")
 
     issues = check_pinning(root)
     if not issues:
@@ -1165,7 +1165,7 @@ def cmd_lockcheck(root: Path):
         print(f"      Fix:     {issue['fix']}")
         print()
 
-    _warn(f"{len(issues)} packages with floating ranges — vulnerable to supply-chain attacks")
+    _warn(f"{len(issues)} packages with floating ranges,  vulnerable to supply-chain attacks")
     return 1
 
 
@@ -1174,7 +1174,7 @@ def cmd_hooks(root: Path, action: str):
     if action == "install":
         return 0 if install_hook(root) else 1
     elif action == "ci":
-        _header("depshield — CI Configuration")
+        _header("depshield,  CI Configuration")
         print(f"\n  {C.BOLD}GitHub Actions:{C.RESET}\n")
         print(textwrap.indent(_GITHUB_ACTIONS_CI, "    "))
         print(f"\n  {C.BOLD}GitLab CI:{C.RESET}\n")
@@ -1192,7 +1192,7 @@ def cmd_hooks(root: Path, action: str):
 def main():
     parser = argparse.ArgumentParser(
         prog="depshield",
-        description="🛡️  Supply-chain attack detector — zero deps, any language",
+        description="🛡️  Supply-chain attack detector,  zero deps, any language",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=textwrap.dedent("""\
             examples:

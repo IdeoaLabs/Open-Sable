@@ -197,7 +197,7 @@ def _apply_twikit_class_patches():
     Monkey-patch twikit classes at the CLASS level so ALL instances are covered,
     regardless of which skill created them (X skill, Grok skill, etc.).
 
-    Safe to call multiple times — only applied once.
+    Safe to call multiple times,  only applied once.
     """
     global _TWIKIT_CLASS_PATCHES_APPLIED
     if _TWIKIT_CLASS_PATCHES_APPLIED:
@@ -215,7 +215,7 @@ def _apply_twikit_class_patches():
             pass
 
         def _safe_generate_tid(self, method: str, path: str, **kwargs) -> str:
-            """Return empty string — X still accepts requests without this header."""
+            """Return empty string,  X still accepts requests without this header."""
             return ""
 
         ClientTransaction.init = _noop_init

@@ -111,7 +111,7 @@ export function getCurrentEffort(state: EffortState): EffortLevel {
 
 /**
  * Resolve effort from user prompt (auto-detect).
- * Only suggests — caller decides whether to override.
+ * Only suggests,  caller decides whether to override.
  */
 export function resolveEffortFromPrompt(prompt: string): EffortLevel | null {
   const lower = prompt.toLowerCase().trim();

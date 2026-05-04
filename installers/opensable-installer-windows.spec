@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-# Windows onefile build — produces a single .exe
+# Windows onefile build,  produces a single .exe
 # Build on Windows with: pyinstaller opensable-installer-windows.spec --clean --noconfirm
 # For x86: use 32-bit Python interpreter
 # For x64: use 64-bit Python interpreter

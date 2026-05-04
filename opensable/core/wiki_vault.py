@@ -1,5 +1,5 @@
 """
-Wiki Vault — Obsidian-Compatible Knowledge Export
+Wiki Vault,  Obsidian-Compatible Knowledge Export
 
 Exports the Knowledge Graph v2 into an Obsidian vault:
   - One .md file per entity with YAML frontmatter + [[wiki-links]]
@@ -141,7 +141,7 @@ class WikiVault:
                     desc = item.get("description", "")
                     link = f"[[{target_name}]]"
                     if desc:
-                        lines.append(f"- {link} — {desc}")
+                        lines.append(f"- {link},  {desc}")
                     else:
                         lines.append(f"- {link}")
                 lines.append("")
@@ -168,7 +168,7 @@ class WikiVault:
         # Sort alphabetically
         for ent in sorted(entities, key=lambda e: e.name.lower()):
             desc = ent.description[:80] + "..." if len(ent.description) > 80 else ent.description
-            lines.append(f"- [[{ent.name}]] — {desc}" if desc else f"- [[{ent.name}]]")
+            lines.append(f"- [[{ent.name}]],  {desc}" if desc else f"- [[{ent.name}]]")
 
         lines.append("")
         idx_file = self.vault_dir / f"_index_{_safe_filename(etype)}.md"

@@ -193,7 +193,7 @@ class AgentProfile:
         is_child = bool(os.environ.get("_SABLE_PARENT_PROFILE"))
         for key, value in self.env_overrides.items():
             if is_child and key in os.environ and os.environ[key]:
-                # Parent explicitly set this env var — keep it
+                # Parent explicitly set this env var,  keep it
                 logger.debug(f"[Profile:{self.name}] keeping parent-set: {key}={os.environ[key][:20]}")
                 continue
             os.environ[key] = value

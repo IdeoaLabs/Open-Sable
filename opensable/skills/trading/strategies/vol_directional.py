@@ -1,5 +1,5 @@
 """
-Polymarket BTC 5-Min — Volatility-Weighted Directional Strategy
+Polymarket BTC 5-Min,  Volatility-Weighted Directional Strategy
 
 Instead of chasing momentum, this strategy uses realized BTC volatility
 to estimate the *statistical probability* that BTC will be higher/lower
@@ -74,7 +74,7 @@ def _orderbook_imbalance(bids: list, asks: list) -> float:
 
 class VolatilityDirectionalStrategy(Strategy):
     """
-    Volatility-weighted directional — buys shares only when statistical
+    Volatility-weighted directional,  buys shares only when statistical
     probability exceeds market price (positive expected value).
 
     Config:
@@ -87,7 +87,7 @@ class VolatilityDirectionalStrategy(Strategy):
     """
 
     name = "vol_directional"
-    description = "Volatility-weighted directional — positive EV only"
+    description = "Volatility-weighted directional,  positive EV only"
     version = "1.0.0"
     supported_markets = ["prediction"]
 

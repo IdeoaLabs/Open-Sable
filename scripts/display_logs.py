@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-OpenSable Pi — Framebuffer Log Viewer
+OpenSable Pi,  Framebuffer Log Viewer
 Renders live OpenSable logs on the 3.5" XPT2046 display (480×320 RGB565)
 
 Environment overrides:
@@ -32,12 +32,12 @@ BG        = (10,  14,  28)
 HEADER_BG = (18,  36,  72)
 HEADER_FG = (80,  180, 255)
 FG        = (180, 220, 180)    # default text
-OK_FG     = (60,  230, 120)    # green  — success / started / ready
-ERR_FG    = (255,  80,  80)    # red    — error / exception
-WARN_FG   = (255, 200,  40)    # yellow — warning
-TOOL_FG   = (120, 180, 255)    # blue   — tool calls
-TICK_FG   = (60,  220, 220)    # cyan   — cognitive tick
-DIM_FG    = (70,   70,  90)    # dim    — debug / trace
+OK_FG     = (60,  230, 120)    # green ,  success / started / ready
+ERR_FG    = (255,  80,  80)    # red   ,  error / exception
+WARN_FG   = (255, 200,  40)    # yellow,  warning
+TOOL_FG   = (120, 180, 255)    # blue  ,  tool calls
+TICK_FG   = (60,  220, 220)    # cyan  ,  cognitive tick
+DIM_FG    = (70,   70,  90)    # dim   ,  debug / trace
 
 # ── Font loader ───────────────────────────────────────────────────────────────
 _MONO_PATHS = [
@@ -88,7 +88,7 @@ def write_fb(data: bytes, dev: str = FB_DEV) -> bool:
         print(f"          sudo usermod -aG video $USER && newgrp video")
         return False
     except FileNotFoundError:
-        print(f"[display] {dev} not found — display driver not loaded?")
+        print(f"[display] {dev} not found,  display driver not loaded?")
         return False
     except Exception as e:
         print(f"[display] fb write error: {e}")

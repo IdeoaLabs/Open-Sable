@@ -76,7 +76,7 @@ export function useWebSocket(onExternalMessage) {
       case 'response.sent':
         addActivity('success', '📤', 'Response sent', `${data.length} chars`);
         // Safety: if streaming is still true 3s after agent says response.sent,
-        // the message.done frame was likely lost — reload session to recover.
+        // the message.done frame was likely lost,  reload session to recover.
         clearTimeout(responseSentTimer.current);
         responseSentTimer.current = setTimeout(() => {
           if (streamingRef.current) {
@@ -314,7 +314,7 @@ export function useWebSocket(onExternalMessage) {
 
   const loadSession = useCallback((sessionId, onLoaded) => {
     if (!sessionId) {
-      // New chat — generate a fresh session ID
+      // New chat,  generate a fresh session ID
       const fresh = 'dash_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
       setActiveSessionId(fresh);
       if (onLoaded) onLoaded([], null);
@@ -351,7 +351,7 @@ export function useWebSocket(onExternalMessage) {
           }
           return nextId;
         }
-        // No sessions left — new chat
+        // No sessions left,  new chat
         setMessages([]);
         return 'dash_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
       });

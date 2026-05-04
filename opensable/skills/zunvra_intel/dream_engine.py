@@ -1,11 +1,11 @@
 """
-#7 — Dream Engine Retrospective
+#7,  Dream Engine Retrospective
 
 During idle time (no active queries), Sable replays the last 24h of OSINT
-data in a "corrupted remix" mode — shuffling timelines, amplifying weak
+data in a "corrupted remix" mode,  shuffling timelines, amplifying weak
 signals, and looking for correlations that nobody searched for.
 
-Output: DREAM REPORT — a memo of creative insights discovered overnight.
+Output: DREAM REPORT,  a memo of creative insights discovered overnight.
 
 "While processing yesterday's data in dream mode, discovered: 3 separate
  ransomware attacks targeted orgs in countries where GPS jamming was
@@ -54,7 +54,7 @@ class DreamReport:
 
     def to_text(self) -> str:
         lines = [
-            f"DREAM REPORT — {self.report_id}",
+            f"DREAM REPORT,  {self.report_id}",
             f"Session: {self.session_start} → {self.session_end}",
             f"Snapshots processed: {self.snapshots_processed}",
             f"Correlations tested: {self.total_correlations_tested}",
@@ -72,7 +72,7 @@ class DreamReport:
 
 
 # ---------------------------------------------------------------------------
-# Dream strategies — different "remixing" approaches
+# Dream strategies,  different "remixing" approaches
 # ---------------------------------------------------------------------------
 
 class _DreamStrategies:
@@ -154,11 +154,11 @@ class _DreamStrategies:
         insights = []
 
         for snap in snapshots:
-            # Look for "1 or 2" occurrences — too few to trigger normal alerts
+            # Look for "1 or 2" occurrences,  too few to trigger normal alerts
             if 1 <= len(snap.gps_jamming) <= 2:
                 insights.append({
                     "title": "Low-level GPS jamming detected",
-                    "description": f"Only {len(snap.gps_jamming)} jamming zone(s) — below normal alert threshold but still active.",
+                    "description": f"Only {len(snap.gps_jamming)} jamming zone(s),  below normal alert threshold but still active.",
                     "domains": ["gps_jamming"],
                     "novelty": 0.4,
                 })
@@ -166,7 +166,7 @@ class _DreamStrategies:
             if 1 <= len(snap.ransomware) <= 2:
                 insights.append({
                     "title": "Isolated ransomware incident",
-                    "description": f"{len(snap.ransomware)} ransomware incident(s) — check if targets share geographic or industry sector.",
+                    "description": f"{len(snap.ransomware)} ransomware incident(s),  check if targets share geographic or industry sector.",
                     "domains": ["ransomware"],
                     "novelty": 0.3,
                 })

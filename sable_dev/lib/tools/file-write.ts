@@ -1,5 +1,5 @@
 /**
- * File Write Tool — Write or create files with complete content.
+ * File Write Tool,  Write or create files with complete content.
  * 
  * Used for creating new files or fully overwriting existing ones.
  * For partial modifications, use FileEditTool instead.

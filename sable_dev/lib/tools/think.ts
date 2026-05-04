@@ -1,9 +1,9 @@
 /**
- * Think Tool — ReAct Executor
+ * Think Tool,  ReAct Executor
  * 
  * A reasoning tool that enables Thought→Action→Observation loops.
  * The model calls this tool to record its reasoning before taking action.
- * No side effects — purely captures the model's chain of thought.
+ * No side effects,  purely captures the model's chain of thought.
  */
 
 import type { ToolDefinition, ToolInput, ToolResult } from './types';
@@ -16,7 +16,7 @@ export const ThinkTool: ToolDefinition = {
     properties: {
       thought: {
         type: 'string',
-        description: 'Your reasoning about the current situation — what you know, what you need to figure out, and your analysis.',
+        description: 'Your reasoning about the current situation,  what you know, what you need to figure out, and your analysis.',
       },
       next_step: {
         type: 'string',

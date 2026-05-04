@@ -1,5 +1,5 @@
 """
-#15 — Timeline Reconstructor
+#15,  Timeline Reconstructor
 
 Chronological event sequencing for incident investigation.
 Ingests events from ALL intelligence domains (air, maritime, cyber,
@@ -10,9 +10,9 @@ Key abilities:
   - Merge overlapping timelines from multiple snapshots
   - Time-window queries ("what happened between 0200-0400 UTC?")
   - Entity-focused timelines ("show me everything about entity X")
-  - Event clustering — group related events into incidents
-  - Gap detection — identify suspicious gaps in activity
-  - LLM narrative generation — produce human-readable incident reports
+  - Event clustering,  group related events into incidents
+  - Gap detection,  identify suspicious gaps in activity
+  - LLM narrative generation,  produce human-readable incident reports
 """
 
 from __future__ import annotations
@@ -235,7 +235,7 @@ class TimelineReconstructor:
                     domain="unknown",
                     event_type="reappearance",
                     title=f"{eid} reappeared after {gap_min:.0f}min gap",
-                    description=f"Entity {eid} was missing for {gap_min:.0f} minutes — possible transponder manipulation or covert movement",
+                    description=f"Entity {eid} was missing for {gap_min:.0f} minutes,  possible transponder manipulation or covert movement",
                     entity_ids=[eid],
                     severity="high" if gap_min > 120 else "medium",
                     tags=["gap", "suspicious"],
@@ -401,7 +401,7 @@ class TimelineReconstructor:
 
     def _rule_narrative(self, events: List[TimelineEvent]) -> str:
         """Fallback rule-based narrative."""
-        lines = [f"Timeline Report — {len(events)} events"]
+        lines = [f"Timeline Report,  {len(events)} events"]
         if events:
             lines.append(f"Period: {events[0].timestamp} to {events[-1].timestamp}")
 

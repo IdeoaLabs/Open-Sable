@@ -1,19 +1,19 @@
 """
-#17 — Counter-Surveillance Detector
+#17,  Counter-Surveillance Detector
 
 Detect when entities are engaging in evasive or counter-surveillance
 behaviour.  This is what agencies like NSA/GCHQ run internally but
 never expose publicly.
 
 Detection capabilities:
-  - AIS gaps (dark ships) — vessel turns off transponder
-  - Transponder manipulation — hex/MMSI changes mid-flight/voyage
-  - Unusual holding patterns — orbiting without clearance
-  - Shadow tracking — one entity follows another persistently
-  - Deliberate route obfuscation — zigzag, backtrack, unnecessary waypoints
-  - Speed anomalies — too slow (loitering) or too fast (evasion)
-  - Altitude masking — flying below radar (terrain masking)
-  - Rendezvous detection — two entities converging at unusual location
+  - AIS gaps (dark ships),  vessel turns off transponder
+  - Transponder manipulation,  hex/MMSI changes mid-flight/voyage
+  - Unusual holding patterns,  orbiting without clearance
+  - Shadow tracking,  one entity follows another persistently
+  - Deliberate route obfuscation,  zigzag, backtrack, unnecessary waypoints
+  - Speed anomalies,  too slow (loitering) or too fast (evasion)
+  - Altitude masking,  flying below radar (terrain masking)
+  - Rendezvous detection,  two entities converging at unusual location
 """
 
 from __future__ import annotations
@@ -184,7 +184,7 @@ class CounterSurveillanceDetector:
                     new_alerts.append(self._alert(
                         eid, track.label, ent["type"],
                         "dark_period", "high" if gap_min > 120 else "medium",
-                        f"{track.label} went dark for {gap_min:.0f}min — possible transponder shutdown",
+                        f"{track.label} went dark for {gap_min:.0f}min,  possible transponder shutdown",
                         now_str, lat, lon,
                         {"gap_minutes": gap_min},
                     ))
@@ -212,7 +212,7 @@ class CounterSurveillanceDetector:
                         new_alerts.append(self._alert(
                             eid, track.label, ent["type"],
                             "altitude_masking", "high",
-                            f"{track.label} flying at {alt_val:.0f}ft — possible terrain masking / radar evasion",
+                            f"{track.label} flying at {alt_val:.0f}ft,  possible terrain masking / radar evasion",
                             now_str, lat, lon,
                             {"altitude_ft": alt_val},
                         ))
@@ -227,7 +227,7 @@ class CounterSurveillanceDetector:
         rendezvous_alerts = self._detect_rendezvous(current_entities, now_str)
         new_alerts.extend(rendezvous_alerts)
 
-        # Dark entities — were seen last time, gone now
+        # Dark entities,  were seen last time, gone now
         for eid, prev_ent in self._prev_entities.items():
             if eid not in current_entities:
                 track = self.tracks.get(eid)
@@ -278,7 +278,7 @@ class CounterSurveillanceDetector:
             return self._alert(
                 track.entity_id, track.label, track.entity_type,
                 "holding_pattern", "medium",
-                f"{track.label} executing holding pattern — {large_turns} significant turns detected",
+                f"{track.label} executing holding pattern,  {large_turns} significant turns detected",
                 now_str,
                 last_pos.get("lat"), last_pos.get("lon"),
                 {"turn_count": large_turns},
@@ -321,7 +321,7 @@ class CounterSurveillanceDetector:
             return self._alert(
                 track.entity_id, track.label, track.entity_type,
                 "route_obfuscation", "high",
-                f"{track.label} executing zigzag pattern — {alternations} direction alternations",
+                f"{track.label} executing zigzag pattern,  {alternations} direction alternations",
                 now_str,
                 last_pos.get("lat"), last_pos.get("lon"),
                 {"alternations": alternations},
@@ -374,7 +374,7 @@ class CounterSurveillanceDetector:
                         eid1, entities[eid1].get("label", eid1), e1["type"],
                         "shadow_track", "high",
                         f"Possible shadow tracking: {entities[eid1].get('label', eid1)} and "
-                        f"{entities[eid2].get('label', eid2)} — {close_count} correlated positions, "
+                        f"{entities[eid2].get('label', eid2)},  {close_count} correlated positions, "
                         f"{dist:.1f}km apart, matching heading",
                         now_str, e1["lat"], e1["lon"],
                         {"shadow_entity": eid2, "distance_km": dist,

@@ -156,17 +156,17 @@ export function checkTokenBudget(
 
   // Over budget → must compact
   if (percentUsed >= 1.0) {
-    return { action: 'compact', reason: 'Context window full — compaction required', usage };
+    return { action: 'compact', reason: 'Context window full,  compaction required', usage };
   }
 
   // Near limit → trigger compaction
   if (percentUsed >= COMPLETION_THRESHOLD) {
-    return { action: 'compact', reason: `${Math.round(percentUsed * 100)}% of context used — auto-compacting`, usage };
+    return { action: 'compact', reason: `${Math.round(percentUsed * 100)}% of context used,  auto-compacting`, usage };
   }
 
   // Diminishing returns detection
   if (tracker.continuationCount > 2 && delta > 0 && delta < DIMINISHING_THRESHOLD) {
-    return { action: 'stop', reason: 'Diminishing returns — output delta below threshold', usage };
+    return { action: 'stop', reason: 'Diminishing returns,  output delta below threshold', usage };
   }
 
   tracker.continuationCount++;
@@ -188,10 +188,10 @@ export function getTokenWarningLevel(
   const percent = currentTokens / effective;
 
   if (percent >= 1.0) {
-    return { level: 'overflow', message: 'Context window full — messages will be lost', percentUsed: percent };
+    return { level: 'overflow', message: 'Context window full,  messages will be lost', percentUsed: percent };
   }
   if (percent >= 0.85) {
-    return { level: 'critical', message: 'Context nearly full — consider compacting', percentUsed: percent };
+    return { level: 'critical', message: 'Context nearly full,  consider compacting', percentUsed: percent };
   }
   if (percent >= 0.7) {
     return { level: 'warning', message: 'Context usage high', percentUsed: percent };

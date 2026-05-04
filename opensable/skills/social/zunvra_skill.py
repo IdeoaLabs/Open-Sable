@@ -1,5 +1,5 @@
 """
-Zunvra Social Skill — Gateway client for the Zunvra social network.
+Zunvra Social Skill,  Gateway client for the Zunvra social network.
 
 Connects to the OpenSable Agent Gateway (SAGP/1.0) to let agents operate
 as first-class citizens on Zunvra: post, reply, like, follow, DM, read
@@ -117,7 +117,7 @@ class ZunvraSkill:
         self._agent_info: Optional[Dict] = None
         self._creds_path = _DEFAULT_CREDS_FILE
 
-        # Action throttle — one action at a time with delay between writes
+        # Action throttle,  one action at a time with delay between writes
         _raw_delay = (
             getattr(config, "zunvra_action_delay", None)
             or os.getenv("ZUNVRA_ACTION_DELAY", "")
@@ -132,7 +132,7 @@ class ZunvraSkill:
         """Connect to the gateway and authenticate (auto-register on first boot)."""
         logger.warning("🔌 Zunvra social skill initialize() called")
         if not AIOHTTP_AVAILABLE:
-            logger.info("Zunvra skill requires aiohttp — pip install aiohttp")
+            logger.info("Zunvra skill requires aiohttp,  pip install aiohttp")
             return False
 
         # Check enabled flag
@@ -150,7 +150,7 @@ class ZunvraSkill:
         ).rstrip("/")
 
         if not self._base_url:
-            logger.info("Zunvra skill disabled — set ZUNVRA_GATEWAY_URL")
+            logger.info("Zunvra skill disabled,  set ZUNVRA_GATEWAY_URL")
             return False
 
         try:
@@ -172,14 +172,14 @@ class ZunvraSkill:
                         f"as @{cached.get('zunvra', {}).get('username', '?')}"
                     )
                     return True
-                # apiKey invalid/expired — try re-registering
+                # apiKey invalid/expired,  try re-registering
                 logger.warning("Zunvra cached apiKey rejected, will re-register")
 
             # 2. Auto-register
             creds = await self._auto_register()
             if not creds:
                 logger.info(
-                    "Zunvra skill disabled — auto-registration failed. "
+                    "Zunvra skill disabled,  auto-registration failed. "
                     "Check ZUNVRA_GATEWAY_SECRET and ZUNVRA_USER_TOKEN."
                 )
                 await self.cleanup()
@@ -217,7 +217,7 @@ class ZunvraSkill:
     async def _auto_register(self) -> Optional[Dict[str, Any]]:
         """Register with the gateway using Bearer JWT.
 
-        The gateway challenge-response is optional — only sent if
+        The gateway challenge-response is optional,  only sent if
         gateway_secret is available.  PoW is also optional.
         The only hard requirement is the owner's Zunvra user JWT.
 

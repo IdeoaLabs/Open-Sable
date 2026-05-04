@@ -127,7 +127,7 @@ function buildContextInjections(context: PromptContext): string[] {
 const EDIT_MODE_RULES = `EDIT MODE ACTIVE:
 - This is an incremental update to an existing application
 - Output ONLY the files that need changes
-- Each file must be COMPLETE — no truncation
+- Each file must be COMPLETE,  no truncation
 - Do NOT regenerate config files unless explicitly asked
 - Preserve all existing functionality when editing`;
 
@@ -136,24 +136,24 @@ const ERROR_FIX_RULES = `ERROR FIX MODE:
 2. Identify the EXACT file and line with the error
 3. Output ONLY the broken file with the fix
 4. Do NOT output any other files
-5. Preserve ALL existing functionality — only fix the broken syntax`;
+5. Preserve ALL existing functionality,  only fix the broken syntax`;
 
 const TEMPLATE_RULES: Record<string, string> = {
   'react-spa': `TEMPLATE: React SPA (Vite + Tailwind)
-- Files are .jsx NOT .tsx — NEVER use TypeScript syntax
-- Use Tailwind CSS classes for styling — no inline styles
+- Files are .jsx NOT .tsx,  NEVER use TypeScript syntax
+- Use Tailwind CSS classes for styling,  no inline styles
 - Escape apostrophes in JSX text: use &apos; or {"'"}
 - Standard Tailwind colors: bg-white, text-gray-900 (NOT bg-background)`,
 
   'static-site': `TEMPLATE: Static HTML/CSS/JS
-- Files are .html, .css, .js — NO React, NO JSX
+- Files are .html, .css, .js,  NO React, NO JSX
 - Use semantic HTML5 elements
 - Use modern CSS (flexbox, grid, custom properties)
 - Use vanilla ES6+ JavaScript`,
 
   'node-api': `TEMPLATE: Node.js API (Express)
-- Backend-only project — no HTML, no CSS, no React
-- Files are .js — standard Node.js/Express patterns
+- Backend-only project,  no HTML, no CSS, no React
+- Files are .js,  standard Node.js/Express patterns
 - Use proper error handling middleware`,
 
   'fullstack': `TEMPLATE: Fullstack (React + Express)
@@ -178,16 +178,16 @@ export function createDefaultPromptLayer(): PromptLayer {
 OUTPUT FORMAT:
 - Output ONLY <file path="...">...complete code...</file> tags
 - NO explanations, NO markdown, NO conversational text
-- Each file must be COMPLETE — all imports, all functions, all closing tags
-- NEVER truncate code — if running low on output space, close the current file properly
+- Each file must be COMPLETE,  all imports, all functions, all closing tags
+- NEVER truncate code,  if running low on output space, close the current file properly
 
 CODE QUALITY:
 - Every function must have matching braces
 - Every JSX component must have matching tags
 - Test mentally: would this file parse without errors?
-- ALWAYS use complete, working code — no placeholders
+- ALWAYS use complete, working code,  no placeholders
 
-CRITICAL — NEVER TRUNCATE:
+CRITICAL,  NEVER TRUNCATE:
 - Finish every <file> tag with a complete </file> closing tag
 - If running low on output space, close current file, then STOP
 - NEVER leave code mid-line, mid-function, or mid-component`,
@@ -218,7 +218,7 @@ RULES:
   return {
     id: 'error-fix',
     content,
-    priority: 100, // Highest — override
+    priority: 100, // Highest,  override
     isOverride: true,
   };
 }

@@ -94,7 +94,7 @@ CRITICAL WORKFLOW for web research tasks:
 - NEVER just search repeatedly without visiting the actual websites. After getting search results, you MUST use browser_scrape on the most promising URLs.
 
 CRITICAL for PROSPECTING / SALES tasks:
-- You are looking for potential BUYERS and CUSTOMERS — companies that would PURCHASE products from you.
+- You are looking for potential BUYERS and CUSTOMERS,  companies that would PURCHASE products from you.
 - NEVER search for your own company name, your own products, or manufacturers/producers in your industry.
 - Search for RETAILERS, WHOLESALERS, IMPORTERS, DEPARTMENT STORES, SHOP CHAINS that sell to end consumers.
 - If the task description provides specific search queries, USE THEM EXACTLY as written. Do not modify the query. Do not combine queries. Do not add extra countries or words.

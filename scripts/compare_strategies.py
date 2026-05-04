@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 """
-BTC 5-Min Strategy Comparator — Live Paper-Trading Tournament
+BTC 5-Min Strategy Comparator,  Live Paper-Trading Tournament
 
 Runs all 3 strategies side-by-side against REAL Polymarket + Binance
-data.  No real money — pure paper-trading comparison.
+data.  No real money,  pure paper-trading comparison.
 
 Strategies tested:
-    A) Momentum         — chases BTC momentum + orderbook imbalance
-    B) Vol-Directional  — statistical probability from realized vol
-    C) Mean-Reversion   — fades overreactions in share prices
+    A) Momentum        ,  chases BTC momentum + orderbook imbalance
+    B) Vol-Directional ,  statistical probability from realized vol
+    C) Mean-Reversion  ,  fades overreactions in share prices
 
 Data sources:
-    - Binance WebSocket (btcusdt@aggTrade) — real-time BTC prices
-    - Polymarket CLOB API — real YES/NO orderbooks & share prices
+    - Binance WebSocket (btcusdt@aggTrade),  real-time BTC prices
+    - Polymarket CLOB API,  real YES/NO orderbooks & share prices
 
 Output:
     - Live dashboard printed every round
@@ -21,7 +21,7 @@ Output:
 
 Usage:
     # Needs: pip install websockets httpx py-clob-client
-    # Polymarket key optional — only needed for orderbooks.
+    # Polymarket key optional,  only needed for orderbooks.
     # Without key, uses public market data.
 
     python scripts/compare_strategies.py
@@ -29,7 +29,7 @@ Usage:
     # With Polymarket key (better orderbook data):
     POLYMARKET_PRIVATE_KEY=0x... python scripts/compare_strategies.py
 
-    # Stop with Ctrl-C — prints final summary.
+    # Stop with Ctrl-C,  prints final summary.
 """
 
 from __future__ import annotations
@@ -105,12 +105,12 @@ class BinanceBtcStream:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.warning(f"Binance WS: {e} — reconnecting 2s")
+                logger.warning(f"Binance WS: {e},  reconnecting 2s")
                 await asyncio.sleep(2)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Polymarket data fetcher (public REST — no key needed for prices)
+# Polymarket data fetcher (public REST,  no key needed for prices)
 # ═══════════════════════════════════════════════════════════════════════════
 
 class PolymarketFeed:
@@ -324,7 +324,7 @@ async def run_comparison():
             break
         await asyncio.sleep(1)
     if not btc_stream.latest:
-        logger.error("No BTC price — check network. Exiting.")
+        logger.error("No BTC price,  check network. Exiting.")
         return
 
     logger.info(f"BTC stream ready: ${btc_stream.latest:,.2f}")
@@ -336,7 +336,7 @@ async def run_comparison():
     round_num = 0
 
     print("\n" + "=" * 78)
-    print("  BTC 5-Min Strategy Comparator — LIVE Paper Trading")
+    print("  BTC 5-Min Strategy Comparator,  LIVE Paper Trading")
     print("  Ctrl-C to stop and print final results")
     print("=" * 78 + "\n")
 

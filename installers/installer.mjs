@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Open-Sable Installer — Browser-based GUI (Windows + Linux + macOS)
+ * Open-Sable Installer,  Browser-based GUI (Windows + Linux + macOS)
  *
  * Usage:
  *   node installer.mjs                    # interactive (opens browser)
@@ -102,7 +102,7 @@ function detectSystem() {
   try {
     info.git = execSync('git --version 2>&1', { encoding: 'utf-8', timeout: 5000 }).trim().split(' ').pop()
   } catch {
-    info.errors.push(IS_WIN ? 'Git not found — install from git-scm.com' : 'Git not found — install with: sudo apt install git')
+    info.errors.push(IS_WIN ? 'Git not found,  install from git-scm.com' : 'Git not found,  install with: sudo apt install git')
   }
 
   // Node
@@ -267,10 +267,10 @@ async function checkPrereqs() {
   if (info.python) log(`Python ${info.python.ver} ✓`, 'ok')
   if (info.git) log(`Git ${info.git} ✓`, 'ok')
   if (info.node) log(`Node.js ${info.node} ✓`, 'ok')
-  else if (info.nodeOld) log(`Node.js ${info.nodeOld} found but too old (need 20+) — will upgrade`, 'warn')
-  else log('Node.js not found — will install', 'info')
+  else if (info.nodeOld) log(`Node.js ${info.nodeOld} found but too old (need 20+),  will upgrade`, 'warn')
+  else log('Node.js not found,  will install', 'info')
   if (info.ollama) log(`Ollama ${info.ollama} ✓`, 'ok')
-  else log('Ollama not found — will install', 'info')
+  else log('Ollama not found,  will install', 'info')
   if (info.errors.length) throw new Error(info.errors.join('\n'))
 }
 
@@ -290,7 +290,7 @@ async function installNode() {
         if (systemInfo.nodeOld) {
           const r = await run('winget upgrade --id OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements -e', { check: false })
           if (r.code !== 0) {
-            log('winget upgrade not applicable — trying fresh install...', 'info')
+            log('winget upgrade not applicable,  trying fresh install...', 'info')
             const r2 = await run('winget install --id OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements -e', { check: false })
             installed = r2.code === 0
           } else {
@@ -309,7 +309,7 @@ async function installNode() {
         await run(`msiexec /i "${dl}" /qn /norestart`, { check: false })
       }
     } else {
-      // Linux — use nodesource
+      // Linux,  use nodesource
       if (execSync('which apt-get 2>/dev/null || true', { encoding: 'utf-8' }).trim()) {
         await run('curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -', { check: false })
         await run('sudo apt-get install -y nodejs', { check: false })
@@ -335,15 +335,15 @@ async function installNode() {
         return
       }
     } catch {}
-    log('Node.js install/upgrade may require reopening terminal — will try to continue', 'warn')
+    log('Node.js install/upgrade may require reopening terminal,  will try to continue', 'warn')
   } catch (e) {
-    log(`Node.js ${action.toLowerCase()} failed — install manually from nodejs.org (v20+)`, 'warn')
+    log(`Node.js ${action.toLowerCase()} failed,  install manually from nodejs.org (v20+)`, 'warn')
   }
 }
 
 async function cloneRepo() {
   if (existsSync(join(installDir, '.git'))) {
-    log('Repository exists — pulling latest...', 'info')
+    log('Repository exists,  pulling latest...', 'info')
     await run(`git fetch origin ${REPO_BRANCH}`, { check: false })
     await run(`git reset --hard origin/${REPO_BRANCH}`, { check: false })
     log('Repository updated', 'ok')
@@ -359,7 +359,7 @@ async function cloneRepo() {
         rmSync(installDir, { recursive: true })
         log('Removed empty leftover directory', 'dim')
       } else {
-        log(`Directory exists — will download archive and merge`, 'warn')
+        log(`Directory exists,  will download archive and merge`, 'warn')
       }
     } catch {}
   }
@@ -390,7 +390,7 @@ async function cloneRepo() {
     }
   }
 
-  // Zip/tarball fallback — use zip on Windows (no tar/curl needed)
+  // Zip/tarball fallback,  use zip on Windows (no tar/curl needed)
   mkdirSync(installDir, { recursive: true })
   const ts = Date.now()
 
@@ -448,7 +448,7 @@ async function createVenv() {
 }
 
 async function installPythonDeps() {
-  // Use "python -m pip" on Windows — pip.exe can't upgrade itself directly
+  // Use "python -m pip" on Windows,  pip.exe can't upgrade itself directly
   const venvPy = IS_WIN ? join(installDir, 'venv', 'Scripts', 'python.exe') : join(installDir, 'venv', 'bin', 'python')
   const pip = IS_WIN ? `"${venvPy}" -m pip` : `"${join(installDir, 'venv', 'bin', 'pip')}"`
   await run(`${pip} install --upgrade pip setuptools wheel -q`, { check: false })
@@ -484,7 +484,7 @@ async function installOllama(config) {
       log('Ollama installed', 'ok')
     }
   } catch {
-    log('Ollama install failed — install manually from ollama.com', 'warn')
+    log('Ollama install failed,  install manually from ollama.com', 'warn')
   }
 }
 
@@ -501,7 +501,7 @@ async function buildDashboard() {
   if (existsSync(join(dashDir, 'dist', 'index.html'))) {
     log('Dashboard built', 'ok')
   } else {
-    log('Dashboard build failed — can build later with: cd dashboard && npm run build', 'warn')
+    log('Dashboard build failed,  can build later with: cd dashboard && npm run build', 'warn')
   }
 }
 
@@ -520,7 +520,7 @@ async function buildDevStudio() {
 async function configureEnv(config) {
   const envFile = join(installDir, '.env')
   if (existsSync(envFile)) {
-    log('.env already exists — preserving', 'ok')
+    log('.env already exists,  preserving', 'ok')
     let env = readFileSync(envFile, 'utf-8')
     if (!env.includes('DEV_STUDIO_ENABLED')) {
       env += '\n\n# Dev Studio (Sable Dev AI app builder)\nDEV_STUDIO_ENABLED=true\n'
@@ -672,7 +672,7 @@ async function verify() {
   total++
   try {
     const { stdout } = await run(`"${py}" -c "import opensable; print(opensable.__version__)"`, { check: false })
-    if (stdout.trim()) { log(`opensable v${stdout.trim()} ✓`, 'ok'); ok++ } else { log('opensable import check — skipped', 'warn') }
+    if (stdout.trim()) { log(`opensable v${stdout.trim()} ✓`, 'ok'); ok++ } else { log('opensable import check,  skipped', 'warn') }
   } catch { log('opensable not importable yet', 'warn') }
   total++
   if (existsSync(join(installDir, 'dashboard', 'dist', 'index.html'))) { log('Dashboard ✓', 'ok'); ok++ } else { log('Dashboard not built', 'warn') }
@@ -756,7 +756,7 @@ function getHTML() {
   <div class="header">
     <div style="font-size:48px;margin-bottom:12px;">🐍</div>
     <h1><span>${APP_NAME}</span></h1>
-    <p>v${APP_VERSION} — Installer for ${IS_WIN ? 'Windows' : IS_MAC ? 'macOS' : 'Linux'}</p>
+    <p>v${APP_VERSION},  Installer for ${IS_WIN ? 'Windows' : IS_MAC ? 'macOS' : 'Linux'}</p>
   </div>
 
   <!-- Page 1: Config -->
@@ -792,7 +792,7 @@ function getHTML() {
       <div class="field" id="apiKeyField" style="display:none">
         <label>API Key</label>
         <input type="password" id="apiKey" placeholder="sk-...">
-        <small>Stored locally in .env — never sent anywhere</small>
+        <small>Stored locally in .env,  never sent anywhere</small>
       </div>
       <label class="chk"><input type="checkbox" id="installOllama" ${sys.ollama ? '' : 'checked'}> Install Ollama (local AI models)</label>
       <label class="chk"><input type="checkbox" id="buildDev" checked> Build Dev Studio (AI app builder)</label>

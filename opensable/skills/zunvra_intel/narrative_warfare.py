@@ -1,5 +1,5 @@
 """
-#18 — Narrative Warfare Monitor
+#18,  Narrative Warfare Monitor
 
 Track information operations, disinformation campaigns, and narrative
 manipulation across open sources (GDELT, RSS feeds, prediction markets,
@@ -269,7 +269,7 @@ class NarrativeWarfareMonitor:
             item_id=hashlib.md5(f"pred_{title[:50]}_{now_epoch}".encode()).hexdigest()[:12],
             source=pred.get("platform", "prediction_market"),
             title=title[:200],
-            content=f"{title} — probability: {pred.get('probability', '?')}",
+            content=f"{title},  probability: {pred.get('probability', '?')}",
             timestamp=datetime.now(timezone.utc).isoformat(),
             timestamp_epoch=now_epoch,
             url=pred.get("url", ""),
@@ -301,7 +301,7 @@ class NarrativeWarfareMonitor:
             state_count = sum(1 for i in items if i.is_state_media)
             state_ratio = state_count / len(items)
 
-            # Time spread — all within tight window?
+            # Time spread,  all within tight window?
             epochs = [i.timestamp_epoch for i in items]
             time_spread = max(epochs) - min(epochs) if epochs else 0
             tight_window = time_spread < 3600  # All within 1 hour

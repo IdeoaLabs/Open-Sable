@@ -1,5 +1,5 @@
 """
-Agent management tool schemas — create, stop, destroy, and list sub-agents.
+Agent management tool schemas,  create, stop, destroy, and list sub-agents.
 """
 
 SCHEMAS = [

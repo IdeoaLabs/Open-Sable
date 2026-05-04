@@ -1,5 +1,5 @@
 """
-#20 — Financial Intelligence (FININT) Tracker
+#20,  Financial Intelligence (FININT) Tracker
 
 Treasury/FinCEN/OFAC capability.  Analyzes economic data, prediction
 markets, and dark-intel for sanctions evasion, economic warfare,

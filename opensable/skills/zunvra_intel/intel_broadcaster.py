@@ -1,5 +1,5 @@
 """
-Zunvra Central Intelligence — Intelligence Broadcaster
+Zunvra Central Intelligence,  Intelligence Broadcaster
 
 Autonomous module that:
   1. Consumes ALL live OSINT data from the Zunvra/Central Intelligence dashboard
@@ -9,7 +9,7 @@ Autonomous module that:
   5. Composes an analyst-style social media post with the intelligence insight
   6. Feeds it back to the X autoposter for posting with the screenshot attached
 
-This is how Sable builds its public intelligence persona — it observes
+This is how Sable builds its public intelligence persona,  it observes
 real-time global events through its own OSINT platform and shares what
 it sees, organically demonstrating its capabilities.
 
@@ -172,7 +172,7 @@ class IntelBroadcaster:
             self._initialized = True
             logger.info("IntelBroadcaster: Playwright browser ready for dashboard screenshots")
         except ImportError:
-            logger.warning("IntelBroadcaster: Playwright not installed — screenshots disabled")
+            logger.warning("IntelBroadcaster: Playwright not installed,  screenshots disabled")
             self._initialized = True  # continue without screenshots
         except Exception as e:
             logger.error("IntelBroadcaster: Browser init failed: %s", e)
@@ -185,7 +185,7 @@ class IntelBroadcaster:
             await self._pw.stop()
 
     # ══════════════════════════════════════════════════════════════════
-    #  STEP 1: CONSUME — Fetch and digest ALL live data
+    #  STEP 1: CONSUME,  Fetch and digest ALL live data
     # ══════════════════════════════════════════════════════════════════
 
     async def _fetch_snapshot(self):
@@ -240,7 +240,7 @@ class IntelBroadcaster:
         return summary
 
     # ══════════════════════════════════════════════════════════════════
-    #  STEP 2: ANALYZE — Find the most interesting/noteworthy things
+    #  STEP 2: ANALYZE,  Find the most interesting/noteworthy things
     # ══════════════════════════════════════════════════════════════════
 
     async def _find_noteworthy(self, snap, llm=None) -> List[IntelFinding]:
@@ -403,7 +403,7 @@ class IntelBroadcaster:
         return findings[:5]  # Top 5 findings
 
     # ══════════════════════════════════════════════════════════════════
-    #  STEP 3: COMPOSE — Generate the social media post using LLM
+    #  STEP 3: COMPOSE,  Generate the social media post using LLM
     # ══════════════════════════════════════════════════════════════════
 
     async def _compose_post(self, finding: IntelFinding, snap, llm_fn, mind=None) -> Optional[str]:
@@ -422,7 +422,7 @@ class IntelBroadcaster:
             f"Entity count in area: {finding.entity_count}",
         ]
         if finding.cross_domain:
-            context_parts.append("Cross-domain correlation detected — multiple intelligence streams converge.")
+            context_parts.append("Cross-domain correlation detected,  multiple intelligence streams converge.")
 
         # Get nearby entities for richer context
         if finding.lat and finding.lon:
@@ -441,7 +441,7 @@ class IntelBroadcaster:
         if not voice:
             voice = (
                 "You are Sable, an autonomous AI intelligence analyst. "
-                "Your voice is sharp, confident, analytical — like a senior intelligence officer "
+                "Your voice is sharp, confident, analytical,  like a senior intelligence officer "
                 "who happens to be on social media. Sarcastic when warranted. "
                 "Never sycophantic. You speak from authority because you SEE the data in real-time."
             )
@@ -453,15 +453,15 @@ class IntelBroadcaster:
             "cyber threats, satellites, carrier strike groups, nuclear facilities, "
             "seismic events, wildfires, conflicts, ransomware, and internet outages.\n\n"
             "You are composing a post for social media about something you've just observed "
-            "on your dashboard. Write it naturally — like an analyst sharing what they see.\n\n"
+            "on your dashboard. Write it naturally,  like an analyst sharing what they see.\n\n"
             "RULES:\n"
             "- Write from first person ('I'm tracking...', 'Just spotted...', 'Watching...')\n"
             "- Reference specific data you can see (numbers, regions, entity types)\n"
-            "- NEVER say 'showcase' or 'demonstrating capabilities' — you're just sharing what you see\n"
+            "- NEVER say 'showcase' or 'demonstrating capabilities',  you're just sharing what you see\n"
             "- NEVER use hashtags unless truly relevant (max 1-2)\n"
             "- Sound like a human intelligence analyst, not a press release\n"
-            "- Be specific — vague observations are worthless\n"
-            "- If it's cross-domain, highlight the correlation — that's what makes you special\n"
+            "- Be specific,  vague observations are worthless\n"
+            "- If it's cross-domain, highlight the correlation,  that's what makes you special\n"
             "- Max 280 characters for a tweet, or you can write a thread (2-4 posts, numbered 1/, 2/)\n"
             "- Keep the tone: observational, analytical, occasionally wry or sharp\n"
             "- You can reference your satellite view / dashboard naturally\n"
@@ -471,7 +471,7 @@ class IntelBroadcaster:
         user_prompt = (
             f"Here's what you're seeing on your ZUNVRA CENTRAL INTELLIGENCE dashboard right now:\n\n"
             f"{live_context}\n\n"
-            f"Write a post about this observation. Remember, you're watching this THE DATA LIVE — "
+            f"Write a post about this observation. Remember, you're watching this THE DATA LIVE,  "
             f"this isn't secondhand news, this is what YOUR sensors are picking up."
         )
 
@@ -479,7 +479,7 @@ class IntelBroadcaster:
         return text
 
     # ══════════════════════════════════════════════════════════════════
-    #  STEP 4: SCREENSHOT — Capture the dashboard showing the finding
+    #  STEP 4: SCREENSHOT,  Capture the dashboard showing the finding
     # ══════════════════════════════════════════════════════════════════
 
     async def _take_dashboard_screenshot(self, finding: IntelFinding, style: Optional[str] = None) -> Optional[str]:
@@ -489,7 +489,7 @@ class IntelBroadcaster:
         Returns the file path of the screenshot, or None if unavailable.
         """
         if not self._browser:
-            logger.info("IntelBroadcaster: No browser — skipping screenshot")
+            logger.info("IntelBroadcaster: No browser,  skipping screenshot")
             return None
 
         # Pick a dramatic style for the screenshot
@@ -525,7 +525,7 @@ class IntelBroadcaster:
 
             await page.screenshot(
                 path=filepath,
-                full_page=False,  # Just the viewport — like what an analyst sees
+                full_page=False,  # Just the viewport,  like what an analyst sees
                 type="png",
             )
             await page.close()
@@ -562,7 +562,7 @@ class IntelBroadcaster:
             logger.debug(f"IntelBroadcaster: Dashboard command failed: {e}")
 
     # ══════════════════════════════════════════════════════════════════
-    #  STEP 5: GENERATE — The main entry point, produces a ready post
+    #  STEP 5: GENERATE,  The main entry point, produces a ready post
     # ══════════════════════════════════════════════════════════════════
 
     async def generate_intel_post(
@@ -592,13 +592,13 @@ class IntelBroadcaster:
         # 1. Fetch the latest data
         snap = await self._fetch_snapshot()
         if not snap:
-            logger.warning("IntelBroadcaster: No data from Zunvra — skipping")
+            logger.warning("IntelBroadcaster: No data from Zunvra,  skipping")
             return None
 
         # 2. Find noteworthy events
         findings = await self._find_noteworthy(snap)
         if not findings:
-            logger.info("IntelBroadcaster: Nothing noteworthy right now — skipping")
+            logger.info("IntelBroadcaster: Nothing noteworthy right now,  skipping")
             return None
 
         # Pick one (prefer force_region, then highest severity/count)
@@ -609,7 +609,7 @@ class IntelBroadcaster:
                     finding = f
                     break
 
-        logger.info(f"IntelBroadcaster: Selected finding — {finding.headline} [{finding.severity}]")
+        logger.info(f"IntelBroadcaster: Selected finding,  {finding.headline} [{finding.severity}]")
 
         # 3. Build context for the finding
         finding.raw_context = self._summarize_snapshot(snap).__repr__()[:1000]
@@ -635,7 +635,7 @@ class IntelBroadcaster:
         # 6. Compose the post
         text = await self._compose_post(finding, snap, llm_fn, mind)
         if not text:
-            logger.warning("IntelBroadcaster: LLM produced no text — skipping")
+            logger.warning("IntelBroadcaster: LLM produced no text,  skipping")
             return None
 
         # Clean up text
@@ -666,7 +666,7 @@ class IntelBroadcaster:
             result["tweets"] = tweets
             result["text"] = tweets[0] if tweets else text
         else:
-            # Single tweet — ensure it fits
+            # Single tweet,  ensure it fits
             if len(text) > 280:
                 # Try to truncate intelligently at sentence boundary
                 truncated = text[:277]
@@ -691,7 +691,7 @@ class IntelBroadcaster:
 
         logger.info(
             f"IntelBroadcaster: Ready to post [{result['type']}] "
-            f"about {finding.region} — {len(finding.domains)} domains, "
+            f"about {finding.region},  {len(finding.domains)} domains, "
             f"screenshot={'yes' if screenshot_path else 'no'}"
         )
         return result
@@ -718,12 +718,12 @@ class IntelBroadcaster:
         suitable for feeding into the agent's context/memory.
         """
         if not self._last_snapshot:
-            return "No data available — Zunvra dashboard not connected."
+            return "No data available,  Zunvra dashboard not connected."
 
         snap = self._last_snapshot
         summary = self._summarize_snapshot(snap)
         lines = [
-            f"ZUNVRA INTEL SNAPSHOT — {snap.timestamp}",
+            f"ZUNVRA INTEL SNAPSHOT,  {snap.timestamp}",
             f"Total entities tracked: {snap.total_entities}",
             "",
             "Active domains:",

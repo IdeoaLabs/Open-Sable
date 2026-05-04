@@ -1,5 +1,5 @@
 /**
- * POST /api/restore-project — Restore a project from persistent storage.
+ * POST /api/restore-project,  Restore a project from persistent storage.
  * 
  * Creates a new sandbox and writes all saved files into it,
  * then starts the dev server. Returns the new sandbox URL.

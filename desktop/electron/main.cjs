@@ -80,7 +80,7 @@ app.on('before-quit', () => {
       });
     }
   } catch (_) {
-    // Best-effort cleanup — don't block quit
+    // Best-effort cleanup,  don't block quit
   }
 });
 

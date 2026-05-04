@@ -145,7 +145,7 @@ export default function DisplayPanel() {
         {err ? (
           <div style={s.errBox}>
             <AlertCircle size={16} />
-            Display offline — <code style={{ marginLeft: 4 }}>sudo systemctl start sable-display</code>
+            Display offline,  <code style={{ marginLeft: 4 }}>sudo systemctl start sable-display</code>
           </div>
         ) : mode === 'stream' ? (
           <div style={s.imgWrap}>
@@ -163,7 +163,7 @@ export default function DisplayPanel() {
 
         <p style={s.hint}>
           {pages.length > 0 && curPage !== null ? `Page: ${pages[curPage]}  ·  ` : ''}
-          {mode === 'stream' ? 'MJPEG — auto refresh' : 'Snapshot — every 2 s'}
+          {mode === 'stream' ? 'MJPEG,  auto refresh' : 'Snapshot,  every 2 s'}
         </p>
       </div>
     </div>

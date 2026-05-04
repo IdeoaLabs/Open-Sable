@@ -417,7 +417,7 @@ function CaptureRow({ cap }) {
       {cap.cracked && (
         <div style={{marginTop:4,fontSize:11,color:'#a855f7',display:'flex',
           alignItems:'center',gap:4,position:'relative'}}>
-          <Key size={10}/> cracked — saved to credentials
+          <Key size={10}/> cracked,  saved to credentials
         </div>
       )}
     </div>
@@ -791,7 +791,7 @@ export default function WifiHuntPanel({ config }) {
           <button
             onClick={()=>post({cmd:'force_hunt'})}
             disabled={!!cmd||online}
-            title={online?'Already online — hunt triggers offline only':'Force one hunt cycle'}
+            title={online?'Already online,  hunt triggers offline only':'Force one hunt cycle'}
             style={{
               display:'flex',alignItems:'center',gap:5,padding:'6px 14px',borderRadius:6,
               border:'none',fontWeight:600,fontSize:12,cursor: cmd||online?'not-allowed':'pointer',

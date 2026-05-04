@@ -55,7 +55,7 @@ class TTSEngine:
                 "Run install-pi.sh to download it."
             )
         self.engine = {"binary": resolved, "model": str(model_path)}
-        logger.info(f"Piper TTS ready — voice: {voice}")
+        logger.info(f"Piper TTS ready,  voice: {voice}")
 
     async def _init_local(self):
         """Initialize local TTS (pyttsx3)"""

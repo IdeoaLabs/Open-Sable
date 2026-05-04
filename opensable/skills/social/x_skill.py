@@ -251,14 +251,14 @@ class XSkill:
 
             if tweet is None:
                 # twikit's tweet_from_data() returns None for tombstones or
-                # incomplete API responses — common under 226 shadow/shadowban.
+                # incomplete API responses,  common under 226 shadow/shadowban.
                 # Tweet may have been delivered to X but the ID is unreadable.
-                logger.warning("⚠️ X: create_tweet returned None — tombstone or 226 shadow active")
+                logger.warning("⚠️ X: create_tweet returned None,  tombstone or 226 shadow active")
                 return {"success": False, "error": "tombstoned", "tombstone": True}
 
             tweet_id = getattr(tweet, "id", None)
             if not tweet_id:
-                logger.warning(f"⚠️ X: tweet object has no ID — {tweet!r}")
+                logger.warning(f"⚠️ X: tweet object has no ID,  {tweet!r}")
                 return {"success": False, "error": "no_tweet_id", "tombstone": True}
 
             logger.info(f"✅ X: Posted tweet {tweet_id}")
@@ -506,7 +506,7 @@ class XSkill:
         """Like a tweet."""
         self._ensure_initialized()
         try:
-            await self._client.like_tweet(tweet_id)
+            await self._client.favorite_tweet(tweet_id)
             await asyncio.sleep(self._action_delay)
             return {"success": True, "action": "liked", "tweet_id": tweet_id}
         except Exception as e:

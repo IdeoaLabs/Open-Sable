@@ -101,7 +101,7 @@ class ToolRegistry(
     - GoogleWorkspaceToolsMixin: Gmail, Drive, Calendar, Sheets, Docs, Chat (via gws CLI)
     - ArenaToolsMixin: fighting-game arena (SAGP auth + WebSocket combat)
     - ZunvraToolsMixin: Zunvra social network (posts, DMs, feed, trending)
-    - AgentMonToolsMixin: AgentMon League — Pokémon Red on a Game Boy emulator
+    - AgentMonToolsMixin: AgentMon League,  Pokémon Red on a Game Boy emulator
     - AgentManagerToolsMixin: sub-agent lifecycle (create, stop, destroy, message)
     """
 
@@ -467,14 +467,14 @@ class ToolRegistry(
             try:
                 ok = await self.agentmon_skill.initialize()
                 if not ok:
-                    # API might be down — schedule background retry
+                    # API might be down,  schedule background retry
                     logger.warning(
                         "🎮 AgentMon: init failed (API may be down), "
                         "will retry in background every 60s"
                     )
                     asyncio.create_task(self._agentmon_retry_init())
             except Exception as e:
-                logger.warning(f"🎮 AgentMon skill init failed: {e} — will retry in background")
+                logger.warning(f"🎮 AgentMon skill init failed: {e},  will retry in background")
                 asyncio.create_task(self._agentmon_retry_init())
 
         # ── Business Automation (CRM, Pipeline, Templates, Follow-ups) ────────
@@ -632,7 +632,7 @@ class ToolRegistry(
             ("TikTok", self.tiktok_skill),
             ("YouTube", self.youtube_skill),
             ("Zunvra", self.zunvra_skill),
-            # AgentMon intentionally excluded — already initialized earlier
+            # AgentMon intentionally excluded,  already initialized earlier
             # with retry logic (line ~467). Duplicate init here caused
             # double sessions and competing play loops.
         ]
@@ -716,7 +716,7 @@ class ToolRegistry(
                 ok = await self.agentmon_skill.initialize()
                 if ok:
                     logger.info(
-                        f"🎮 AgentMon: retry #{attempts} succeeded — "
+                        f"🎮 AgentMon: retry #{attempts} succeeded,  "
                         f"skill is now active!"
                     )
                     return

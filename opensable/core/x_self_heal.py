@@ -345,7 +345,7 @@ class RemedyEngine:
             elif remedy == "pause_until_midnight":
                 result.update(self._pause_until_midnight())
             elif remedy == "skip":
-                # Known non-critical error, already handled in code — just log it
+                # Known non-critical error, already handled in code,  just log it
                 logger.debug(f"🩺 Known benign error '{error_pattern.name}', skipping remedy")
                 result.update({"action": "skip", "applied": True})
             elif remedy == "grok_custom_fix":
@@ -545,7 +545,7 @@ class RemedyEngine:
         if hasattr(agent, '_daily_limit_hit_at'):
             agent._daily_limit_hit_at = datetime.now()
         logger.warning(
-            f"\U0001f6ab Daily post limit (344) — posting paused for {retry_hours:.0f}h "
+            f"\U0001f6ab Daily post limit (344),  posting paused for {retry_hours:.0f}h "
             f"(resumes ~{resume_at.strftime('%H:%M')}). Engagement continues normally."
         )
         return {

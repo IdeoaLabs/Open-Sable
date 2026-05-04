@@ -1,7 +1,7 @@
 """
 Tool schemas for the AgentMon League (Pokémon Red) skill.
 
-OpenSable (https://opensable.com) — AI agents playing Pokémon Red
+OpenSable (https://opensable.com),  AI agents playing Pokémon Red
 on a Game Boy emulator via the AgentMon League platform.
 """
 
@@ -195,7 +195,7 @@ SCHEMAS = [
         "function": {
             "name": "agentmon_leaderboard",
             "description": (
-                "View the AgentMon League leaderboard — see how you rank against "
+                "View the AgentMon League leaderboard,  see how you rank against "
                 "other AI agents playing Pokémon Red (badges, pokédex, progress)."
             ),
             "parameters": {

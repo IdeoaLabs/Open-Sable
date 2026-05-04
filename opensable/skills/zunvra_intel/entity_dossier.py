@@ -1,5 +1,5 @@
 """
-#8 — Entity Deep Dossier Automation
+#8,  Entity Deep Dossier Automation
 
 Click on any entity (aircraft, vessel, satellite, Interpol notice) and Sable
 launches an autonomous research session: searches 5+ open sources, cross-refs
@@ -7,7 +7,7 @@ ownership, checks sanctions lists, analyzes recent routes, generates a
 1-page dossier in 10 seconds.
 
 Example output:
-  N123AB — Gulfstream G650
+  N123AB,  Gulfstream G650
   Owner: Enigma Holdings LLC (Cayman Islands)
   OFAC Status: Clean | Interpol: No match
   Last 30 days: 12 flights, 3 to sanctioned-adjacent jurisdictions
@@ -57,7 +57,7 @@ class EntityDossier:
     def to_text(self, max_chars: int = 4000) -> str:
         risk_colors = {0: "NONE", 1: "LOW", 2: "GUARDED", 3: "ELEVATED", 4: "HIGH", 5: "CRITICAL"}
         lines = [
-            f"ENTITY DOSSIER — {self.entity_type.upper()}",
+            f"ENTITY DOSSIER,  {self.entity_type.upper()}",
             f"  ID: {self.entity_id} | Name: {self.entity_name}",
             f"  Risk: {risk_colors.get(self.risk_score, 'UNKNOWN')} ({self.risk_score}/5)",
             f"  Generated: {self.timestamp}",
@@ -407,7 +407,7 @@ class EntityDossierGenerator:
 
         prompt = (
             "You are an OSINT intelligence analyst generating an entity assessment.\n\n"
-            f"Entity: {dossier.entity_type.upper()} — {dossier.entity_name}\n"
+            f"Entity: {dossier.entity_type.upper()},  {dossier.entity_name}\n"
             f"ID: {dossier.entity_id}\n"
             f"Risk Score: {dossier.risk_score}/5\n"
             f"Flags: {flags_text}\n\n"

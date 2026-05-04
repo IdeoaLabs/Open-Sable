@@ -161,7 +161,7 @@ export const ToolSearchTool: ToolDefinition = {
     properties: {
       query: {
         type: 'string',
-        description: 'Search query — a keyword, tool name, or description of what you want to do (e.g., "read file", "run command", "search code")',
+        description: 'Search query,  a keyword, tool name, or description of what you want to do (e.g., "read file", "run command", "search code")',
       },
     },
     required: ['query'],

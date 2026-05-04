@@ -1,5 +1,5 @@
 /**
- * Computer Use — Desktop Automation
+ * Computer Use,  Desktop Automation
  * 
  * Provides screenshot capture, mouse control, keyboard input, and
  * application detection for desktop automation workflows.
@@ -363,7 +363,7 @@ export async function typeText(
 }
 
 /**
- * Clipboard verify protocol — safe paste
+ * Clipboard verify protocol,  safe paste
  */
 async function typeViaClipboard(text: string): Promise<void> {
   let savedClipboard: string | null = null;
@@ -379,7 +379,7 @@ async function typeViaClipboard(text: string): Promise<void> {
     // 2. Write text to clipboard
     execSync(`echo -n '${text.replace(/'/g, "'\\''")}' | xclip -selection clipboard`, { timeout: 2000 });
     
-    // 2b. Verify read-back (crucial — clipboard writes can fail silently)
+    // 2b. Verify read-back (crucial,  clipboard writes can fail silently)
     const readBack = execSync('xclip -selection clipboard -o', { encoding: 'utf-8', timeout: 2000 }).trim();
     if (readBack !== text.trim()) {
       throw new Error('Clipboard verify failed: written text does not match read-back');
@@ -430,7 +430,7 @@ export async function withModifiers(
     await action();
     
   } finally {
-    // Release in LIFO order (reverse) — ensures no stuck keys
+    // Release in LIFO order (reverse),  ensures no stuck keys
     for (let i = pressed.length - 1; i >= 0; i--) {
       try {
         execSync(`xdotool keyup ${pressed[i]}`);

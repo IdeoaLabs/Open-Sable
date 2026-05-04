@@ -1,5 +1,5 @@
 /**
- * Bash Tool — Execute shell commands in the sandbox.
+ * Bash Tool,  Execute shell commands in the sandbox.
  * 
  * Runs commands in the sandboxed working directory.
  * Includes permission checking for dangerous patterns.

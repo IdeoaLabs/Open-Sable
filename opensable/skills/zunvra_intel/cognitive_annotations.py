@@ -1,12 +1,12 @@
 """
-#9 — Cognitive Annotations (Map Observer)
+#9,  Cognitive Annotations (Map Observer)
 
 Sable observes the map continuously and leaves floating intelligence notes
 on zones with detected anomalies.  Each annotation is a self-contained
 micro-report: what was detected, when, severity, narrative context.
 
 Example annotation:
-  "Black Sea — GPS-jamming cluster detected.  6 ADS-B positions lost
+  "Black Sea,  GPS-jamming cluster detected.  6 ADS-B positions lost
    around Crimea in 12 min window.  Pattern matches REB-era electronic
    warfare.  Monitoring."
 """
@@ -246,7 +246,7 @@ class CognitiveAnnotator:
             return None
 
         headline = f"{zone_name}: {findings[0]}"
-        narrative = f"{zone_name} zone activity — " + "; ".join(findings) + "."
+        narrative = f"{zone_name} zone activity,  " + "; ".join(findings) + "."
 
         domains = []
         if mil_count > 0: domains.append("military")

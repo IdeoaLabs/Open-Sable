@@ -1,5 +1,5 @@
 """
-PinchTab client — HTTP adapter for the PinchTab browser control server.
+PinchTab client,  HTTP adapter for the PinchTab browser control server.
 
 PinchTab provides token-efficient, stealth-capable browser automation via a
 lightweight HTTP API.  This module wraps its REST endpoints so BrowserEngine
@@ -8,9 +8,9 @@ Playwright when it isn't.
 
 Architecture:
     PinchTab runs two HTTP layers:
-      * **Management server** (default :9867) — ``/health``, ``/instances``,
+      * **Management server** (default :9867),  ``/health``, ``/instances``,
         ``/instances/launch``.  Used to start/stop headless browser instances.
-      * **Instance server** (e.g. :9868) — ``/navigate``, ``/text``,
+      * **Instance server** (e.g. :9868),  ``/navigate``, ``/text``,
         ``/snapshot``, ``/screenshot``, ``/action``, ``/tabs``, ``/tab``.
         This is the browser-control plane.
 
@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 # Management server (launches/manages browser instances)
 _DEFAULT_MGMT_URL = "http://127.0.0.1:9867"
-# Instance server (browser control) — port assigned at launch
+# Instance server (browser control),  port assigned at launch
 _DEFAULT_INSTANCE_URL = "http://127.0.0.1:9868"
 _HEALTH_TIMEOUT = 3  # seconds
 _NAV_TIMEOUT = 25  # seconds
@@ -166,7 +166,7 @@ class PinchTabClient:
                                 logger.debug(f"PinchTab: reusing instance {self._instance_id} on :{port}")
                                 return
                             else:
-                                # Stale instance — stop it
+                                # Stale instance,  stop it
                                 logger.warning(f"PinchTab: stale instance {self._instance_id}, stopping...")
                                 try:
                                     async with session.post(

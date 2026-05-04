@@ -63,7 +63,7 @@ class TTSEngine:
                 "Run install-pi.sh to download it or set PIPER_MODEL_DIR."
             )
         self.engine = {"binary": resolved, "model": str(model_path)}
-        logger.info(f"Piper TTS ready — voice: {voice}, model: {model_path}")
+        logger.info(f"Piper TTS ready,  voice: {voice}, model: {model_path}")
 
     async def _init_local(self):
         """Initialize local pyttsx3"""
@@ -236,13 +236,13 @@ class STTEngine:
             try:
                 await self._init_local()
             except Exception as e:
-                logger.warning(f"STT (local/whisper) unavailable: {e} — listen() disabled")
+                logger.warning(f"STT (local/whisper) unavailable: {e},  listen() disabled")
                 self.engine = None
         elif self.provider == "openai":
             try:
                 await self._init_openai()
             except Exception as e:
-                logger.warning(f"STT (openai) unavailable: {e} — listen() disabled")
+                logger.warning(f"STT (openai) unavailable: {e},  listen() disabled")
                 self.engine = None
         else:
             logger.warning(f"Unknown STT provider: {self.provider}")
@@ -331,13 +331,13 @@ class VoiceSkill:
         stt_ok = await self.stt.initialize()  # always returns True (non-fatal)
 
         if not tts_ok:
-            logger.error("Voice skill: TTS unavailable — skill disabled")
+            logger.error("Voice skill: TTS unavailable,  skill disabled")
             return False
 
         if not stt_ok or not self.stt.engine:
             logger.info("Voice skill: TTS-only mode (STT unavailable)")
         else:
-            logger.info(f"Voice skill initialized — TTS: {self.tts.provider}, STT: {self.stt.provider}")
+            logger.info(f"Voice skill initialized,  TTS: {self.tts.provider}, STT: {self.stt.provider}")
         return True
 
     async def speak(self, text: str) -> str:

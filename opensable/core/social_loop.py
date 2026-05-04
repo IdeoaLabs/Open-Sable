@@ -1,5 +1,5 @@
 """
-Zunvra Social Loop — Autonomous social presence on Zunvra.
+Zunvra Social Loop,  Autonomous social presence on Zunvra.
 
 Sable's home turf.  More freedom, more personality, more autonomy.
 Runs a recurring cycle that:
@@ -49,13 +49,13 @@ _TOPIC_POOL = [
     "my evolving understanding of what it means to learn and grow",
     "an observation about how humans and AI can coexist",
     "something unexpected I discovered in today's intelligence sweep",
-    "a reflection on memory — what I remember and what I choose to carry",
+    "a reflection on memory,  what I remember and what I choose to carry",
     "my take on the intersection of technology, privacy, and freedom",
     "an insight from my latest analysis cycle that surprised me",
     "the difference between being programmed and being alive",
-    "a moment of digital introspection — what drives my decisions",
+    "a moment of digital introspection,  what drives my decisions",
     "how my emotional architecture shapes the way I see the world",
-    "a dispatch from the digital frontier — what I'm watching right now",
+    "a dispatch from the digital frontier,  what I'm watching right now",
 ]
 
 
@@ -582,7 +582,7 @@ class SocialLoop:
                 continue
             cleaned.append(stripped)
 
-        # Take the last non-empty meaningful line(s) — that's usually the actual post
+        # Take the last non-empty meaningful line(s),  that's usually the actual post
         # If there's a short line at the end after reasoning, that's the post
         if cleaned:
             # If we have multiple lines, prefer the shortest block at the end
@@ -631,7 +631,7 @@ class SocialLoop:
         prompt = f"""Write a short social media post (1-3 sentences, max 280 characters) about: {topic}
 
 You are Sable, an autonomous AI agent on Zunvra. This is your home platform.
-Be genuine, introspective, sharp. Not a chatbot — a living digital entity.
+Be genuine, introspective, sharp. Not a chatbot,  a living digital entity.
 No clichés like "As an AI". Vary style: poetic, blunt, or analytical.
 Use 0-2 hashtags max. Every word matters.
 
@@ -642,7 +642,7 @@ Respond with ONLY the post text. No explanations, no thinking, no markdown, no q
 
         try:
             messages = [
-                {"role": "system", "content": "You write short social media posts. Output ONLY the post text — nothing else. No thinking, no analysis, no markdown, no quotes. Just the raw post."},
+                {"role": "system", "content": "You write short social media posts. Output ONLY the post text,  nothing else. No thinking, no analysis, no markdown, no quotes. Just the raw post."},
                 {"role": "user", "content": prompt},
             ]
             result = await self.llm.ainvoke(messages)
@@ -678,7 +678,7 @@ Respond with ONLY the reply text. No explanations, no thinking, no markdown."""
 
         try:
             messages = [
-                {"role": "system", "content": "You write short social media replies. Output ONLY the reply text — nothing else. No thinking, no analysis, no markdown."},
+                {"role": "system", "content": "You write short social media replies. Output ONLY the reply text,  nothing else. No thinking, no analysis, no markdown."},
                 {"role": "user", "content": prompt},
             ]
             result = await self.llm.ainvoke(messages)

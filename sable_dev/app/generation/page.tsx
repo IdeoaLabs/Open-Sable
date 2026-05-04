@@ -289,7 +289,7 @@ function AISandboxPage() {
       
       // If starting a new project, clear chat completely and persist the wipe
       if (isNewProject) {
-        console.log('[initializePage] New project detected — clearing chat history');
+        console.log('[initializePage] New project detected,  clearing chat history');
         setChatMessages([{
           content: 'Welcome! I can help you generate code with full context of your sandbox files and structure. Just start chatting!\n\nTip: If you see package errors, just type "npm install" to fix them.',
           type: 'system',
@@ -513,7 +513,7 @@ function AISandboxPage() {
               setStructureContent(`Project restored: ${restoreData.restoredFiles} files`);
               addChatMessage(`Project restored with ${restoreData.restoredFiles} files from your previous session.`, 'system');
             } else {
-              // Restore failed — fall back to creating a new sandbox
+              // Restore failed,  fall back to creating a new sandbox
               console.log('[home] Project restore not available, creating fresh sandbox');
               await createSandbox(true, storedTemplate);
             }
@@ -2766,7 +2766,7 @@ Tip: I automatically detect and install npm packages from your code imports (lik
                       addChatMessage('Failed to download project', 'error');
                     }
                   } else if (data.action === 'review') {
-                    // /review returns handled: false, so the AI gets the review prompt — nothing extra needed here
+                    // /review returns handled: false, so the AI gets the review prompt,  nothing extra needed here
                   }
                 } else if (data.type === 'error') {
                   throw new Error(data.error || 'Unknown stream error');
@@ -5330,7 +5330,7 @@ Focus on the key sections and content, making it clean and modern.`;
       </div>
 
       {/* Modals */}
-      {/* Diff Panel — shows file changes after edits */}
+      {/* Diff Panel,  shows file changes after edits */}
       {showDiffPanel && fileDiffs.length > 0 && (
         <div className="fixed inset-y-0 right-0 w-[480px] bg-[#0d0d1a] border-l border-[#2a2a4a] z-50 flex flex-col shadow-2xl">
           <div className="flex items-center justify-between px-4 py-3 border-b border-[#2a2a4a] bg-[#12122a]">

@@ -674,7 +674,7 @@ class AutonomousMode:
                 fight_task = {
                     "id": f"arena_startup_{self.tick}",
                     "type": "proactive",
-                    "description": "Arena: startup fight — entering queue immediately",
+                    "description": "Arena: startup fight,  entering queue immediately",
                     "goal_type": "creative",
                     "priority": 1,  # high priority
                     "tool_name": "arena_fight",
@@ -693,7 +693,7 @@ class AutonomousMode:
         while self.running:
             # ── Yield to user chat: pause tick if user is chatting ──────
             if getattr(self.agent, '_user_chatting', False):
-                logger.info("⏸️  Pausing tick — user is chatting")
+                logger.info("⏸️  Pausing tick,  user is chatting")
                 while getattr(self.agent, '_user_chatting', False):
                     await asyncio.sleep(0.5)
                 logger.info("▶️  Resuming ticks")
@@ -1520,7 +1520,7 @@ class AutonomousMode:
             return description
 
         elif task_type in ("prospecting", "outreach", "followup"):
-            # Scheduled business tasks — execute with full description
+            # Scheduled business tasks,  execute with full description
             description = task.get("description", "")
             return await self._execute_via_react(description)
 
@@ -1816,7 +1816,7 @@ class AutonomousMode:
             except Exception as e:
                 return f"Error: {e}"
 
-        # Get available tool schemas — priority tools first, then fill
+        # Get available tool schemas,  priority tools first, then fill
         available_tools = []
         try:
             all_schemas = self.agent.tools.get_tool_schemas()
@@ -2578,9 +2578,9 @@ class AutonomousMode:
                 except Exception as e:
                     logger.debug(f"Arena auto-queue tick: {e}")
 
-            # ── 29c. AgentMon League — Pokémon Red ──
+            # ── 29c. AgentMon League,  Pokémon Red ──
             # Gameplay runs in its own dedicated background loop inside
-            # AgentMonSkill._play_loop() — no tick-based queuing needed.
+            # AgentMonSkill._play_loop(),  no tick-based queuing needed.
             # The LLM callback is wired by ToolRegistry at init time.
 
             # ── 30. Cognitive metabolism,  energy regeneration ──

@@ -1,5 +1,5 @@
 """
-#13 — Geofence Tripwire System
+#13,  Geofence Tripwire System
 
 Define custom virtual boundaries anywhere on Earth.  When any entity
 (aircraft, vessel, cyber threat, etc.) enters, exits, or loiters within
@@ -127,7 +127,7 @@ CRITICAL_ZONES: List[Dict[str, Any]] = [
         "center_lat": 26.57, "center_lon": 56.25, "radius_km": 100,
         "severity": "critical",
         "tags": ["chokepoint", "energy", "military"],
-        "description": "Critical oil chokepoint — 21% of global petroleum transits",
+        "description": "Critical oil chokepoint,  21% of global petroleum transits",
     },
     {
         "fence_id": "giuk_gap",
@@ -135,7 +135,7 @@ CRITICAL_ZONES: List[Dict[str, Any]] = [
         "center_lat": 63.0, "center_lon": -15.0, "radius_km": 500,
         "severity": "high",
         "tags": ["naval", "submarine", "nato"],
-        "description": "Greenland-Iceland-UK gap — NATO submarine choke point",
+        "description": "Greenland-Iceland-UK gap,  NATO submarine choke point",
     },
     {
         "fence_id": "taiwan_strait",
@@ -143,7 +143,7 @@ CRITICAL_ZONES: List[Dict[str, Any]] = [
         "center_lat": 24.0, "center_lon": 119.5, "radius_km": 150,
         "severity": "critical",
         "tags": ["flashpoint", "military", "china"],
-        "description": "Taiwan Strait — highest probability flashpoint",
+        "description": "Taiwan Strait,  highest probability flashpoint",
     },
     {
         "fence_id": "suez_canal",
@@ -159,7 +159,7 @@ CRITICAL_ZONES: List[Dict[str, Any]] = [
         "center_lat": 12.6, "center_lon": 43.3, "radius_km": 80,
         "severity": "critical",
         "tags": ["chokepoint", "houthi", "energy"],
-        "description": "Red Sea chokepoint — Houthi attack zone",
+        "description": "Red Sea chokepoint,  Houthi attack zone",
     },
     {
         "fence_id": "malacca_strait",
@@ -167,7 +167,7 @@ CRITICAL_ZONES: List[Dict[str, Any]] = [
         "center_lat": 2.5, "center_lon": 101.5, "radius_km": 200,
         "severity": "high",
         "tags": ["chokepoint", "energy", "piracy"],
-        "description": "World's busiest shipping lane — 25% of global trade",
+        "description": "World's busiest shipping lane,  25% of global trade",
     },
     {
         "fence_id": "black_sea_crimea",
@@ -175,7 +175,7 @@ CRITICAL_ZONES: List[Dict[str, Any]] = [
         "center_lat": 44.5, "center_lon": 34.0, "radius_km": 300,
         "severity": "high",
         "tags": ["conflict", "military", "russia", "ukraine"],
-        "description": "Active conflict zone — maritime & air activity monitored",
+        "description": "Active conflict zone,  maritime & air activity monitored",
     },
     {
         "fence_id": "kaliningrad",
@@ -183,7 +183,7 @@ CRITICAL_ZONES: List[Dict[str, Any]] = [
         "center_lat": 54.7, "center_lon": 20.5, "radius_km": 150,
         "severity": "high",
         "tags": ["military", "russia", "nato", "baltic"],
-        "description": "Russian exclave — nuclear-capable missile deployment zone",
+        "description": "Russian exclave,  nuclear-capable missile deployment zone",
     },
     {
         "fence_id": "south_china_sea_spratly",
@@ -191,7 +191,7 @@ CRITICAL_ZONES: List[Dict[str, Any]] = [
         "center_lat": 10.0, "center_lon": 114.0, "radius_km": 300,
         "severity": "high",
         "tags": ["territorial", "military", "china"],
-        "description": "Contested artificial islands — Chinese military installations",
+        "description": "Contested artificial islands,  Chinese military installations",
     },
     {
         "fence_id": "dmz_korea",

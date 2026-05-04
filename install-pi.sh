@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  OpenSable — Raspberry Pi Installation Script
+#  OpenSable,  Raspberry Pi Installation Script
 #  Supports: Raspberry Pi 3B+ / 4B / 5 (64-bit Raspberry Pi OS, aarch64)
-#  LLM Backend: OpenWebUI API (remote — no local model required)
+#  LLM Backend: OpenWebUI API (remote,  no local model required)
 #  Author: OpenSable Project
 #
 #  Usage:
-#    ./install-pi.sh            — Full install + post-install verification
-#    ./install-pi.sh --repair   — Re-verify all deps, auto-fix what's broken
-#    ./install-pi.sh --verify   — Check only (read-only, no changes)
+#    ./install-pi.sh           ,  Full install + post-install verification
+#    ./install-pi.sh --repair  ,  Re-verify all deps, auto-fix what's broken
+#    ./install-pi.sh --verify  ,  Check only (read-only, no changes)
 # =============================================================================
 set -euo pipefail
 
@@ -134,14 +134,14 @@ verify_python_packages() {
             ok "  ${BOLD}${pkg}${RESET}"
             (( pass++ )) || true
         else
-            warn "  ${BOLD}${pkg}${RESET} — missing (import '${import}' failed)"
+            warn "  ${BOLD}${pkg}${RESET},  missing (import '${import}' failed)"
             if [[ "$MODE" != "verify" ]]; then
                 if install_package "$pkg" && try_import "$import"; then
-                    fixed "  ${BOLD}${pkg}${RESET} — repaired"
+                    fixed "  ${BOLD}${pkg}${RESET},  repaired"
                     (( repaired++ )) || true
                     (( pass++ )) || true
                 else
-                    error "  ${BOLD}${pkg}${RESET} — could not repair"
+                    error "  ${BOLD}${pkg}${RESET},  could not repair"
                     failed_pkgs+=("$pkg")
                 fi
             else
@@ -190,7 +190,7 @@ verify_opensable_package() {
         "$VENV_DIR/bin/pip" install --no-deps -e "$SCRIPT_DIR" -q 2>>"$REPAIR_LOG"
         "$VENV_DIR/bin/python3" -c "import opensable" 2>/dev/null \
             && fixed "opensable repaired." \
-            || error "opensable still broken — check ${REPAIR_LOG}"
+            || error "opensable still broken,  check ${REPAIR_LOG}"
     else
         error "opensable not importable. Run ${BOLD}./install-pi.sh --repair${RESET}."
         return 1
@@ -207,7 +207,7 @@ verify_profile_config() {
         if [[ "$MODE" != "verify" ]]; then
             mkdir -p "$PROFILE_DIR"
             cat > "$PROFILE_ENV" << 'MINENV'
-# Auto-generated minimal profile — fill in your values
+# Auto-generated minimal profile,  fill in your values
 AGENT_NAME=Sable-Pi
 OPENWEBUI_API_URL=https://sofia.zunvra.com
 OPENWEBUI_API_KEY=
@@ -227,7 +227,7 @@ LOG_FILE=./logs/opensable.log
 LOW_VRAM_MODE=false
 MAX_CONTEXT_LENGTH=4096
 MINENV
-            fixed "Minimal profile created — fill in TELEGRAM_BOT_TOKEN and OPENWEBUI_API_KEY."
+            fixed "Minimal profile created,  fill in TELEGRAM_BOT_TOKEN and OPENWEBUI_API_KEY."
         fi
         return 0
     fi
@@ -243,24 +243,24 @@ MINENV
             ok "  ${BOLD}${key}${RESET} = ${DIM}${val:0:50}${RESET}"
         fi
     done
-    (( ${#missing[@]} > 0 )) && warn "Blank keys: ${missing[*]} — edit ${PROFILE_ENV}" || ok "All profile keys set."
+    (( ${#missing[@]} > 0 )) && warn "Blank keys: ${missing[*]},  edit ${PROFILE_ENV}" || ok "All profile keys set."
 }
 
 # ── verify_connectivity ────────────────────────────────────────────────────────
 verify_connectivity() {
     step "Verifying OpenWebUI connectivity"
-    [[ ! -f "$PROFILE_ENV" ]] && warn "No profile — skipping." && return 0
+    [[ ! -f "$PROFILE_ENV" ]] && warn "No profile,  skipping." && return 0
 
     local url; url=$(grep -E '^OPENWEBUI_API_URL=' "$PROFILE_ENV" 2>/dev/null | cut -d= -f2- | tr -d ' ')
     local key; key=$(grep -E '^OPENWEBUI_API_KEY=' "$PROFILE_ENV" 2>/dev/null | cut -d= -f2- | tr -d ' ')
-    [[ -z "$url" ]] && warn "OPENWEBUI_API_URL blank — skipping." && return 0
+    [[ -z "$url" ]] && warn "OPENWEBUI_API_URL blank,  skipping." && return 0
 
     local code; code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 \
         -H "Authorization: Bearer ${key}" "${url}/api/models" 2>/dev/null || echo "000")
     case "$code" in
-        200) ok "Reachable: ${BOLD}${url}${RESET} — HTTP ${GREEN}200${RESET}" ;;
-        401) warn "HTTP 401 — check OPENWEBUI_API_KEY in ${PROFILE_ENV}" ;;
-        000) warn "Cannot reach ${url} — check network/DNS" ;;
+        200) ok "Reachable: ${BOLD}${url}${RESET},  HTTP ${GREEN}200${RESET}" ;;
+        401) warn "HTTP 401,  check OPENWEBUI_API_KEY in ${PROFILE_ENV}" ;;
+        000) warn "Cannot reach ${url},  check network/DNS" ;;
         *)   warn "HTTP ${code} from ${url}/api/models" ;;
     esac
 }
@@ -289,7 +289,7 @@ setup_display() {
 
     # ─ Rotation ─────────────────────────────────────────────────────────────
     # tft35a overlay rotation values:
-    #   90  = landscape, normal  (default, USB ports on right — most common)
+    #   90  = landscape, normal  (default, USB ports on right,  most common)
     #   270 = landscape, flipped (USB ports on left)
     #   0   = portrait,  normal
     #   180 = portrait,  flipped
@@ -345,7 +345,7 @@ setup_display() {
     sudo tee -a "$boot_cfg" > /dev/null << BOOTCFG
 
 # BEGIN opensable-display
-# 3.5" XPT2046/ILI9486 SPI TFT — tft35a overlay (goodtft/LCD-show)
+# 3.5" XPT2046/ILI9486 SPI TFT,  tft35a overlay (goodtft/LCD-show)
 # tft35a already registers the ADS7846 touch controller internally
 dtparam=spi=on
 dtoverlay=tft35a:rotate=${DISP_ROTATE},penirq=17
@@ -377,7 +377,7 @@ BOOTCFG
         sudo systemctl daemon-reload
         sudo systemctl enable sable-display.service 2>/dev/null && \
             ok "Service enabled: ${BOLD}sable-display.service${RESET} (starts on boot after reboot)" || \
-            warn "Could not enable service — start manually after reboot."
+            warn "Could not enable service,  start manually after reboot."
     else
         warn "Service template not found: ${svc_src}"
     fi
@@ -393,7 +393,7 @@ BOOTCFG
     # ─ Quick-test script ──────────────────────────────────────────────
     cat > "$SCRIPT_DIR/test-display.sh" << TESTSH
 #!/usr/bin/env bash
-# Quick test for the 3.5" display — runs display_hud.py in foreground
+# Quick test for the 3.5" display,  runs display_hud.py in foreground
 cd "$(dirname "\$0")"
 source venv/bin/activate
 FB_DEV=\${1:-/dev/fb1} DISPLAY_INTERVAL=0.5 DISPLAY_ROTATE=${DISP_ROTATE} \
@@ -404,16 +404,16 @@ TESTSH
 
     sep
     echo -e "${YELLOW}${BOLD}  ⚠  REBOOT REQUIRED${RESET}"
-    echo -e "  Driver: ${BOLD}tft35a${RESET} (goodtft/LCD-show — ILI9486 + XPT2046 / MPI3501)"
+    echo -e "  Driver: ${BOLD}tft35a${RESET} (goodtft/LCD-show,  ILI9486 + XPT2046 / MPI3501)"
     echo -e "  Overlay added to : ${BOLD}${boot_cfg}${RESET}"
     echo -e "  dtbo installed at: ${BOLD}${dtbo_dst}${RESET}"
     echo -e "  After reboot the display will appear on ${BOLD}/dev/fb1${RESET}."
     echo -e ""
     echo -e "  After reboot:"
-    echo -e "   ${CYAN}sudo systemctl start sable-display${RESET}   — start log viewer now"
-    echo -e "   ${CYAN}./test-display.sh${RESET}                   — test display in foreground"
-    echo -e "   ${CYAN}sudo systemctl status sable-display${RESET}  — check service status"
-    echo -e "   ${CYAN}ls -la /dev/fb*${RESET}                     — confirm /dev/fb1 exists"
+    echo -e "   ${CYAN}sudo systemctl start sable-display${RESET}  ,  start log viewer now"
+    echo -e "   ${CYAN}./test-display.sh${RESET}                  ,  test display in foreground"
+    echo -e "   ${CYAN}sudo systemctl status sable-display${RESET} ,  check service status"
+    echo -e "   ${CYAN}ls -la /dev/fb*${RESET}                    ,  confirm /dev/fb1 exists"
     echo -e ""
     ask "Reboot now? [y/N]"
     read -r -p "    > " DO_REBOOT
@@ -431,11 +431,11 @@ TESTSH
 if [[ "$MODE" == "repair" || "$MODE" == "verify" ]]; then
     clear
     if [[ "$MODE" == "repair" ]]; then
-        echo -e "${YELLOW}${BOLD}  OpenSable Pi — Self-Repair Mode${RESET}"
+        echo -e "${YELLOW}${BOLD}  OpenSable Pi,  Self-Repair Mode${RESET}"
         echo -e "${DIM}  Re-verifying all components, auto-fixing what's broken...${RESET}"
         echo -e "${DIM}  Tip: use ${BOLD}./install-pi.sh --display${DIM} to (re)configure the display.${RESET}"
     else
-        echo -e "${CYAN}${BOLD}  OpenSable Pi — Verify Mode (read-only)${RESET}"
+        echo -e "${CYAN}${BOLD}  OpenSable Pi,  Verify Mode (read-only)${RESET}"
         echo -e "${DIM}  Checking installation state without making any changes...${RESET}"
     fi
     sep
@@ -452,11 +452,11 @@ if [[ "$MODE" == "repair" || "$MODE" == "verify" ]]; then
         if command -v "$_tool" &>/dev/null; then
             ok "  $_tool"
         else
-            warn "  $_tool — missing"
+            warn "  $_tool,  missing"
             if [[ "$MODE" == "repair" ]]; then
                 sudo apt-get install -y -qq aircrack-ng iw wireless-tools 2>/dev/null && \
                     fixed "  aircrack-ng suite installed" || \
-                    error "  Could not install aircrack-ng — install manually: sudo apt install aircrack-ng"
+                    error "  Could not install aircrack-ng,  install manually: sudo apt install aircrack-ng"
                 break
             fi
         fi
@@ -465,7 +465,7 @@ if [[ "$MODE" == "repair" || "$MODE" == "verify" ]]; then
     if (( EXIT_CODE == 0 )); then
         echo -e "\n${GREEN}${BOLD}  ✓  All checks passed.${RESET}\n"
     else
-        echo -e "\n${RED}${BOLD}  ✗  Some checks failed — see above.${RESET}"
+        echo -e "\n${RED}${BOLD}  ✗  Some checks failed,  see above.${RESET}"
         echo -e "${DIM}  Log: ${REPAIR_LOG}${RESET}\n"
     fi
     exit $EXIT_CODE
@@ -485,7 +485,7 @@ cat << 'BANNER'
         |_|       OpenWebUI Edition
 BANNER
 echo -e "${RESET}"
-echo -e "${DIM}  No local GPU required — uses your OpenWebUI API as the LLM backend${RESET}"
+echo -e "${DIM}  No local GPU required,  uses your OpenWebUI API as the LLM backend${RESET}"
 sep
 
 # ── Architecture check ────────────────────────────────────────────────────────
@@ -494,16 +494,16 @@ step "Checking system compatibility"
 ARCH=$(uname -m)
 if [[ "$ARCH" != "aarch64" && "$ARCH" != "arm64" ]]; then
     if [[ "$ARCH" == "armv7l" ]]; then
-        error "32-bit ARM (armv7l) detected — likely a Raspberry Pi 2B or older 32-bit OS image."
+        error "32-bit ARM (armv7l) detected,  likely a Raspberry Pi 2B or older 32-bit OS image."
         error "This installer requires ${BOLD}64-bit Raspberry Pi OS${RESET}${RED} (aarch64)."
         error "Please flash ${BOLD}Raspberry Pi OS (64-bit)${RESET}${RED} to your SD card and retry."
         error "Minimum hardware: ${BOLD}Raspberry Pi 3B+${RESET}${RED} with 64-bit OS."
         exit 1
     else
-        warn "Architecture is '$ARCH', not aarch64. Proceeding anyway — unsupported platform."
+        warn "Architecture is '$ARCH', not aarch64. Proceeding anyway,  unsupported platform."
     fi
 else
-    ok "Architecture: ${BOLD}${ARCH}${RESET} (64-bit ARM — compatible)"
+    ok "Architecture: ${BOLD}${ARCH}${RESET} (64-bit ARM,  compatible)"
 fi
 
 # Pi model detection
@@ -517,7 +517,7 @@ if [[ -f /proc/device-tree/model ]]; then
         exit 1
     fi
 else
-    warn "Could not read /proc/device-tree/model — skipping Pi model check."
+    warn "Could not read /proc/device-tree/model,  skipping Pi model check."
 fi
 
 # RAM check
@@ -584,7 +584,7 @@ if [[ ! -d "$VENV_DIR" ]]; then
     python3 -m venv "$VENV_DIR"
     ok "Virtual environment created."
 else
-    ok "Virtual environment already exists — reusing."
+    ok "Virtual environment already exists,  reusing."
 fi
 
 source "$VENV_DIR/bin/activate"
@@ -616,7 +616,7 @@ CORE_PACKAGES=(
     # Storage
     SQLAlchemy
     aiosqlite
-    # Embeddings (light — no torch required)
+    # Embeddings (light,  no torch required)
     sentence-transformers
     # OpenAI-compatible client (for OpenWebUI API calls)
     openai
@@ -637,7 +637,7 @@ CORE_PACKAGES=(
 # - torch / torchvision      (10+ GB, no CUDA on Pi)
 # - ultralytics (YOLOv8)     (requires torch)
 # - pyautogui                (requires X11 display)
-# - playwright               (chromium headful — huge)
+# - playwright               (chromium headful,  huge)
 # - whisper (openai-whisper) (CPU inference is too slow)
 
 info "Installing core packages (may take a few minutes on Pi)..."
@@ -655,7 +655,7 @@ ok "Initial package installation done."
 
 # ── POST-INSTALL VERIFICATION & AUTO-REPAIR ───────────────────────────────────
 step "Post-install verification & auto-repair"
-info "Testing every import — will auto-fix anything broken..."
+info "Testing every import,  will auto-fix anything broken..."
 echo ""
 
 FAILED_TOTAL=0
@@ -666,12 +666,12 @@ for pkg in "${!PKG_IMPORTS[@]}"; do
     if try_import "$import"; then
         ok "  ${BOLD}${pkg}${RESET}"
     else
-        warn "  ${BOLD}${pkg}${RESET} — broken, repairing..."
+        warn "  ${BOLD}${pkg}${RESET},  broken, repairing..."
         if install_package "$pkg" && try_import "$import"; then
-            fixed "  ${BOLD}${pkg}${RESET} — repaired"
+            fixed "  ${BOLD}${pkg}${RESET},  repaired"
             (( REPAIRED_TOTAL++ )) || true
         else
-            error "  ${BOLD}${pkg}${RESET} — could not repair"
+            error "  ${BOLD}${pkg}${RESET},  could not repair"
             (( FAILED_TOTAL++ )) || true
         fi
     fi
@@ -682,9 +682,9 @@ if (( FAILED_TOTAL > 0 )); then
     warn "${FAILED_TOTAL} package(s) could not be installed. Agent may start but some features unavailable."
     warn "Re-run: ${BOLD}./install-pi.sh --repair${RESET}"
 elif (( REPAIRED_TOTAL > 0 )); then
-    ok "All packages OK — ${REPAIRED_TOTAL} auto-repaired during install."
+    ok "All packages OK,  ${REPAIRED_TOTAL} auto-repaired during install."
 else
-    ok "All packages verified clean — nothing needed repair."
+    ok "All packages verified clean,  nothing needed repair."
 fi
 
 verify_opensable_package
@@ -699,7 +699,7 @@ PIPER_VOICES_DIR="$HOME/.local/share/piper/voices"
 PIPER_VOICE="en_US-kusal-medium"
 PIPER_VOICE_URL_BASE="https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/kusal/medium"
 
-# Piper release tarball (aarch64 only — install-pi.sh already enforces 64-bit)
+# Piper release tarball (aarch64 only,  install-pi.sh already enforces 64-bit)
 PIPER_RELEASE_URL="https://github.com/rhasspy/piper/releases/latest/download/piper_linux_aarch64.tar.gz"
 
 if [[ ! -x "$PIPER_BIN" ]]; then
@@ -714,11 +714,11 @@ if [[ ! -x "$PIPER_BIN" ]]; then
         ok "Piper binary installed at ${BOLD}${PIPER_BIN}${RESET}"
     else
         rm -f "$TMP_TAR"
-        warn "Could not download Piper binary — TTS will use fallback."
+        warn "Could not download Piper binary,  TTS will use fallback."
         PIPER_BIN=""
     fi
 else
-    ok "Piper binary already present — skipping download."
+    ok "Piper binary already present,  skipping download."
 fi
 
 # Download voice model
@@ -733,19 +733,19 @@ if [[ ! -f "$ONNX_FILE" ]]; then
         ok "Voice model downloaded: ${BOLD}${ONNX_FILE}${RESET}"
     else
         rm -f "$ONNX_FILE" "$JSON_FILE"
-        warn "Could not download voice model — TTS will be disabled."
+        warn "Could not download voice model,  TTS will be disabled."
     fi
 else
-    ok "Voice model already present — skipping download."
+    ok "Voice model already present,  skipping download."
 fi
 
 # Quick smoke-test
 if [[ -x "$PIPER_BIN" && -f "$ONNX_FILE" ]]; then
     if echo "Sable is ready." | "$PIPER_BIN" --model "$ONNX_FILE" --output_raw 2>/dev/null | \
        aplay -q -f S16_LE -r 22050 -c1 -Dplug:dmix 2>/dev/null; then
-        ok "Piper TTS smoke-test ${BOLD}passed${RESET} — audio output works."
+        ok "Piper TTS smoke-test ${BOLD}passed${RESET},  audio output works."
     else
-        warn "Piper smoke-test skipped (no audio device or pcm not available yet — normal before reboot)."
+        warn "Piper smoke-test skipped (no audio device or pcm not available yet,  normal before reboot)."
     fi
 fi
 
@@ -796,7 +796,7 @@ step "Writing ${PROFILE_ENV}"
 
 cat > "$PROFILE_ENV" << EOF
 # ============================================================================
-#  OpenSable — Raspberry Pi Profile
+#  OpenSable,  Raspberry Pi Profile
 #  Generated by install-pi.sh on $(date)
 #  Device: ${PI_MODEL}
 # ============================================================================
@@ -806,11 +806,11 @@ CLI_ENABLED=false
 PIXEL_BRIDGE_ENABLED=false     # no Electron on Pi
 
 # ── LLM: use OpenWebUI API (no local Ollama) ─────────────────────────────────
-# Ollama is disabled — all inference goes through OpenWebUI
+# Ollama is disabled,  all inference goes through OpenWebUI
 OLLAMA_BASE_URL=
 DEFAULT_MODEL=${OWUI_MODEL}
 AUTO_SELECT_MODEL=false
-LOW_VRAM_MODE=false             # not relevant — no local model
+LOW_VRAM_MODE=false             # not relevant,  no local model
 
 # OpenWebUI (sofia.zunvra.com or your instance)
 OPENWEBUI_API_URL=${OWUI_URL}
@@ -836,7 +836,7 @@ PIPER_VOICE=en_US-kusal-medium
 PIPER_MODEL_DIR=${PIPER_VOICES_DIR}
 PIPER_APLAY_DEVICE=plug:dmix
 PIPER_AUTO_PLAY=true
-AUTONOMOUS_ENABLED=false        # optional — enable once stable
+AUTONOMOUS_ENABLED=false        # optional,  enable once stable
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 DATA_DIR=./data
@@ -902,7 +902,7 @@ step "Deploying web assets (dashboard & aggr.trade)"
 
 DASHBOARD_DIST="$SCRIPT_DIR/dashboard/dist"
 if [[ ! -f "$DASHBOARD_DIST/index.html" ]]; then
-    warn "dashboard/dist/index.html not found — dashboard will not be served."
+    warn "dashboard/dist/index.html not found,  dashboard will not be served."
     warn "Build it on a dev machine: cd dashboard && npm install && npm run build"
     warn "Then copy dashboard/dist/ to the Pi before running this installer."
 else
@@ -911,7 +911,7 @@ fi
 
 AGGR_DIST="$SCRIPT_DIR/aggr/dist"
 if [[ ! -f "$AGGR_DIST/index.html" ]]; then
-    warn "aggr/dist/index.html not found — aggr.trade view will not be served."
+    warn "aggr/dist/index.html not found,  aggr.trade view will not be served."
     warn "Build it on a dev machine: cd aggr && npm install && npm run build"
     warn "Then copy aggr/dist/ to the Pi before running this installer."
 else
@@ -944,7 +944,7 @@ for f in "${ROCKYOU_CANDIDATES[@]}"; do
 done
 
 if [[ "$GOT_WORDLIST" == false ]]; then
-    info "rockyou.txt not found — creating a minimal starter wordlist."
+    info "rockyou.txt not found,  creating a minimal starter wordlist."
     info "Replace ${BOLD}${WIFI_WORDLIST_PATH}${RESET} with a full wordlist for better results."
     cat > "$WIFI_WORDLIST_PATH" << 'WLIST'
 # OpenSable starter WiFi wordlist
@@ -969,7 +969,7 @@ for tool in aircrack-ng airodump-ng aireplay-ng airmon-ng; do
     if command -v "$tool" &>/dev/null; then
         ok "  $tool"
     else
-        warn "  $tool — not found (install: sudo apt install aircrack-ng)"
+        warn "  $tool,  not found (install: sudo apt install aircrack-ng)"
         WIFI_TOOLS_OK=false
     fi
 done
@@ -997,7 +997,7 @@ WIFI_WHITELIST="${WIFI_WHITELIST_INPUT:-}"
 if [[ "$WIFI_TOOLS_OK" == true ]]; then
     ok "WiFi survival skill: all tools present."
 else
-    warn "Some WiFi tools missing — passive scan only until aircrack-ng is installed."
+    warn "Some WiFi tools missing,  passive scan only until aircrack-ng is installed."
 fi
 
 # ── Final verification pass ───────────────────────────────────────────────────
@@ -1025,19 +1025,19 @@ echo ""
 echo -e "${GREEN}${BOLD}  ✓  Installation complete!${RESET}"
 echo ""
 echo -e "  ${BOLD}Self-repair commands:${RESET}"
-echo -e "    ${CYAN}./install-pi.sh --repair${RESET}   — auto-fix any missing dependency"
-echo -e "    ${CYAN}./install-pi.sh --verify${RESET}   — check only, no changes"
-echo -e "    ${CYAN}./install-pi.sh --display${RESET}  — configure 3.5\" XPT2046 display"
-echo -e "    ${CYAN}./start-pi.sh   --repair${RESET}   — repair then start immediately"
+echo -e "    ${CYAN}./install-pi.sh --repair${RESET}  ,  auto-fix any missing dependency"
+echo -e "    ${CYAN}./install-pi.sh --verify${RESET}  ,  check only, no changes"
+echo -e "    ${CYAN}./install-pi.sh --display${RESET} ,  configure 3.5\" XPT2046 display"
+echo -e "    ${CYAN}./start-pi.sh   --repair${RESET}  ,  repair then start immediately"
 echo ""
 echo -e "  ${BOLD}Web assets (pre-built on dev machine, copy dist/ to Pi):${RESET}"
-echo -e "    ${DIM}dashboard/dist/${RESET}   — dashboard UI  (cd dashboard && npm run build)"
-echo -e "    ${DIM}aggr/dist/${RESET}        — aggr.trade UI (cd aggr && npm run build)"
+echo -e "    ${DIM}dashboard/dist/${RESET}  ,  dashboard UI  (cd dashboard && npm run build)"
+echo -e "    ${DIM}aggr/dist/${RESET}       ,  aggr.trade UI (cd aggr && npm run build)"
 echo ""
 echo -e "  ${BOLD}Display:${RESET}"
-echo -e "    ${CYAN}./test-display.sh${RESET}                     — test log viewer in foreground"
-echo -e "    ${DIM}sudo systemctl start sable-display${RESET}    — start via systemd"
-echo -e "    ${DIM}sudo systemctl status sable-display${RESET}   — check status"
+echo -e "    ${CYAN}./test-display.sh${RESET}                    ,  test log viewer in foreground"
+echo -e "    ${DIM}sudo systemctl start sable-display${RESET}   ,  start via systemd"
+echo -e "    ${DIM}sudo systemctl status sable-display${RESET}  ,  check status"
 echo ""
 echo -e "  ${BOLD}Edit config:${RESET}  ${BOLD}${PROFILE_ENV}${RESET}"
 echo -e "  ${BOLD}Start:${RESET}        ${GREEN}${BOLD}./start-pi.sh${RESET}"

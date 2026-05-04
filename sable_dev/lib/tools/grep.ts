@@ -1,5 +1,5 @@
 /**
- * Grep Tool — Search for text patterns in sandbox files.
+ * Grep Tool,  Search for text patterns in sandbox files.
  * 
  * Uses ripgrep-style search with regex support.
  * Returns matching lines with filename, line number, and context.

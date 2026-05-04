@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-OpenSable Pi — HUD Dashboard Display
+OpenSable Pi,  HUD Dashboard Display
 Renders a live status HUD on the 3.5" TFT (480×320 RGB565 @ /dev/fb1)
 
 Environment:
@@ -17,7 +17,7 @@ from datetime import datetime, timedelta
 try:
     from PIL import Image, ImageDraw, ImageFont
 except ImportError:
-    sys.exit("pillow not found — pip install pillow")
+    sys.exit("pillow not found,  pip install pillow")
 
 try:
     import psutil
@@ -175,10 +175,10 @@ def write_fb(data: bytes):
             fb.write(data)
         return True
     except PermissionError:
-        print(f"[display] PermissionError on {FB_DEV} — add user to 'video' group")
+        print(f"[display] PermissionError on {FB_DEV},  add user to 'video' group")
         return False
     except FileNotFoundError:
-        print(f"[display] {FB_DEV} not found — driver not loaded?")
+        print(f"[display] {FB_DEV} not found,  driver not loaded?")
         return False
     except Exception as e:
         print(f"[display] fb error: {e}")
@@ -244,7 +244,7 @@ def draw_nav(draw, page: int):
     draw.text((6,      ny + 8), "◀", font=F["label_b"], fill=C["dim"])
     draw.text((W - 14, ny + 8), "▶", font=F["label_b"], fill=C["dim"])
 
-    # WiFi icon — top-right corner (drawn as simple sector arcs)
+    # WiFi icon,  top-right corner (drawn as simple sector arcs)
     wifi = _get_wifi()
     _wix = W - 28
     _wiy = ny + 5
@@ -304,7 +304,7 @@ def render_hud(log_lines: list, start_time: float) -> Image.Image:
     up_str  = f"{hs:02d}:{ms:02d}:{ss:02d}"
     dot_col = C["ok"]
 
-    # Card 1 — Agent
+    # Card 1,  Agent
     c1x, c1w = 2, 148
     card(c1x, c1w, "AGENT", [])
     draw.ellipse([c1x + 6, CARD_Y + 22, c1x + 15, CARD_Y + 31], fill=dot_col)
@@ -312,7 +312,7 @@ def render_hud(log_lines: list, start_time: float) -> Image.Image:
     draw.text((c1x + 6,  CARD_Y + 38), "UPTIME",  font=F["label"],    fill=C["text2"])
     draw.text((c1x + 6,  CARD_Y + 48), up_str,    font=F["card_val"], fill=C["accent"])
 
-    # Card 2 — Model
+    # Card 2,  Model
     c2x, c2w = 154, 200
     card(c2x, c2w, "MODEL", [
         ("qwen2.5-coder",    C["accent"], "card_big"),
@@ -320,7 +320,7 @@ def render_hud(log_lines: list, start_time: float) -> Image.Image:
         ("sofia.zunvra.com", C["text2"],  "label"),
     ])
 
-    # Card 3 — Telegram
+    # Card 3,  Telegram
     c3x, c3w = 358, W - 360
     card(c3x, c3w, "TELEGRAM", [])
     tg = (30, 160, 240)
@@ -412,7 +412,7 @@ _SKILLS = [
     ("Voice",      r"TTS initialized|Piper TTS ready|Voice skill initialized|voice.*mode"),
 ]
 
-# HTTP access log lines pollute skill detection — exclude them
+# HTTP access log lines pollute skill detection,  exclude them
 _HTTP_ACCESS_RE = re.compile(
     r'\d+\.\d+\.\d+\.\d+.*"(?:GET|POST|PUT|DELETE|HEAD|OPTIONS)\s',
     re.IGNORECASE,
@@ -556,20 +556,20 @@ def _read_brain_state() -> dict:
 
 
 # ── Ken-chan sprite compositing ───────────────────────────────────────────────
-# All sprites are 612×354 RGBA — scale uniformly to fit AVT_W, center vertically
+# All sprites are 612×354 RGBA,  scale uniformly to fit AVT_W, center vertically
 _AVT_W = W
 _AVT_H = H - NAV_H
 _SW    = _AVT_W                        # 480
 _SH    = int(354 * _AVT_W / 612)       # 277
 _SX    = 0
-_SY    = (_AVT_H - _SH) // 2          # 7  — vertical centering
+_SY    = (_AVT_H - _SH) // 2          # 7 ,  vertical centering
 
 _kc_loaded = False
 _kc_bg     = None   # mousebg.png
 _kc_cat    = None   # cat.png  (body, always shown)
 _kc_rup    = None   # righthand/rightup.png  (right paw raised)
 _kc_lup    = None   # lefthand/leftup.png    (left paw in air between key presses)
-_kc_mouse  = None   # mouse.png — scaled once, placed per-frame
+_kc_mouse  = None   # mouse.png,  scaled once, placed per-frame
 _kc_kb     = {}     # keyboard/N.png
 _kc_lhand  = {}     # lefthand/N.png  (left paw typing)
 _kc_rhand  = {}     # righthand/N.png (right paw on mouse)
@@ -577,12 +577,12 @@ _kc_face   = {}     # face/N.png
 _kc_mouth  = {}     # mouth/N.png  (animated mouths)
 _kc_bubble = None   # bubble.png   (thinking speech bubble)
 
-# Bubble text area in canvas (face/2 sprite — approx upper-right zone)
+# Bubble text area in canvas (face/2 sprite,  approx upper-right zone)
 _BUBBLE_X1, _BUBBLE_X2 = 268, 455   # tweak if needed
 _BUBBLE_Y1, _BUBBLE_Y2 =  14,  82   # tweak if needed
 _BUBBLE_FG = (28, 28, 28)            # dark text on light bubble
 
-# Per-frame mouse paste positions — mouse content CENTER aligned to paw tip
+# Per-frame mouse paste positions,  mouse content CENTER aligned to paw tip
 # so the paw covers ~top 50% of the mouse, bottom 50% visible below.
 # mouse.png content bbox=(19,10,100,84), scale=0.679 → scaled 71×70px
 # content center y in scaled img = 7 + 50/2 = 32
@@ -667,7 +667,7 @@ def _ensure_sprites():
     _kc_rup    = _kc_load("righthand/rightup.png")
     _kc_lup    = _kc_load("lefthand/leftup.png")
     _kc_bubble = _kc_load("bubble.png")
-    # mouse.png is a fixed-size overlay — load and scale independently
+    # mouse.png is a fixed-size overlay,  load and scale independently
     try:
         _m = Image.open(str(_KEN_DIR / "mouse.png")).convert("RGBA")
         mw, mh = _m.size
@@ -745,7 +745,7 @@ def render_avatar() -> Image.Image:
         _avt_tw_text[0] = state_text
         _avt_tw_pos[0]  = 0
     elif state == "typing" and state_text and state_text != _avt_tw_text[0]:
-        # New response text arrived — restart typewriter
+        # New response text arrived,  restart typewriter
         _avt_tw_text[0] = state_text
         _avt_tw_pos[0]  = 0
 
@@ -815,7 +815,7 @@ def render_avatar() -> Image.Image:
 
     elif state in ("thinking", "responding", "grateful"):
         show_rhand_up = True
-    else:  # idle — paw micro-movement on mouse
+    else:  # idle,  paw micro-movement on mouse
         if rhand_keys and now - _avt_rhand_ts[0] >= 0.45:
             _avt_rhand_ts[0]  = now
             _avt_rhand_idx[0] = (_avt_rhand_idx[0] + 1) % len(rhand_keys)
@@ -840,7 +840,7 @@ def render_avatar() -> Image.Image:
     elif show_lhand_up and _kc_lup:
         paste(_kc_lup)
 
-    # mouse device — moves with the right paw (per-frame offset), hidden when paw raised
+    # mouse device,  moves with the right paw (per-frame offset), hidden when paw raised
     if not show_rhand_up and _kc_mouse:
         rhi = _avt_rhand_idx[0] % len(rhand_keys) if rhand_keys else 0
         rframe = rhand_keys[rhi] if rhand_keys else 0
@@ -864,7 +864,7 @@ def render_avatar() -> Image.Image:
     if state == "thinking" and _kc_bubble and not _kc_face.get(2):
         paste(_kc_bubble)
 
-    # Mouth: auto-selected frame (always rendered — closed=frame 0)
+    # Mouth: auto-selected frame (always rendered,  closed=frame 0)
     mouth_keys = sorted(_kc_mouth.keys())
     if mouth_keys:
         mk = _avt_mouth_key[0]
@@ -961,7 +961,7 @@ def render_avatar() -> Image.Image:
         dw = draw.textlength(detail, font=df)
         draw.text(((W - dw)//2, badge_y - 14), detail, font=df, fill=C["text2"])
 
-    # No sprites yet — show logo fallback
+    # No sprites yet,  show logo fallback
     if not _kc_loaded or (_kc_bg is None):
         logo = _load_logo(target_h=150)
         if logo:
@@ -1033,7 +1033,7 @@ def render_brain() -> Image.Image:
     # Brain events (list of dicts: ts, type, content)
     events = brain.get("events", [])
 
-    # Empty state — nothing from agent yet
+    # Empty state,  nothing from agent yet
     if not events and not cur_tool and not cur_text:
         lf2 = _font(_MONO, 11)
         mid_y = (HDR_H + H - NAV_H) // 2 - 20
@@ -1475,7 +1475,7 @@ def _touch_thread():
     try:
         fd = open(TOUCH_DEV, 'rb')
     except Exception as e:
-        print(f"[touch] cannot open {TOUCH_DEV}: {e} — touch disabled")
+        print(f"[touch] cannot open {TOUCH_DEV}: {e},  touch disabled")
         return
 
     print(f"[touch] listening on {TOUCH_DEV}")
@@ -6429,8 +6429,8 @@ def main():
 
     print(f"[display] {W}×{H}  fb={FB_DEV}  interval={INTERVAL}s")
     print(f"[display] log: {log_path or '(searching)'}")
-    print(f"[display] psutil: {'ok' if HAS_PSUTIL else 'missing — no cpu/ram stats'}")
-    print(f"[display] numpy:  {'ok (fast rgb565)' if HAS_NUMPY else 'missing — slow pixel loop'}")
+    print(f"[display] psutil: {'ok' if HAS_PSUTIL else 'missing,  no cpu/ram stats'}")
+    print(f"[display] numpy:  {'ok (fast rgb565)' if HAS_NUMPY else 'missing,  slow pixel loop'}")
 
     _threading.Thread(target=_touch_thread, daemon=True).start()
 
@@ -6497,7 +6497,7 @@ def main():
             rotated = frame.rotate(180)
             write_fb(to_rgb565(rotated))
             # ── Export JPEG snapshot for web streaming ─────────────────────
-            # Save the original (unrotated) frame — the 180° rotation is only
+            # Save the original (unrotated) frame,  the 180° rotation is only
             # needed for the physical framebuffer orientation.
             try:
                 _jpg_tmp = "/tmp/.sable_hud_frame_tmp.jpg"

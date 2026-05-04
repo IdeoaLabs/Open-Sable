@@ -254,7 +254,7 @@ export async function POST(request: NextRequest) {
           if (sub === 'run') {
             const gateResult = shouldDream(global.sableDreamState);
             if (gateResult.shouldRun) {
-              // Fire and forget — background dream
+              // Fire and forget,  background dream
               runDream(global.sableDreamState).then(newState => {
                 global.sableDreamState = newState;
                 console.log('[dream-mode] Dream cycle completed');
@@ -356,7 +356,7 @@ export async function POST(request: NextRequest) {
           headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' },
         });
       } else if (cmdResult && !cmdResult.handled && cmdResult.data?.prompt) {
-        // Unhandled command with a prompt override (e.g. /review) — replace the prompt and fall through to AI
+        // Unhandled command with a prompt override (e.g. /review),  replace the prompt and fall through to AI
         prompt = cmdResult.data.prompt as string;
       }
     }
@@ -436,7 +436,7 @@ export async function POST(request: NextRequest) {
         let editContext = null;
         let enhancedSystemPrompt = '';
 
-        // Detect truncation recovery prompts — skip heavy agentic search for these
+        // Detect truncation recovery prompts,  skip heavy agentic search for these
         const isTruncationRecovery = isEdit && /truncat|continue.*where.*left/i.test(prompt);
         
         if (isEdit && !isErrorFix && !isTruncationRecovery) {
@@ -1430,7 +1430,7 @@ Common fixes:
           aiTools = buildAISDKTools(toolContext);
           console.log(`[generate-ai-code-stream] Intent filter: ${intentTools.map(t => t.name).join(', ')}`);
         }
-        // Disable tool calling for Groq models — their tool call API is unreliable
+        // Disable tool calling for Groq models,  their tool call API is unreliable
         const useTools = isEdit && aiTools && Object.keys(aiTools).length > 0 && !isGroqModel;
         
         // Gather context pipeline data (git, recent edits, deps) for edit mode
@@ -1668,8 +1668,8 @@ NO explanations, NO markdown, NO conversation. Start immediately with <file.
 ${creationModeInstructions}
 
 RULES:
-1. Output ONLY <file> tags. Each file must be COMPLETE — no truncation.
-2. Use Tailwind CSS classes (bg-white, text-black — NOT bg-background, text-foreground).
+1. Output ONLY <file> tags. Each file must be COMPLETE,  no truncation.
+2. Use Tailwind CSS classes (bg-white, text-black,  NOT bg-background, text-foreground).
 3. Files are .jsx NOT .tsx. No TypeScript.
 4. NEVER create tailwind.config.js, vite.config.js, or package.json.
 5. If you run low on space, close the current file properly and STOP. Do NOT start a file you can't finish.
@@ -1695,7 +1695,7 @@ Output ONLY <file path="...">code</file> tags. Complete files that were cut off.
         if (global.conversationState?.context?.messages && global.conversationState.context.messages.length > 0) {
           const interruptState = detectInterruption(
             global.conversationState.context.messages.map((m: any) => ({ role: m.role, content: m.content })),
-            false // wasStreaming — we don't know from server side, assume clean
+            false // wasStreaming,  we don't know from server side, assume clean
           );
           const recovery = buildRecoveryMessage(interruptState);
           if (recovery) {
@@ -1756,7 +1756,7 @@ Output ONLY <file path="...">code</file> tags. Complete files that were cut off.
             const errorCategory = classifyError(streamError);
             console.log(`[generate-ai-code-stream] Error classified as: ${errorCategory}`);
             
-            // Permanent errors — don't retry
+            // Permanent errors,  don't retry
             if (errorCategory === 'permanent') {
               await sendProgress({ 
                 type: 'error', 
@@ -1765,7 +1765,7 @@ Output ONLY <file path="...">code</file> tags. Complete files that were cut off.
               throw streamError;
             }
             
-            // Context overflow — don't retry (need to reduce context)
+            // Context overflow,  don't retry (need to reduce context)
             if (errorCategory === 'context_overflow') {
               await sendProgress({ 
                 type: 'error', 
@@ -1799,7 +1799,7 @@ Output ONLY <file path="...">code</file> tags. Complete files that were cut off.
               // Send progress update about retry
               await sendProgress({ 
                 type: 'info', 
-                message: `${isGroqTPMLimit ? 'Groq token limit reached — waiting ~60s for reset' : errorCategory === 'rate_limit' ? 'Rate limited' : 'Service temporarily unavailable'}, retrying (attempt ${retryCount + 1}/${maxRetries + 1})...` 
+                message: `${isGroqTPMLimit ? 'Groq token limit reached,  waiting ~60s for reset' : errorCategory === 'rate_limit' ? 'Rate limited' : 'Service temporarily unavailable'}, retrying (attempt ${retryCount + 1}/${maxRetries + 1})...` 
               });
               
               // Wait before retry with exponential backoff
@@ -2512,7 +2512,7 @@ Provide the complete file content without any truncation. Include all necessary 
             (global.conversationState?.context?.messages || []).map((m: any) => ({ role: m.role, content: m.content }))
           );
           if (shouldExtractMemory(global.sableSessionMemoryState!, totalTokensNow)) {
-            // Fire and forget — non-blocking background extraction
+            // Fire and forget,  non-blocking background extraction
             extractSessionMemory(
               (global.conversationState?.context?.messages || []).map((m: any) => ({ role: m.role, content: m.content })),
               global.sableSessionMemoryState!,

@@ -112,9 +112,9 @@ class TikTokSkill:
                 sleep_after=3,
                 browser=self._browser,
                 context_options=_mobile_context,
-                # Mute audio — prevents headless Chrome from playing TikTok video sound
+                # Mute audio,  prevents headless Chrome from playing TikTok video sound
                 override_browser_args=["--mute-audio", "--autoplay-policy=user-gesture-required"],
-                # Don't load media resources — saves bandwidth and prevents audio/video playback
+                # Don't load media resources,  saves bandwidth and prevents audio/video playback
                 suppress_resource_load_types=["media", "image", "font", "stylesheet"],
             )
 

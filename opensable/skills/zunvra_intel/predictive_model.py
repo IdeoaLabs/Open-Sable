@@ -1,5 +1,5 @@
 """
-#5 — Predictive World Model
+#5,  Predictive World Model
 
 Builds a living model of global state from sequential Zunvra snapshots.
 Tracks entities, relationships, and movement patterns. Uses statistical
@@ -284,7 +284,7 @@ class PredictiveWorldModel:
 
     def get_trend_report(self) -> str:
         """Human-readable trend report."""
-        lines = [f"WORLD MODEL — {self.total_observations} observations, {len(self.trends)} metrics"]
+        lines = [f"WORLD MODEL,  {self.total_observations} observations, {len(self.trends)} metrics"]
         for t in sorted(self.trends.values(), key=lambda x: abs(x.slope), reverse=True):
             lines.append(f"  {t.to_text()}")
         if self.forecasts:

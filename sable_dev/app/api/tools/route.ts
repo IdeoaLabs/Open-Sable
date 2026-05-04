@@ -1,5 +1,5 @@
 /**
- * GET /api/tools — List all available sandbox tools.
+ * GET /api/tools,  List all available sandbox tools.
  * 
  * Returns tool metadata (name, description, schema) for the
  * frontend UI and for inclusion in AI system prompts.

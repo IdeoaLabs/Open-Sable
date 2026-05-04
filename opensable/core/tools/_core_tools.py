@@ -551,7 +551,7 @@ class CoreToolsMixin:
                     os.remove(path)
                     msg = f"📸 Screenshot taken ({len(img_b64)//1024}KB base64). File cleaned up."
                 except Exception:
-                    pass  # file already gone or unreadable — fine
+                    pass  # file already gone or unreadable,  fine
 
             return msg
 

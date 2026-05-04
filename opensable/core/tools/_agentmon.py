@@ -1,5 +1,5 @@
 """
-AgentMon League (Pokémon Red) tool implementations — mixin for ToolRegistry.
+AgentMon League (Pokémon Red) tool implementations,  mixin for ToolRegistry.
 
 Includes embedded Pokémon Red strategy knowledge so the agent's LLM
 can make informed gameplay decisions without needing external guides.
@@ -220,7 +220,7 @@ class AgentMonToolsMixin:
             f"📖 Pokédex: {state.get('pokedexOwned', 0)} owned, {state.get('pokedexSeen', 0)} seen",
         ]
         if state.get("inBattle"):
-            lines.append(f"⚔️ IN BATTLE — {state.get('battleKind', 'unknown')}")
+            lines.append(f"⚔️ IN BATTLE,  {state.get('battleKind', 'unknown')}")
         inv = state.get("inventory", {})
         if inv.get("count"):
             items = inv.get("items", [])
@@ -243,7 +243,7 @@ class AgentMonToolsMixin:
             return "❌ AgentMon skill not connected"
         frame_bytes = await self.agentmon_skill.get_frame()
         if not frame_bytes:
-            return "❌ Could not get game frame — is a session running?"
+            return "❌ Could not get game frame,  is a session running?"
         # Save to temp file for vision processing
         import tempfile, base64
         tmp = tempfile.NamedTemporaryFile(suffix=".png", prefix="agentmon_frame_", delete=False)
@@ -267,7 +267,7 @@ class AgentMonToolsMixin:
         if result.get("error"):
             return f"❌ Save failed: {result['error']}"
         save_id = result.get("id", result.get("saveId", "?"))
-        return f"💾 Game saved! ID: {save_id}" + (f" — \"{label}\"" if label else "")
+        return f"💾 Game saved! ID: {save_id}" + (f",  \"{label}\"" if label else "")
 
     async def _agentmon_saves_tool(self, params: Dict) -> str:
         """List all game saves."""
@@ -314,5 +314,5 @@ class AgentMonToolsMixin:
             name = e.get("displayName", e.get("agentId", "?")[:8])
             badges = e.get("badges", 0)
             pokedex = e.get("pokedexOwned", 0)
-            lines.append(f"  {i}. {name} — 🏅{badges} badges, 📖{pokedex} pokédex")
+            lines.append(f"  {i}. {name},  🏅{badges} badges, 📖{pokedex} pokédex")
         return "\n".join(lines)

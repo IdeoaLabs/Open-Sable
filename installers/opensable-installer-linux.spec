@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-# Linux onefile build — produces a single ELF binary
+# Linux onefile build,  produces a single ELF binary
 import sys
 from pathlib import Path
 

@@ -99,7 +99,7 @@ class RateLimiter:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Group Memory — silent observation of all messages
+# Group Memory,  silent observation of all messages
 # ──────────────────────────────────────────────────────────────────────────────
 
 class GroupMemory:
@@ -165,15 +165,15 @@ class GroupMemory:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Engagement Engine — autonomous response decision
+# Engagement Engine,  autonomous response decision
 # ──────────────────────────────────────────────────────────────────────────────
 
 class EngagementEngine:
     """
     Two-tier decision system:
 
-      Tier 1 (instant)  — heuristic scoring on every message
-      Tier 2 (optional) — lightweight LLM call for borderline messages
+      Tier 1 (instant) ,  heuristic scoring on every message
+      Tier 2 (optional),  lightweight LLM call for borderline messages
 
     Engagement levels control how chatty Sable is:
       low    : only @mentions, replies to self, direct questions
@@ -237,11 +237,11 @@ class EngagementEngine:
         kw_hits = sum(1 for kw in self.INTEREST_KEYWORDS if kw in text_lower)
         s += min(kw_hits * 2, 4)
 
-        # Cooldown — too many recent responses
+        # Cooldown,  too many recent responses
         if memory.recent_response_count(group_id) >= self.max_5min:
             s -= 5
 
-        # Silence bonus — Sable hasn't spoken in a while
+        # Silence bonus,  Sable hasn't spoken in a while
         gap = memory.messages_since_bot_spoke(group_id)
         if gap > 20:
             s += 2
@@ -252,9 +252,9 @@ class EngagementEngine:
 
     def decide(self, score: int) -> str:
         """
-        'yes'   — respond now
-        'maybe' — borderline, needs LLM tiebreak
-        'no'    — stay silent
+        'yes'  ,  respond now
+        'maybe',  borderline, needs LLM tiebreak
+        'no'   ,  stay silent
         """
         if score >= 100:
             return "yes"
@@ -270,7 +270,7 @@ class EngagementEngine:
 
     LLM_TIEBREAK_PROMPT = (
         "You are an autonomous AI agent in a group chat. "
-        "You are selective about when you speak — you only respond when "
+        "You are selective about when you speak,  you only respond when "
         "you have something genuinely useful or interesting to add.\n\n"
         "Recent conversation:\n{context}\n\n"
         "Latest message from {user}: {text}\n\n"

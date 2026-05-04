@@ -1,20 +1,20 @@
 """
-#14 — Kill Chain Tracker (MITRE ATT&CK-Inspired)
+#14,  Kill Chain Tracker (MITRE ATT&CK-Inspired)
 
 Maps observed intelligence events onto an adversary kill-chain model.
 Tracks how threats progress through phases, detects multi-indicator
 alignment, and raises alarms when a chain advances beyond threshold.
 
 Phases (hybrid MITRE ATT&CK + intelligence cycle):
-  1. Reconnaissance — probing, scanning, unusual OSINT collection
-  2. Staging        — force buildup, logistics, pre-positioning
-  3. Mobilisation   — active movement to target area
-  4. Engagement     — weapons release, interference, blockade
-  5. Exploitation   — territory seizure, infrastructure capture
-  6. Consolidation  — occupation, narrative control, fortification
-  7. Sustainment    — supply chains, long-term presence
+  1. Reconnaissance,  probing, scanning, unusual OSINT collection
+  2. Staging       ,  force buildup, logistics, pre-positioning
+  3. Mobilisation  ,  active movement to target area
+  4. Engagement    ,  weapons release, interference, blockade
+  5. Exploitation  ,  territory seizure, infrastructure capture
+  6. Consolidation ,  occupation, narrative control, fortification
+  7. Sustainment   ,  supply chains, long-term presence
 
-This goes far beyond Palantir — their kill chain is IT/cyber focused.
+This goes far beyond Palantir,  their kill chain is IT/cyber focused.
 Ours is GEOPOLITICAL + MILITARY + CYBER across all domains.
 """
 
@@ -74,7 +74,7 @@ class KillChainTrack:
     target: str = ""
     created_at: str = ""
     last_updated: str = ""
-    # Phase progression — each phase has list of indicators
+    # Phase progression,  each phase has list of indicators
     phases: Dict[str, List[KillChainIndicator]] = field(default_factory=dict)
     # Highest phase reached
     max_phase: str = "reconnaissance"
@@ -119,7 +119,7 @@ PHASE_RULES: Dict[str, List[Dict[str, Any]]] = {
         {"domain": "cyber", "pattern": "scanning",
          "desc": "Port scanning or probing of critical infrastructure"},
         {"domain": "narrative", "pattern": "disinfo_probe",
-         "desc": "Disinformation testing — trial narratives planted"},
+         "desc": "Disinformation testing,  trial narratives planted"},
     ],
     "staging": [
         {"domain": "air", "pattern": "tanker_deployment",
@@ -360,7 +360,7 @@ class KillChainTracker:
             aircraft_type = (flight.get("type") or "").upper()
             hex_code = flight.get("hex", "")
 
-            # Reconnaissance phase — surveillance aircraft
+            # Reconnaissance phase,  surveillance aircraft
             for st in SURVEILLANCE_TYPES:
                 if st in callsign or st in aircraft_type:
                     indicators.append((
@@ -371,7 +371,7 @@ class KillChainTracker:
                     ))
                     break
 
-            # Staging phase — tanker activity
+            # Staging phase,  tanker activity
             for tt in TANKER_TYPES:
                 if tt in callsign or tt in aircraft_type:
                     indicators.append((
@@ -416,12 +416,12 @@ class KillChainTracker:
         if dark_ships > 5:
             indicators.append((
                 "reconnaissance",
-                f"Cluster of {dark_ships} dark vessels (no AIS) — possible covert monitoring",
+                f"Cluster of {dark_ships} dark vessels (no AIS),  possible covert monitoring",
                 "maritime", 0.7,
                 None,
             ))
 
-        # Cyber domain — from snapshot conflicts / cyber threats
+        # Cyber domain,  from snapshot conflicts / cyber threats
         for conflict in snapshot.conflicts:
             conflict_type = (conflict.get("type") or conflict.get("category") or "").lower()
             conflict_desc = (conflict.get("description") or conflict.get("title") or "").lower()

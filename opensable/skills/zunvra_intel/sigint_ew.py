@@ -1,11 +1,11 @@
 """
-#19 — SIGINT / Electronic Warfare Pattern Analyzer
+#19,  SIGINT / Electronic Warfare Pattern Analyzer
 
 NSA/GCHQ core capability.  Analyzes GPS jamming zones to detect
 electronic warfare campaigns, triangulate jammer positions, correlate
 EW activity with military operations, and detect escalation patterns.
 
-Data source: snapshot.gps_jamming (barely used before — only as causal trigger)
+Data source: snapshot.gps_jamming (barely used before,  only as causal trigger)
 """
 
 from __future__ import annotations
@@ -87,11 +87,11 @@ class SigintAlert:
 
 EW_HOTSPOTS: Dict[str, Dict[str, Any]] = {
     "kaliningrad": {"lat": 54.7, "lon": 20.5, "radius_km": 300, "actor": "Russia",
-                    "desc": "Russian exclave — persistent GPS spoofing/jamming"},
+                    "desc": "Russian exclave,  persistent GPS spoofing/jamming"},
     "eastern_med": {"lat": 35.0, "lon": 33.0, "radius_km": 400, "actor": "Russia/Syria",
                     "desc": "Russian EW systems at Khmeimim AB, Syria"},
     "crimea": {"lat": 44.5, "lon": 34.0, "radius_km": 300, "actor": "Russia",
-               "desc": "Crimean EW complex — covers Black Sea approaches"},
+               "desc": "Crimean EW complex,  covers Black Sea approaches"},
     "north_korea": {"lat": 38.5, "lon": 126.5, "radius_km": 200, "actor": "DPRK",
                     "desc": "DPRK GPS spoofing targeting South Korean aviation"},
     "iran_strait": {"lat": 27.0, "lon": 56.0, "radius_km": 200, "actor": "Iran",
@@ -99,7 +99,7 @@ EW_HOTSPOTS: Dict[str, Dict[str, Any]] = {
     "south_china_sea": {"lat": 16.0, "lon": 112.0, "radius_km": 500, "actor": "China",
                         "desc": "PLA EW capabilities on artificial islands"},
     "baltics": {"lat": 57.0, "lon": 24.0, "radius_km": 300, "actor": "Russia",
-                "desc": "Baltic region — commercial aviation jamming corridor"},
+                "desc": "Baltic region,  commercial aviation jamming corridor"},
     "finland_border": {"lat": 64.0, "lon": 28.0, "radius_km": 200, "actor": "Russia",
                        "desc": "Russian EW systems along Finnish border"},
 }
@@ -234,7 +234,7 @@ class SigintEWAnalyzer:
                             severity="high",
                             timestamp=now_str,
                             description=(f"Civilian aircraft {callsign} inside GPS jamming zone "
-                                        f"({dist:.0f}km from center) — potential navigation hazard"),
+                                        f"({dist:.0f}km from center),  potential navigation hazard"),
                             lat=f_lat, lon=f_lon,
                             evidence={"callsign": callsign, "zone_id": zone_data["id"],
                                       "distance_km": dist},

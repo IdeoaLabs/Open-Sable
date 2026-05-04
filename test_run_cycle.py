@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-LIVE TEST — Proof that all 26 modules execute against REAL Zunvra data.
+LIVE TEST,  Proof that all 26 modules execute against REAL Zunvra data.
 
 This script:
   1. Connects to the live Central Intelligence backend (port 5580)
   2. Fetches the full OSINT snapshot
   3. Initializes the ZunvraIntelSkill with all 26 modules
-  4. Runs run_cycle() — the full 26-module analysis pipeline
+  4. Runs run_cycle(),  the full 26-module analysis pipeline
   5. Prints EVERY result from EVERY module
 """
 
@@ -36,7 +36,7 @@ def section(title: str):
 
 
 async def main():
-    section("SABLE INTELLIGENCE SUITE — LIVE DATA TEST")
+    section("SABLE INTELLIGENCE SUITE,  LIVE DATA TEST")
     print(f"Backend: {BACKEND_URL}")
     print(f"Time:    {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}")
 
@@ -101,28 +101,28 @@ async def main():
         "threat_chains": "#2  Threat Chains Found",
         "anomalies": "#3  Anomalies Detected (Swarm Threat)",
         "swarm_overall": "#3  Swarm Overall Assessment",
-        "world_model_domains": "#5  Predictive World Model — Domains Tracked",
-        "forecasts": "#5  Predictive World Model — Forecasts",
-        "dejavu_matches": "#6  Temporal Memory — Déjà Vu Matches",
+        "world_model_domains": "#5  Predictive World Model,  Domains Tracked",
+        "forecasts": "#5  Predictive World Model,  Forecasts",
+        "dejavu_matches": "#6  Temporal Memory,  Déjà Vu Matches",
         "cognitive_annotations": "#9  Cognitive Map Annotations",
-        "fusion_convergences": "#10 Multi-Agent Fusion — Convergences",
-        "graph_nodes": "#11 Knowledge Graph — Nodes",
-        "graph_edges": "#11 Knowledge Graph — Edges",
-        "graph_communities": "#11 Knowledge Graph — Communities",
-        "pol_anomalies": "#12 Pattern of Life — Anomalies",
-        "tripwire_alerts": "#13 Geofence Tripwire — Alerts",
-        "kill_chain_alerts": "#14 Kill Chain — Alerts",
-        "timeline_events": "#15 Timeline — Events Ingested",
-        "wargame_live_scenarios": "#16 Wargaming — Live Scenarios Detected",
-        "evasion_alerts": "#17 Counter-Surveillance — Evasion Alerts",
-        "narrative_alerts": "#18 Narrative Warfare — Alerts",
-        "sigint_alerts": "#19 SIGINT/EW — Alerts",
-        "finint_alerts": "#20 Financial Intelligence — Alerts",
-        "nuclear_alerts": "#21 Nuclear Monitor — Alerts",
-        "space_alerts": "#22 Space Domain — Alerts",
-        "infra_alerts": "#23 Infrastructure Resilience — Alerts",
-        "env_alerts": "#24 Environmental Threat — Alerts",
-        "force_alerts": "#25 Force Projection — Alerts",
+        "fusion_convergences": "#10 Multi-Agent Fusion,  Convergences",
+        "graph_nodes": "#11 Knowledge Graph,  Nodes",
+        "graph_edges": "#11 Knowledge Graph,  Edges",
+        "graph_communities": "#11 Knowledge Graph,  Communities",
+        "pol_anomalies": "#12 Pattern of Life,  Anomalies",
+        "tripwire_alerts": "#13 Geofence Tripwire,  Alerts",
+        "kill_chain_alerts": "#14 Kill Chain,  Alerts",
+        "timeline_events": "#15 Timeline,  Events Ingested",
+        "wargame_live_scenarios": "#16 Wargaming,  Live Scenarios Detected",
+        "evasion_alerts": "#17 Counter-Surveillance,  Evasion Alerts",
+        "narrative_alerts": "#18 Narrative Warfare,  Alerts",
+        "sigint_alerts": "#19 SIGINT/EW,  Alerts",
+        "finint_alerts": "#20 Financial Intelligence,  Alerts",
+        "nuclear_alerts": "#21 Nuclear Monitor,  Alerts",
+        "space_alerts": "#22 Space Domain,  Alerts",
+        "infra_alerts": "#23 Infrastructure Resilience,  Alerts",
+        "env_alerts": "#24 Environmental Threat,  Alerts",
+        "force_alerts": "#25 Force Projection,  Alerts",
     }
 
     for key, label in module_map.items():
@@ -136,7 +136,7 @@ async def main():
             print(f"    → [{s['risk'].upper()}] ({s['score']}/100) {s['trigger']}")
 
     # ── 5. Threat Fusion ──────────────────────────────────────────
-    section("5. THREAT FUSION — UNIFIED THREAT PICTURE")
+    section("5. THREAT FUSION,  UNIFIED THREAT PICTURE")
 
     if "threat_picture" in results:
         pic = results["threat_picture"]

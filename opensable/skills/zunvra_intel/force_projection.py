@@ -1,5 +1,5 @@
 """
-#25 — Force Projection Tracker
+#25,  Force Projection Tracker
 
 ONI / DIA / STRATCOM capability.  Tracks carrier strike groups, monitors
 force deployments, predicts power projection patterns, and assesses

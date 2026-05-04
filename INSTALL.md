@@ -2,7 +2,7 @@
 
 ## Download Installer (Recommended)
 
-Download the installer for your platform — double-click and follow the wizard. No terminal needed.
+Download the installer for your platform,  double-click and follow the wizard. No terminal needed.
 
 | Platform | Download | Size |
 |----------|----------|------|
@@ -18,7 +18,7 @@ The installer wizard handles everything automatically:
 - Clones the repository and sets up the environment
 - Downloads your chosen AI model
 - Creates Start Menu / desktop shortcuts
-- Configures everything — ready to use immediately
+- Configures everything,  ready to use immediately
 
 ---
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Open-Sable — Professional GUI Installer / Manager.
+"""Open-Sable,  Professional GUI Installer / Manager.
 
 4-page wizard: Welcome → Config → Progress → Done
 Management hub: Update / Reinstall / Launch / Uninstall
@@ -35,7 +35,7 @@ except ImportError:
 
 APP_NAME = "Open-Sable"
 APP_VERSION = "1.7.0"
-APP_TAGLINE = "Your Autonomous AI Agent — Think, Learn, Act"
+APP_TAGLINE = "Your Autonomous AI Agent,  Think, Learn, Act"
 REPO_URL = "https://github.com/IdeoaLabs/Open-Sable.git"
 REPO_BRANCH = "master"
 OLLAMA_WIN_URL = "https://ollama.com/download/OllamaSetup.exe"
@@ -199,34 +199,34 @@ if (fs.existsSync(realMain)) {
 
 
 # ════════════════════════════════════════════════════════════════════
-# Models — only <thinking>-capable
+# Models,  only <thinking>-capable
 # ════════════════════════════════════════════════════════════════════
 
 MODELS = [
-    ("qwen3.5:0.8b", "Qwen 3.5 0.8B  —  fastest, 500 MB"),
-    ("qwen3.5:1.5b", "Qwen 3.5 1.5B  —  fast, 1 GB"),
-    ("qwen3.5:4b", "Qwen 3.5 4B  —  balanced, 2.5 GB"),
-    ("qwen3.5:8b", "Qwen 3.5 8B  —  recommended, 5 GB"),
-    ("qwen3.5:14b", "Qwen 3.5 14B  —  powerful, 9 GB"),
-    ("qwen3.5:35b", "Qwen 3.5 35B  —  very powerful, 22 GB"),
-    ("deepseek-r1:1.5b", "DeepSeek-R1 1.5B  —  fast reasoning, 1 GB"),
-    ("deepseek-r1:7b", "DeepSeek-R1 7B  —  strong reasoning, 4.5 GB"),
-    ("deepseek-r1:8b", "DeepSeek-R1 8B  —  strong reasoning, 5 GB"),
-    ("deepseek-r1:14b", "DeepSeek-R1 14B  —  deep reasoning, 9 GB"),
-    ("deepseek-r1:32b", "DeepSeek-R1 32B  —  expert reasoning, 20 GB"),
-    ("deepseek-r1:70b", "DeepSeek-R1 70B  —  maximum reasoning, 43 GB"),
-    ("qwen3:0.6b", "Qwen 3 0.6B  —  ultra-light, 400 MB"),
-    ("qwen3:1.7b", "Qwen 3 1.7B  —  light, 1 GB"),
-    ("qwen3:4b", "Qwen 3 4B  —  balanced, 2.5 GB"),
-    ("qwen3:8b", "Qwen 3 8B  —  recommended, 5 GB"),
-    ("qwen3:14b", "Qwen 3 14B  —  powerful, 9 GB"),
-    ("qwen3:32b", "Qwen 3 32B  —  very powerful, 20 GB"),
+    ("qwen3.5:0.8b", "Qwen 3.5 0.8B ,   fastest, 500 MB"),
+    ("qwen3.5:1.5b", "Qwen 3.5 1.5B ,   fast, 1 GB"),
+    ("qwen3.5:4b", "Qwen 3.5 4B ,   balanced, 2.5 GB"),
+    ("qwen3.5:8b", "Qwen 3.5 8B ,   recommended, 5 GB"),
+    ("qwen3.5:14b", "Qwen 3.5 14B ,   powerful, 9 GB"),
+    ("qwen3.5:35b", "Qwen 3.5 35B ,   very powerful, 22 GB"),
+    ("deepseek-r1:1.5b", "DeepSeek-R1 1.5B ,   fast reasoning, 1 GB"),
+    ("deepseek-r1:7b", "DeepSeek-R1 7B ,   strong reasoning, 4.5 GB"),
+    ("deepseek-r1:8b", "DeepSeek-R1 8B ,   strong reasoning, 5 GB"),
+    ("deepseek-r1:14b", "DeepSeek-R1 14B ,   deep reasoning, 9 GB"),
+    ("deepseek-r1:32b", "DeepSeek-R1 32B ,   expert reasoning, 20 GB"),
+    ("deepseek-r1:70b", "DeepSeek-R1 70B ,   maximum reasoning, 43 GB"),
+    ("qwen3:0.6b", "Qwen 3 0.6B ,   ultra-light, 400 MB"),
+    ("qwen3:1.7b", "Qwen 3 1.7B ,   light, 1 GB"),
+    ("qwen3:4b", "Qwen 3 4B ,   balanced, 2.5 GB"),
+    ("qwen3:8b", "Qwen 3 8B ,   recommended, 5 GB"),
+    ("qwen3:14b", "Qwen 3 14B ,   powerful, 9 GB"),
+    ("qwen3:32b", "Qwen 3 32B ,   very powerful, 20 GB"),
 ]
 
 INSTALL_SLIDES = [
     ("What is Open-Sable?",
      "An autonomous AI agent that can think, learn, and act.\n"
-     "It runs locally on your machine — your data stays private."),
+     "It runs locally on your machine,  your data stays private."),
     ("Powered by <thinking>",
      "Open-Sable uses models with native reasoning:\n"
      "Qwen 3.5, DeepSeek-R1, and Qwen 3.\n"
@@ -247,7 +247,7 @@ INSTALL_SLIDES = [
 def make_button(parent, text, command, bg=BG_INPUT, fg=FG_TEXT,
                 hover_bg=BG_CARD, hover_fg=None, font=("Segoe UI", 10),
                 padx=16, pady=8, cursor="hand2", **kw):
-    """Create a label that looks and acts like a button — colors work on macOS."""
+    """Create a label that looks and acts like a button,  colors work on macOS."""
     if hover_fg is None:
         hover_fg = fg
     lbl = tk.Label(parent, text=text, font=font, bg=bg, fg=fg,
@@ -504,7 +504,7 @@ class UpdateEngine:
     def _git_pull(self):
         git_dir = os.path.join(self.install_dir, ".git")
         if not os.path.isdir(git_dir):
-            self.log("  Not a git repo — skipping", "warning")
+            self.log("  Not a git repo,  skipping", "warning")
             return
         self._exec(["git", "stash", "--include-untracked"], check=False)
         self._exec(["git", "pull", "--rebase", "origin", REPO_BRANCH], check=False)
@@ -524,7 +524,7 @@ class UpdateEngine:
                 self._exec([venv_pip, "install", "-r", req, "-q"], check=False)
             self.log("  ✔ Dependencies updated", "ok")
         else:
-            self.log("  ⚠ No venv found — skip deps", "warning")
+            self.log("  ⚠ No venv found,  skip deps", "warning")
 
     def _rebuild_dashboard(self):
         dash = os.path.join(self.install_dir, "dashboard")
@@ -545,7 +545,7 @@ class UpdateEngine:
 # ════════════════════════════════════════════════════════════════════
 
 class ReinstallEngine:
-    """Full rebuild: venv, deps, npm, dashboard — preserves user data."""
+    """Full rebuild: venv, deps, npm, dashboard,  preserves user data."""
 
     PROTECTED_PATHS = UpdateEngine.PROTECTED_PATHS
 
@@ -665,7 +665,7 @@ class ReinstallEngine:
     def _git_pull(self):
         git_dir = os.path.join(self.install_dir, ".git")
         if not os.path.isdir(git_dir):
-            self.log("  Not a git repo — skipping code update", "warning")
+            self.log("  Not a git repo,  skipping code update", "warning")
             return
         self._exec(["git", "stash", "--include-untracked"], check=False)
         self._exec(["git", "pull", "--rebase", "origin", REPO_BRANCH], check=False)
@@ -740,7 +740,7 @@ class ReinstallEngine:
 
     def _rebuild_node(self):
         if not find_node():
-            self.log("  ⚠ Node.js not available — skipping", "warning")
+            self.log("  ⚠ Node.js not available,  skipping", "warning")
             return
         for project in ["dashboard", "desktop", "aggr"]:
             pkg = os.path.join(self.install_dir, project, "package.json")
@@ -756,12 +756,12 @@ class ReinstallEngine:
                 # Desktop needs both electron AND a vite build (dist/index.html)
                 electron_bin = os.path.join(nm, ".bin", "electron")
                 if not os.path.isfile(electron_bin):
-                    self.log(f"  ⚠ {project} — electron binary missing", "warning")
+                    self.log(f"  ⚠ {project},  electron binary missing", "warning")
             result = self._exec(["npm", "run", "build"], cwd=proj_dir, check=False)
             # Retry on build failure: wipe node_modules and reinstall
             dist_check = os.path.join(proj_dir, "dist", "index.html")
             if not os.path.isfile(dist_check):
-                self.log(f"  ⚠ {project} build failed — retrying...", "warning")
+                self.log(f"  ⚠ {project} build failed,  retrying...", "warning")
                 if os.path.isdir(nm):
                     shutil.rmtree(nm, ignore_errors=True)
                 self._exec(["npm", "install", "--legacy-peer-deps"], cwd=proj_dir, check=False)
@@ -769,7 +769,7 @@ class ReinstallEngine:
             if os.path.isfile(dist_check):
                 self.log(f"  ✔ {project} rebuilt", "ok")
             else:
-                self.log(f"  ⚠ {project} build incomplete — dist/index.html missing", "warning")
+                self.log(f"  ⚠ {project} build incomplete,  dist/index.html missing", "warning")
 
     def _init_environment(self):
         """Ensure .env, agent profile, and directories exist (preserve existing)."""
@@ -842,11 +842,11 @@ class ReinstallEngine:
                     return
             except Exception:
                 pass
-            self.log(f"  Model {model} not found — pulling...", "dim")
+            self.log(f"  Model {model} not found,  pulling...", "dim")
             self._exec(["ollama", "pull", model], check=False)
             self.log(f"  ✔ Model {model} ready", "ok")
         else:
-            self.log(f"  ⚠ Ollama not running — run: ollama pull {model}", "warning")
+            self.log(f"  ⚠ Ollama not running,  run: ollama pull {model}", "warning")
 
     def _clear_sessions(self):
         """Remove old chat sessions from ~/.opensable/ so reinstall feels fresh."""
@@ -885,7 +885,7 @@ class ReinstallEngine:
         if os.path.isfile(dist_index):
             self.log("  ✔ Dashboard built", "ok")
         else:
-            self.log("  ⚠ Dashboard not built — attempting repair...", "warning")
+            self.log("  ⚠ Dashboard not built,  attempting repair...", "warning")
             dash = os.path.join(self.install_dir, "dashboard")
             if os.path.isfile(os.path.join(dash, "package.json")) and find_node():
                 self._exec(["npm", "install", "--legacy-peer-deps"], cwd=dash, check=False)
@@ -893,7 +893,7 @@ class ReinstallEngine:
                 if os.path.isfile(dist_index):
                     self.log("  ✔ Dashboard repaired", "ok")
                 else:
-                    self.log("  ⚠ Dashboard repair failed — build manually", "warning")
+                    self.log("  ⚠ Dashboard repair failed,  build manually", "warning")
         # Desktop (Electron)
         desktop_dir = os.path.join(self.install_dir, "desktop")
         electron_bin = os.path.join(desktop_dir, "node_modules", ".bin", "electron")
@@ -905,14 +905,14 @@ class ReinstallEngine:
         if os.path.isfile(desktop_dist):
             self.log("  ✔ Desktop UI built", "ok")
         else:
-            self.log("  ⚠ Desktop UI not built — attempting repair...", "warning")
+            self.log("  ⚠ Desktop UI not built,  attempting repair...", "warning")
             if os.path.isfile(os.path.join(desktop_dir, "package.json")) and find_node():
                 self._exec(["npm", "install", "--legacy-peer-deps"], cwd=desktop_dir, check=False)
                 self._exec(["npm", "run", "build"], cwd=desktop_dir, check=False)
                 if os.path.isfile(desktop_dist):
                     self.log("  ✔ Desktop UI repaired", "ok")
                 else:
-                    self.log("  ⚠ Desktop UI repair failed — build manually", "warning")
+                    self.log("  ⚠ Desktop UI repair failed,  build manually", "warning")
         # .env & agent profile
         if os.path.isfile(os.path.join(self.install_dir, ".env")):
             self.log("  ✔ Configuration (.env)", "ok")
@@ -1124,7 +1124,7 @@ class UninstallEngine:
 
     def _remove_ollama(self):
         if not find_ollama():
-            self.log("  Ollama not found — skipping", "dim")
+            self.log("  Ollama not found,  skipping", "dim")
             return
         self.log("  Removing Ollama...", "dim")
         if IS_LINUX:
@@ -1301,8 +1301,8 @@ class InstallerEngine:
             return
 
         if not has_brew:
-            # Homebrew installation requires sudo — run in Terminal.app
-            self.log("  Homebrew not found — opening Terminal to install...", "dim")
+            # Homebrew installation requires sudo,  run in Terminal.app
+            self.log("  Homebrew not found,  opening Terminal to install...", "dim")
             self.log("  ╔═══════════════════════════════════════════════════════╗", "step")
             self.log("  ║  A Terminal window will open.                        ║", "step")
             self.log("  ║  Enter your password when prompted, then wait.       ║", "step")
@@ -1320,7 +1320,7 @@ class InstallerEngine:
                 f.write('clear\n')
                 f.write('echo ""\n')
                 f.write('echo "╔═══════════════════════════════════════════════════════╗"\n')
-                f.write('echo "║        Open-Sable — Installing Prerequisites         ║"\n')
+                f.write('echo "║        Open-Sable,  Installing Prerequisites         ║"\n')
                 f.write('echo "╚═══════════════════════════════════════════════════════╝"\n')
                 f.write('echo ""\n')
                 # Homebrew
@@ -1409,7 +1409,7 @@ class InstallerEngine:
 
             self.log("  ✔ Prerequisites installed via Terminal", "ok")
         else:
-            # Homebrew is present — install missing tools directly (no sudo needed)
+            # Homebrew is present,  install missing tools directly (no sudo needed)
             if not has_python:
                 self.log("  Installing Python 3.13 via Homebrew...", "dim")
                 self._exec(["brew", "install", "python@3.13"], check=False)
@@ -1425,7 +1425,7 @@ class InstallerEngine:
                 if find_git():
                     self.log("  ✔ Git installed", "ok")
                 else:
-                    self.log("  ⚠ Git install failed — install manually", "warning")
+                    self.log("  ⚠ Git install failed,  install manually", "warning")
 
             if not has_node and want_node:
                 self.log("  Installing Node.js via Homebrew...", "dim")
@@ -1433,7 +1433,7 @@ class InstallerEngine:
                 if find_node():
                     self.log("  ✔ Node.js installed", "ok")
                 else:
-                    self.log("  ⚠ Node.js install failed — install manually", "warning")
+                    self.log("  ⚠ Node.js install failed,  install manually", "warning")
 
             self.log("  ✔ System prerequisites OK", "ok")
 
@@ -1441,7 +1441,7 @@ class InstallerEngine:
         """Linux: ensure Python 3.11+, Git, and Node.js are available."""
         py_cmd, _ = find_python()
         if not py_cmd:
-            self.log("  Python 3.11+ not found — installing...", "dim")
+            self.log("  Python 3.11+ not found,  installing...", "dim")
             if shutil.which("apt-get"):
                 self._exec(["sudo", "apt-get", "update", "-qq"], check=False)
                 self._exec(["sudo", "apt-get", "install", "-y",
@@ -1459,7 +1459,7 @@ class InstallerEngine:
                 raise Exception("Python 3.11+ required. Install via your package manager.")
 
         if not find_git():
-            self.log("  Git not found — installing...", "dim")
+            self.log("  Git not found,  installing...", "dim")
             if shutil.which("apt-get"):
                 self._exec(["sudo", "apt-get", "install", "-y", "git"], check=False)
             elif shutil.which("dnf"):
@@ -1474,7 +1474,7 @@ class InstallerEngine:
         self.log("  ✔ System prerequisites OK", "ok")
 
     def _bootstrap_windows(self):
-        """Windows: check for Python, Git — attempt install via winget."""
+        """Windows: check for Python, Git,  attempt install via winget."""
         py_cmd, _ = find_python()
         if not py_cmd:
             if shutil.which("winget"):
@@ -1509,7 +1509,7 @@ class InstallerEngine:
 
     def _clone(self):
         if os.path.isdir(os.path.join(self.install_dir, ".git")):
-            self.log("  Already a git repo — pulling latest...", "dim")
+            self.log("  Already a git repo,  pulling latest...", "dim")
             self._exec(["git", "fetch", "origin", REPO_BRANCH], check=False)
             self._exec(["git", "reset", "--hard", f"origin/{REPO_BRANCH}"], check=False)
             self.log("  ✔ Repository updated", "ok")
@@ -1636,7 +1636,7 @@ class InstallerEngine:
         except Exception:
             pass
         if _old_node:
-            self.log(f"  Node.js {_old_node} is too old (need 20+) — upgrading...", "dim")
+            self.log(f"  Node.js {_old_node} is too old (need 20+),  upgrading...", "dim")
         else:
             self.log("  Installing Node.js 20 LTS...", "dim")
         if IS_LINUX:
@@ -1659,7 +1659,7 @@ class InstallerEngine:
                                      "--accept-source-agreements", "--accept-package-agreements", "-e"],
                                     check=False)
                     if not find_node():
-                        self.log("  winget upgrade not applicable — trying fresh install...", "dim")
+                        self.log("  winget upgrade not applicable,  trying fresh install...", "dim")
                         self._exec(["winget", "install", "--id", "OpenJS.NodeJS.LTS",
                                     "--accept-source-agreements", "--accept-package-agreements", "-e"],
                                    check=False)
@@ -1682,11 +1682,11 @@ class InstallerEngine:
 
     def _setup_node(self):
         if not find_node():
-            self.log("  ⚠ Node.js not available — skipping frontends", "warning")
+            self.log("  ⚠ Node.js not available,  skipping frontends", "warning")
             return
         npm = find_npm()
         if not npm:
-            self.log("  ⚠ npm not found — skipping frontends. Install Node.js from nodejs.org", "warning")
+            self.log("  ⚠ npm not found,  skipping frontends. Install Node.js from nodejs.org", "warning")
             return
         for project in ["dashboard", "desktop", "aggr"]:
             proj_dir = os.path.join(self.install_dir, project)
@@ -1699,13 +1699,13 @@ class InstallerEngine:
                 # Desktop needs both electron AND a vite build (dist/index.html)
                 electron_bin = os.path.join(proj_dir, "node_modules", ".bin", "electron")
                 if not os.path.isfile(electron_bin):
-                    self.log(f"  ⚠ {project} — electron binary not found", "warning")
+                    self.log(f"  ⚠ {project},  electron binary not found", "warning")
                 self._exec([npm, "run", "build"], cwd=proj_dir, check=False)
                 dist_check = os.path.join(proj_dir, "dist", "index.html")
                 if os.path.isfile(dist_check):
                     self.log(f"  ✔ {project} ready", "ok")
                 else:
-                    self.log(f"  ⚠ {project} — dist/index.html missing, UI may not load", "warning")
+                    self.log(f"  ⚠ {project},  dist/index.html missing, UI may not load", "warning")
             else:
                 self._exec([npm, "run", "build"], cwd=proj_dir, check=False)
                 self.log(f"  ✔ {project} ready", "ok")
@@ -2230,7 +2230,7 @@ class InstallerApp(tk.Tk):
     def __init__(self):
         super().__init__()
 
-        self.title(f"{APP_NAME} — Setup Wizard")
+        self.title(f"{APP_NAME},  Setup Wizard")
         self.configure(bg=BG_DARK)
         self.resizable(False, False)
 
@@ -2430,7 +2430,7 @@ class InstallerApp(tk.Tk):
             _mgmt_btn(grid, "🔧  Fresh Install", FG_TEXT, BG_INPUT, BG_CARD,
                       lambda: self._show_page(1), 1, 1)
 
-            # Uninstall — separate, less prominent
+            # Uninstall,  separate, less prominent
             make_button(content, text="🗑  Uninstall...",
                         command=self._show_uninstall_page,
                         bg="#2d1518", fg=ERROR_C, hover_bg="#3b1a1a", hover_fg=ERROR_C,
@@ -2825,10 +2825,10 @@ class InstallerApp(tk.Tk):
                 break
 
         _add_check("venv", f"Python Virtual Environment{venv_size}",
-                   "venv/ — Python packages and interpreter",
+                   "venv/,  Python packages and interpreter",
                    default=True, has_it=has_venv)
         _add_check("node_modules", "Node Modules",
-                   "node_modules/ — dashboard, aggr, desktop, mobile, website",
+                   "node_modules/,  dashboard, aggr, desktop, mobile, website",
                    default=True, has_it=has_node)
         _add_check("generated", "Generated & Build Files",
                    "dashboard/dist/, __pycache__/, .bat scripts, update scripts",
@@ -2843,7 +2843,7 @@ class InstallerApp(tk.Tk):
                    f"Remove the Ollama binary and program{' (detected)' if has_ollama else ' (not found)'}",
                    default=False, has_it=has_ollama)
         _add_check("user_data", "User Data (CAUTION)",
-                   "agents/, data/, episodes/, logs/, models/, .env — YOUR personal data",
+                   "agents/, data/, episodes/, logs/, models/, .env,  YOUR personal data",
                    default=False, has_it=has_data)
         _embed(checks_frame)
 

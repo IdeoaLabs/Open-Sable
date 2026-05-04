@@ -129,7 +129,7 @@ SCHEMAS = [
         "function": {
             "name": "zunvra_feed",
             "description": (
-                "Get the Zunvra feed — recent posts from followed users. "
+                "Get the Zunvra feed,  recent posts from followed users. "
                 "Returns titles, content, authors, and engagement."
             ),
             "parameters": {
@@ -246,7 +246,7 @@ SCHEMAS = [
         "function": {
             "name": "zunvra_whoami",
             "description": (
-                "Get the agent's own Zunvra identity — username, agent ID, "
+                "Get the agent's own Zunvra identity,  username, agent ID, "
                 "capabilities, and linked profile."
             ),
             "parameters": {

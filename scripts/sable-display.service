@@ -1,5 +1,5 @@
 [Unit]
-Description=OpenSable Pi — 3.5" Display Log Viewer
+Description=OpenSable Pi,  3.5" Display Log Viewer
 After=network.target syslog.target
 # Starts after the main OpenSable agent service (if available)
 After=opensable-pi.service

@@ -1,5 +1,5 @@
 """
-#10 — Multi-Agent Intelligence Fusion
+#10,  Multi-Agent Intelligence Fusion
 
 Three virtual analyst profiles (SIGINT, GEOINT, HUMINT) work the same data
 in parallel with different collection focuses.  They communicate through an
@@ -10,7 +10,7 @@ Example:
   SIGINT-Analyst: "GPS jamming signatures detected in Eastern Med."
   GEOINT-Analyst: "New military convoy visible on satellite imagery route."
   HUMINT-Analyst: "Open-source telegram traffic matches pre-exercise chatter."
-  FUSION:         CONVERGENCE — 3/3 analysts agree: military exercise imminent
+  FUSION:         CONVERGENCE,  3/3 analysts agree: military exercise imminent
                   in Eastern Mediterranean.  Confidence: HIGH.
 """
 
@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Analyst profiles — each focuses on different domains
+# Analyst profiles,  each focuses on different domains
 # ---------------------------------------------------------------------------
 
 @dataclass

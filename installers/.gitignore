@@ -3,4 +3,4 @@ build/
 __pycache__/
 *.pyc
 
-# Don't ignore dist/ — we ship the binaries
+# Don't ignore dist/,  we ship the binaries

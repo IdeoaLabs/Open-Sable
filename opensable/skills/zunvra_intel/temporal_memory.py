@@ -1,5 +1,5 @@
 """
-#6 — Temporal Pattern Memory
+#6,  Temporal Pattern Memory
 
 Leverages OpenSable's Time Crystal + Déjà Vu concepts to detect recurring
 temporal patterns in Zunvra's OSINT data stream.
@@ -108,7 +108,7 @@ class DejaVuMatch:
 
     def to_text(self) -> str:
         return (
-            f"DÉJÀ VU — {self.similarity:.0%} match with pattern {self.matched_pattern_id}\n"
+            f"DÉJÀ VU,  {self.similarity:.0%} match with pattern {self.matched_pattern_id}\n"
             f"  Pattern: {self.pattern_description}\n"
             f"  Historical aftermath: {'; '.join(self.what_followed_before[:3])}\n"
             f"  Prediction: {self.prediction} [{self.confidence:.0%}]"
@@ -146,7 +146,7 @@ class TemporalPatternMemory:
         now = datetime.now(timezone.utc)
         fid = hashlib.sha256(f"{now.isoformat()}_{self.total_observations}".encode()).hexdigest()[:12]
 
-        # Entity profile — normalize by typical maximums
+        # Entity profile,  normalize by typical maximums
         maxima = {
             "flights": 5000, "military": 50, "ships": 25000, "satellites": 2000,
             "earthquakes": 100, "fires": 5000, "gdelt_events": 1000, "cyber_threats": 50,
@@ -327,7 +327,7 @@ class TemporalPatternMemory:
         return sorted(self.patterns, key=lambda p: p.confidence * p.occurrences, reverse=True)[:n]
 
     def get_report(self) -> str:
-        lines = [f"TEMPORAL PATTERN MEMORY — {self.total_observations} observations, {len(self.patterns)} patterns"]
+        lines = [f"TEMPORAL PATTERN MEMORY,  {self.total_observations} observations, {len(self.patterns)} patterns"]
         for p in self.get_strongest_patterns(5):
             lines.append(p.to_text())
         return "\n".join(lines)

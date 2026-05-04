@@ -1,5 +1,5 @@
 /**
- * Agent Spawn Tool — Delegates a sub-task to a secondary AI agent.
+ * Agent Spawn Tool,  Delegates a sub-task to a secondary AI agent.
  * 
  * Uses the existing agent-orchestrator to pick a model and role,
  * then runs a focused completion against that model.

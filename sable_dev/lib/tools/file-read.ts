@@ -1,5 +1,5 @@
 /**
- * File Read Tool — Read file contents with line numbers.
+ * File Read Tool,  Read file contents with line numbers.
  * 
  * Supports reading full files or specific line ranges.
  * Handles binary detection (returns error for binary files).

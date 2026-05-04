@@ -1,5 +1,5 @@
 """
-Polymarket BTC 5-Min — Mean-Reversion Counter-Trade Strategy
+Polymarket BTC 5-Min,  Mean-Reversion Counter-Trade Strategy
 
 Fades the crowd:  when YES or NO shares spike after a BTC move,
 bet that the market has overreacted and prices will revert.

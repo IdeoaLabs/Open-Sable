@@ -2,9 +2,9 @@
  * Context Compaction System
  * 
  * Multi-level pruning to keep conversations within token limits:
- *   1. Auto-compact  — Triggered when context reaches 90% of capacity
- *   2. Micro-compact — Clears old tool results between turns
- *   3. Manual compact — User-triggered via /compact command
+ *   1. Auto-compact ,  Triggered when context reaches 90% of capacity
+ *   2. Micro-compact,  Clears old tool results between turns
+ *   3. Manual compact,  User-triggered via /compact command
  * 
  * Adapted for local models which have 4K-32K context windows.
  * Uses a summarization approach: sends old messages to a fast local model
@@ -175,7 +175,7 @@ export async function compactConversation(
   let summaryText: string;
   
   if (summarizer) {
-    // Use AI summarizer (preferred — calls fast local model)
+    // Use AI summarizer (preferred,  calls fast local model)
     const oldContent = oldMessages
       .map(m => `[${m.role}]: ${m.content.substring(0, 500)}`)
       .join('\n');
@@ -187,7 +187,7 @@ export async function compactConversation(
       summaryText = buildExtractedSummary(oldMessages);
     }
   } else {
-    // No summarizer — use extractive approach
+    // No summarizer,  use extractive approach
     summaryText = buildExtractedSummary(oldMessages);
   }
   

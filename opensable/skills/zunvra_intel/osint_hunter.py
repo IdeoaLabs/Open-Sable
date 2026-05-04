@@ -1,7 +1,7 @@
 """
-#4 — Autonomous OSINT Hunter
+#4,  Autonomous OSINT Hunter
 
-Proactive intelligence gathering — Sable doesn't wait for data to arrive,
+Proactive intelligence gathering,  Sable doesn't wait for data to arrive,
 it actively scans OSINT sources (RSS, social, Telegram channels) for new
 events, geolocates them, cross-references with live Zunvra feeds, and
 generates FLASH INTEL REPORTS injected as new events on the map.
@@ -100,7 +100,7 @@ class FlashReport:
     def to_text(self) -> str:
         loc = f" @ {self.location_name} ({self.lat:.2f}, {self.lon:.2f})" if self.lat else ""
         lines = [
-            f"⚡ FLASH INTEL — {self.severity}{loc}",
+            f"⚡ FLASH INTEL,  {self.severity}{loc}",
             f"Source: {self.source_name}",
             f"Title: {self.title}",
             f"Summary: {self.summary}",

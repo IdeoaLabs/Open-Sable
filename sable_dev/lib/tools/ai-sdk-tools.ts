@@ -80,7 +80,7 @@ export function getToolSummaryForPrompt(): string {
 
 REASONING STRATEGY (Thought → Action → Observation):
 You MUST use the think tool before making any changes. Follow this loop:
-1. THINK: Call the think tool to reason about the problem — what you know, what's missing, and your plan.
+1. THINK: Call the think tool to reason about the problem,  what you know, what's missing, and your plan.
 2. ACT: Execute your planned action (read files, edit code, run commands).
 3. OBSERVE: Examine the result. If more work is needed, go back to step 1.
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-BTC 5-Min Polymarket Scalper — Standalone Runner
+BTC 5-Min Polymarket Scalper,  Standalone Runner
 
 This script runs the scalping strategy 24/7.  It handles:
     1.  Discovering the current 5-min BTC up/down round on Polymarket
@@ -11,7 +11,7 @@ This script runs the scalping strategy 24/7.  It handles:
     6.  Looping across rounds forever
 
 Usage:
-    # Paper mode (default — no real money):
+    # Paper mode (default,  no real money):
     python scripts/run_btc_5min_scalper.py
 
     # Live mode:
@@ -44,7 +44,7 @@ logging.basicConfig(
 logger = logging.getLogger("btc_5min_scalper")
 
 # ---------------------------------------------------------------------------
-# BTC price feed — Binance WebSocket (real-time, no API key required)
+# BTC price feed,  Binance WebSocket (real-time, no API key required)
 # ---------------------------------------------------------------------------
 
 class BinanceBtcStream:
@@ -111,7 +111,7 @@ class BinanceBtcStream:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.warning(f"Binance WS error: {e} — reconnecting in 2s")
+                logger.warning(f"Binance WS error: {e},  reconnecting in 2s")
                 await asyncio.sleep(2)
 
 # ---------------------------------------------------------------------------
@@ -204,7 +204,7 @@ async def run_scalper(live: bool = False, private_key: str = ""):
             logger.error(f"Failed to connect Polymarket: {e}")
             return
     else:
-        logger.info("Running in PAPER mode — no real orders will be placed")
+        logger.info("Running in PAPER mode,  no real orders will be placed")
 
     # -- Binance WebSocket for real-time BTC prices -------------------------
     btc_stream = BinanceBtcStream(maxlen=500)
@@ -212,12 +212,12 @@ async def run_scalper(live: bool = False, private_key: str = ""):
     # Give the WS a moment to receive the first trade
     await asyncio.sleep(2)
     if btc_stream.latest is None:
-        logger.warning("No BTC price yet from WS — waiting up to 10 s…")
+        logger.warning("No BTC price yet from WS,  waiting up to 10 s…")
         for _ in range(8):
             await asyncio.sleep(1)
             if btc_stream.latest is not None:
                 break
-    logger.info(f"BTC stream ready — latest price: ${btc_stream.latest:,.2f}"
+    logger.info(f"BTC stream ready,  latest price: ${btc_stream.latest:,.2f}"
                 if btc_stream.latest else "BTC stream: no price yet")
 
     # -- State -------------------------------------------------------------
@@ -225,7 +225,7 @@ async def run_scalper(live: bool = False, private_key: str = ""):
     stats = {"rounds": 0, "trades": 0, "wins": 0, "losses": 0, "pnl": 0.0}
 
     logger.info("=" * 60)
-    logger.info("  BTC 5-Min Polymarket Scalper — Starting")
+    logger.info("  BTC 5-Min Polymarket Scalper,  Starting")
     logger.info(f"  Mode: {'LIVE' if live else 'PAPER'}")
     logger.info("=" * 60)
 
@@ -249,7 +249,7 @@ async def run_scalper(live: bool = False, private_key: str = ""):
             # 2. Trade within this round
             while True:
                 elapsed = time.time() - round_start
-                if elapsed > 280:  # 4m40s — stop entering, let exits run
+                if elapsed > 280:  # 4m40s,  stop entering, let exits run
                     break
 
                 # BTC price from WebSocket (real-time, no polling)
@@ -373,7 +373,7 @@ async def run_scalper(live: bool = False, private_key: str = ""):
 
             # -- Force exit if still holding at round end --
             if active_position:
-                logger.info("  Round ending — force exit")
+                logger.info("  Round ending,  force exit")
                 if live and pm_client:
                     try:
                         from py_clob_client.order_builder.constants import SELL

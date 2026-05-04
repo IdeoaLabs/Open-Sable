@@ -1,5 +1,5 @@
 """
-Zunvra Central Intelligence — Remote Control Module
+Zunvra Central Intelligence,  Remote Control Module
 
 Gives Sable direct control over the Central Intelligence/Zunvra dashboard UI.
 Sends commands via REST API → backend → WebSocket → frontend → map reacts.
@@ -52,7 +52,7 @@ class RemoteControl:
     """Sends commands to the Central Intelligence dashboard via the Agent Command Channel.
 
     Two transport options:
-      1. REST POST /api/command (default — simple, stateless)
+      1. REST POST /api/command (default,  simple, stateless)
       2. WebSocket ws://host:port/ws/commands (low-latency, persistent)
     """
 
@@ -80,7 +80,7 @@ class RemoteControl:
         self._command_count = 0
         self._last_error: Optional[str] = None
         if not self.api_key:
-            logger.warning("RemoteControl: no API key set — protected endpoints will reject requests")
+            logger.warning("RemoteControl: no API key set,  protected endpoints will reject requests")
 
     # ── Low-level transport ──────────────────────────────────────────
 
@@ -229,7 +229,7 @@ class RemoteControl:
         """
         style = style.upper()
         if style not in self.VALID_STYLES:
-            logger.warning("Unknown style '%s' — sending anyway", style)
+            logger.warning("Unknown style '%s',  sending anyway", style)
         return await self._send("setStyle", {"style": style})
 
     async def highlight(

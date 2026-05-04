@@ -1,5 +1,5 @@
 /**
- * File Edit Tool — Edit file contents using search-and-replace.
+ * File Edit Tool,  Edit file contents using search-and-replace.
  * 
  * Uses an exact string match approach (old_string → new_string).
  * Generates unified diffs for display and tracking.

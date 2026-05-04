@@ -1,5 +1,5 @@
 """
-#26 — Threat Fusion Dashboard
+#26,  Threat Fusion Dashboard
 
 NCTC / DIA / Joint Intel Center capability.  Aggregates outputs from ALL
 intelligence modules into a unified threat assessment with DEFCON-style
@@ -342,7 +342,7 @@ class ThreatFusionDashboard:
         for domain, assessment in sorted_domains[:5]:
             if assessment.threat_score > 2:
                 pirs.append(
-                    f"[{domain.upper()}] Score {assessment.threat_score:.1f}/10 — "
+                    f"[{domain.upper()}] Score {assessment.threat_score:.1f}/10,  "
                     f"{assessment.critical_count} critical, {assessment.high_count} high. "
                     f"Top: {assessment.top_alerts[0] if assessment.top_alerts else 'N/A'}"
                 )

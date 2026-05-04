@@ -1,5 +1,5 @@
 /**
- * WebSearch Tool — Search the web for documentation, examples, solutions.
+ * WebSearch Tool,  Search the web for documentation, examples, solutions.
  * 
  * Uses DuckDuckGo Instant Answer API (no API key needed) with
  * fallback to scraping search result pages.
@@ -118,7 +118,7 @@ export const WebSearchTool: ToolDefinition = {
     properties: {
       query: {
         type: 'string',
-        description: 'The search query. Be specific — e.g. "react-router-dom v6 useNavigate example" or "tailwind css grid layout".',
+        description: 'The search query. Be specific,  e.g. "react-router-dom v6 useNavigate example" or "tailwind css grid layout".',
       },
     },
     required: ['query'],

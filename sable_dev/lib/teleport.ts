@@ -1,5 +1,5 @@
 /**
- * Teleport — Cross-Environment Session Transfer
+ * Teleport,  Cross-Environment Session Transfer
  * 
  * Move work context between environments (machines, directories, repos).
  * Uses SHA256 delta sync: only transfers keys whose hash differs.

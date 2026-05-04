@@ -1,9 +1,9 @@
 """
-#12 — Pattern of Life Analyzer
+#12,  Pattern of Life Analyzer
 
 Track behavioral baselines for every entity over time.  "This aircraft
 normally flies Mon-Fri between Zurich and London at FL350.  Today it
-deviated to Tripoli at FL420 — ANOMALOUS."
+deviated to Tripoli at FL420,  ANOMALOUS."
 
 This is what NSA's SKYNET program does for cell phone metadata, and what
 Palantir Gotham does for vessel tracking.  We do it across ALL entity types
@@ -106,7 +106,7 @@ class PatternOfLifeAnalyzer:
     deviations from normal patterns.
 
     This is the core of what makes Palantir's vessel/aircraft tracking
-    so powerful — and what NSA programs like SKYNET use for pattern
+    so powerful,  and what NSA programs like SKYNET use for pattern
     analysis of communication metadata.
     """
 

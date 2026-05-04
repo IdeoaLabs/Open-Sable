@@ -256,7 +256,7 @@ def check_system_deps() -> bool:
             warn("Xcode CLT not found,  installing...")
             run(["xcode-select", "--install"])
 
-    # WiFi hunting tools (Linux only — used by wifi_survival_skill)
+    # WiFi hunting tools (Linux only,  used by wifi_survival_skill)
     if IS_LINUX:
         wifi_tools = {
             "aircrack-ng": "aircrack-ng",
@@ -299,7 +299,7 @@ def _try_install_wifi_tools(pkgs: set[str]) -> None:
         if result.returncode == 0:
             ok("WiFi tools installed")
         else:
-            warn("WiFi tools install failed — run manually")
+            warn("WiFi tools install failed,  run manually")
     else:
         info(f"Run: sudo apt install {' '.join(sorted(pkgs))}")
 
@@ -609,7 +609,7 @@ def install_pinchtab() -> bool:
     except Exception:
         pass
 
-    warn("PinchTab install failed (optional — Playwright fallback will be used)")
+    warn("PinchTab install failed (optional,  Playwright fallback will be used)")
     info("Manual install: curl -fsSL https://pinchtab.com/install.sh | bash")
     return False
 
@@ -990,7 +990,7 @@ def setup_env_file():
             # Dev Studio
             DEV_STUDIO_ENABLED=true
 
-            # PinchTab (browser control — auto-detected, no config needed)
+            # PinchTab (browser control,  auto-detected, no config needed)
             # PINCHTAB_URL=http://127.0.0.1:9867
             # PINCHTAB_DISABLED=false
         """))
@@ -1424,7 +1424,7 @@ def main():
     # 6. Playwright browsers (optional)
     tracker["playwright"] = install_playwright()
 
-    # 6b. PinchTab (token-efficient browser — optional, enhances browsing)
+    # 6b. PinchTab (token-efficient browser,  optional, enhances browsing)
     tracker["pinchtab"] = install_pinchtab()
 
     # 7. Directories & config

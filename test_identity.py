@@ -47,11 +47,11 @@ async def test_identity():
 
     lower = reply.lower()
     if "yasmin" in lower or "müller" in lower or "metatex" in lower:
-        print("✅ PASS — nano-sweaters identified as Yasmin Müller")
+        print("✅ PASS,  nano-sweaters identified as Yasmin Müller")
     elif "sable" in lower:
-        print("❌ FAIL — still responding as Sable")
+        print("❌ FAIL,  still responding as Sable")
     else:
-        print("⚠️  Identity unclear — check response manually")
+        print("⚠️  Identity unclear,  check response manually")
 
 
 if __name__ == "__main__":
