@@ -2831,7 +2831,7 @@ class XAutonomousAgent:
         text = re.sub(r"^(here'?s?\s*(a|my|the)\s*)?post:?\s*", "", text, flags=re.IGNORECASE)
         text = re.sub(r"^(here'?s?\s*(a|my|the)\s*)?reply:?\s*", "", text, flags=re.IGNORECASE)
         # ── Strip LLM-style dashes and bullets ────────────────────────
-        # em/en dash: normalize spacing so "word—word" → "word - word"
+        # em/en dash: normalize spacing so "word, word" → "word - word"
         # First, collapse any existing surrounding spaces to avoid double-spaces
         text = re.sub(r"\s*\u2014\s*", " - ", text)   # em dash
         text = re.sub(r"\s*\u2013\s*", " - ", text)   # en dash

@@ -598,7 +598,7 @@ class SocialLoop:
             # Final cleanup
             result = result.strip().strip('"').strip("'").strip("`").strip()
             result = result.replace("\r", " ").replace("\n", " ")
-            result = result.replace("—", ", ").replace("–", ", ")
+            result = result.replace(", ", ", ").replace("–", ", ")
             result = result.replace("\"", "")
             result = result.replace("“", "").replace("”", "")
             result = result.replace("‘", "'").replace("’", "'")

@@ -15,7 +15,7 @@ import {
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const pct   = (v) => `${clamp(v * 100, 0, 100).toFixed(0)}%`;
 const ago   = (ts) => {
-  if (!ts) return '—';
+  if (!ts) return '-';
   const t = typeof ts === 'string' ? new Date(ts).getTime() / 1000 : ts;
   const d = (Date.now() / 1000) - t;
   if (d < 0) return 'just now';
@@ -419,7 +419,7 @@ function IdentityCard({ identity }) {
       </div>
       <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)', marginBottom: 4,
         textShadow: '0 0 20px rgba(124,58,237,0.3)' }}>
-        {identity.name || '—'}
+        {identity.name || '-'}
       </div>
       {identity.core_directive && (
         <div style={{ fontSize: 11, color: 'var(--teal)', fontFamily: 'var(--mono)', marginBottom: 12, fontStyle: 'italic' }}>
@@ -495,7 +495,7 @@ function MoodTimeline({ moods }) {
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
                 <span style={{ fontSize: 12, fontWeight: 600, color: eColor, textTransform: 'capitalize' }}>
-                  {m.emotion || '—'}
+                  {m.emotion || '-'}
                 </span>
                 {m.intensity != null && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -1247,7 +1247,7 @@ export default function BrainPanel({ ws, brainData, connected, profile, isLocal 
   const iotController          = data?.iot_controller || null;
   const distributedTaskQueue   = data?.distributed_task_queue || null;
 
-  const rawEmotion = il.emotion || liveStats.emotion || '—';
+  const rawEmotion = il.emotion || liveStats.emotion || '-';
   const emotion = typeof rawEmotion === 'object' ? (rawEmotion.primary || JSON.stringify(rawEmotion)) : String(rawEmotion);
   const valence = (typeof rawEmotion === 'object' ? rawEmotion.valence : null) ?? il.valence ?? liveStats.valence ?? 0;
   const arousal = (typeof rawEmotion === 'object' ? rawEmotion.arousal : null) ?? il.arousal ?? liveStats.arousal ?? 0;
@@ -1716,7 +1716,7 @@ function SelfBenchmarkPanel({ benchmark }) {
                   <div style={{ height: '100%', width: `${sc}%`, borderRadius: 3, background: col, transition: 'width 0.5s' }} />
                 </div>
                 <span style={{ fontSize: 12, fontFamily: 'var(--mono)', fontWeight: 700, color: col }}>{sc.toFixed(0)}</span>
-                <span style={{ fontSize: 8, color: 'var(--text-muted)' }}>{tr === 'improving' ? '↑' : tr === 'declining' ? '↓' : '—'}</span>
+                <span style={{ fontSize: 8, color: 'var(--text-muted)' }}>{tr === 'improving' ? '↑' : tr === 'declining' ? '↓' : '-'}</span>
               </div>
             </div>
           );
@@ -1853,7 +1853,7 @@ function InterAgentPanel({ bridge }) {
               <div key={i} style={{ fontSize: 9, color: 'var(--text-secondary)', padding: '2px 0', display: 'flex', gap: 6, alignItems: 'center' }}>
                 <span style={{ color: '#00cec9' }}>from {imp.source}</span>
                 {imp.applied && <span style={{ color: '#00b894', fontSize: 7 }}>✓ applied</span>}
-                <span style={{ fontSize: 8, color: 'var(--text-muted)', marginLeft: 'auto' }}>benefit: {imp.benefit?.toFixed(1) ?? '—'}</span>
+                <span style={{ fontSize: 8, color: 'var(--text-muted)', marginLeft: 'auto' }}>benefit: {imp.benefit?.toFixed(1) ?? '-'}</span>
               </div>
             ))}
           </div>
@@ -2117,7 +2117,7 @@ function ConnectomeMonitor2D({ connectome }) {
                 >
                   <div style={{ width: 8, height: 8, borderRadius: '50%', background: col, flexShrink: 0 }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-primary)' }}>{n.id} <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>— {fullName}</span></div>
+                    <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-primary)' }}>{n.id} <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>- {fullName}</span></div>
                     <div style={{ fontSize: 8, color: 'var(--text-muted)' }}>{n.module}</div>
                   </div>
                   <div style={{ textAlign: 'right', flexShrink: 0 }}>
@@ -2165,7 +2165,7 @@ function ConnectomeMonitor2D({ connectome }) {
                       <td style={{ textAlign: 'right', padding: '3px 4px', color: 'var(--text-primary)', fontWeight: 600 }}>{e.weight.toFixed(3)}</td>
                       <td style={{ textAlign: 'right', padding: '3px 4px', color: 'var(--text-muted)' }}>{e.base_weight.toFixed(3)}</td>
                       <td style={{ textAlign: 'right', padding: '3px 4px', color: dCol }}>
-                        {dAbs > 0.001 ? `${drift > 0 ? '+' : ''}${drift.toFixed(3)}` : '—'}
+                        {dAbs > 0.001 ? `${drift > 0 ? '+' : ''}${drift.toFixed(3)}` : '-'}
                       </td>
                       <td style={{ textAlign: 'right', padding: '3px 4px', color: e.mutations > 0 ? '#f39c12' : 'var(--text-muted)' }}>{e.mutations ?? 0}</td>
                     </tr>
@@ -2184,7 +2184,7 @@ function ConnectomeMonitor2D({ connectome }) {
 function MetaLearnerPanel({ data }) {
   const profiles = data.total_profiles || 0;
   const evaluations = data.total_evaluations || 0;
-  const activeProfile = data.active_profile || '—';
+  const activeProfile = data.active_profile || '-';
   const bestPerf = data.best_performance || 0;
   const params = data.active_params || {};
 
@@ -2437,7 +2437,7 @@ function EthicalReasonerPanel({ data }) {
 function EmotionalContagionPanel({ data }) {
   if (!data) return null;
   const emotions = data.emotions || {};
-  const dominant = data.dominant_mood || '—';
+  const dominant = data.dominant_mood || '-';
   const stability = data.mood_stability ?? 0;
   return (
     <div style={s.section}>

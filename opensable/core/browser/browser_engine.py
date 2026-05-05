@@ -790,7 +790,7 @@ class BrowserEngine:
             # Extract title and snippet from rest
             # Format: "Title Date - Snippet" or "Title - Snippet"
             date_match = _re.search(
-                r'\s+((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\w*\s+\d{1,2},?\s+\d{4})\s*[-–—]?\s*',
+                r'\s+((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\w*\s+\d{1,2},?\s+\d{4})\s*[-–, ]?\s*',
                 rest,
             )
             if date_match:
@@ -799,7 +799,7 @@ class BrowserEngine:
             else:
                 # Try dash separator: "Title - Snippet" (but title can contain dashes)
                 # Use first sentence-ending dash: "Title – Source  Snippet"
-                dash_match = _re.search(r'\s[-–—]\s', rest)
+                dash_match = _re.search(r'\s[-–, ]\s', rest)
                 if dash_match and dash_match.start() > 10:
                     title = rest[:dash_match.start()].strip()
                     snippet = rest[dash_match.end():].strip()

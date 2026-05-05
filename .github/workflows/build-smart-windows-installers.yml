@@ -99,8 +99,6 @@ jobs:
         shell: pwsh
         run: |
           $tag = "${{ env.RELEASE_TAG }}"
-          gh release delete-asset $tag "OpenSable-SmartInstaller-Windows-x64.exe" --yes *> $null
-          gh release delete-asset $tag "pyinstaller-x64.log" --yes *> $null
           gh release upload $tag "installers/dist/Open-Sable-SmartInstaller-Windows-x64.exe" --clobber
 
   build-x86:
@@ -151,6 +149,4 @@ jobs:
         shell: pwsh
         run: |
           $tag = "${{ env.RELEASE_TAG }}"
-          gh release delete-asset $tag "OpenSable-SmartInstaller-Windows-x86.exe" --yes *> $null
-          gh release delete-asset $tag "pyinstaller-x86.log" --yes *> $null
           gh release upload $tag "installers/dist/Open-Sable-SmartInstaller-Windows-x86.exe" --clobber

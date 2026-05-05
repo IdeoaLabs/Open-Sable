@@ -314,19 +314,24 @@ def check_node() -> bool:
     if cmd_exists("node"):
         ver = cmd_version("node")
         major = 0
+        minor = 0
         if ver:
-            m = re.match(r"(\d+)", ver)
+            m = re.match(r"(\d+)\.(\d+)", ver)
             if m:
                 major = int(m.group(1))
+                minor = int(m.group(2))
 
-        if major >= 18:
+        # Vite 7 (used by dashboard) requires Node 20.9.0+.
+        node_ok = (major > 20) or (major == 20 and minor >= 9)
+
+        if node_ok:
             ok(f"Node.js v{ver}")
             npm_ver = cmd_version(npm_cmd())
             if npm_ver:
                 ok(f"npm v{npm_ver}")
             return True
         else:
-            warn(f"Node.js v{ver} found,  v18+ recommended")
+            warn(f"Node.js v{ver} found,  v20.9.0+ required (Vite 7 needs 20.9+)")
             info("Attempting upgrade...")
             return _install_node()
     else:

@@ -146,7 +146,7 @@ class ZunvraToolsMixin:
         return (
             f"👤 @{u.get('username', username)}\n"
             f"   Name: {u.get('display_name', u.get('name', '?'))}\n"
-            f"   Bio: {(u.get('bio') or '—')[:200]}\n"
+            f"   Bio: {(u.get('bio') or ', ')[:200]}\n"
             f"   Followers: {u.get('followers_count', '?')} | Following: {u.get('following_count', '?')}\n"
             f"   Posts: {u.get('posts_count', '?')}\n"
             f"   ID: {u.get('id', '?')}"

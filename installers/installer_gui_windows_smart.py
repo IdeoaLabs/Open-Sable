@@ -294,12 +294,26 @@ def find_git() -> bool:
 
 
 def find_node() -> bool:
+    """Return True only if Node.js >= 20.9.0 is available.
+
+    Vite 7 requires Node 20.9.0+.  Accepting any Node 20.x caused
+    'Class extends value undefined is not a constructor or null' errors
+    on Node 20.0-20.8 machines.
+    """
     try:
         code, out = run_cmd(["node", "--version"], timeout=8)
         if code != 0:
             return False
-        major = int(out.strip().lstrip("v").split(".")[0])
-        return major >= 20
+        raw = out.strip().lstrip("v")
+        parts = raw.split(".")
+        major = int(parts[0]) if parts else 0
+        minor = int(parts[1]) if len(parts) > 1 else 0
+        # Node 20.9.0+ required (Vite 7 minimum).  Node 22+ always OK.
+        if major > 20:
+            return True
+        if major == 20 and minor >= 9:
+            return True
+        return False
     except Exception:
         return False
 
@@ -997,6 +1011,18 @@ class SmartWindowsInstallerEngine:
                 retry_install = ["install", "--legacy-peer-deps", "--no-audit", "--no-fund"]
                 if pm_cmd != npm_cmd:
                     retry_install = ["install", "--no-frozen-lockfile"]
+
+                # 'Class extends value undefined' means --legacy-peer-deps is
+                # breaking ESM-first packages (React 19, @react-three/fiber 9,
+                # Vite 7).  Skip --legacy-peer-deps and use --force instead.
+                _class_extends_error = "Class extends value undefined" in first_err_text
+                if _class_extends_error and pm_cmd == npm_cmd:
+                    self.log(
+                        "  Detected ESM peer-dep conflict (Class extends value undefined). "
+                        "Retrying with --force instead of --legacy-peer-deps...",
+                        "warning",
+                    )
+                    retry_install = ["install", "--force", "--no-audit", "--no-fund"]
 
                 self._run_logged(
                     pm_cmd + retry_install,

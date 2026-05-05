@@ -446,7 +446,7 @@ def render_skills(log_lines: list) -> Image.Image:
     cell_w   = (W - 4) // COLS
     cell_h   = (grid_bot - grid_top) // ROWS
     STATUS_COL = {"active": C["ok"], "error": C["err"], "unknown": C["dim"]}
-    STATUS_LBL = {"active": "ACTIVE",  "error": "ERROR",  "unknown": "—"}
+    STATUS_LBL = {"active": "ACTIVE",  "error": "ERROR",  "unknown": ", "}
 
     for i, (name, pattern) in enumerate(_SKILLS):
         col = i % COLS
@@ -1310,7 +1310,7 @@ def render_wifi() -> Image.Image:
     epsilon = ai.get("epsilon", 0)
     epoch   = ai.get("epoch", 0)
     hs      = ai.get("total_handshakes", 0)
-    mood    = ai.get("mood", "—")
+    mood    = ai.get("mood", ", ")
     exc     = ai.get("excitement", 0)
     bored   = ai.get("boredom", 0)
 

@@ -31,7 +31,7 @@ export default function BrainPanel({ onClose }) {
   const innerMonologue = d.inner_monologue || []
   const autoLive = d.autonomous_live || {}
 
-  const rawEmotion = il.emotion || d.inner_life_stats?.emotion || '—'
+  const rawEmotion = il.emotion || d.inner_life_stats?.emotion || ', '
   const emotion = typeof rawEmotion === 'object' ? (rawEmotion.primary || JSON.stringify(rawEmotion)) : String(rawEmotion)
   const valence = (typeof rawEmotion === 'object' ? rawEmotion.valence : null) ?? il.valence ?? 0
   const arousal = (typeof rawEmotion === 'object' ? rawEmotion.arousal : null) ?? il.arousal ?? 0

@@ -262,11 +262,11 @@ function AiBrain({ ai }) {
     <div style={{display:'flex',flexDirection:'column',gap:10}}>
       {/* Chips row */}
       <div style={{display:'flex',flexWrap:'wrap',gap:5}}>
-        <Chip label="ε"          value={typeof ai.epsilon==='number' ? ai.epsilon.toFixed(2) : '—'} color="#3b82f6" glow />
+        <Chip label="ε"          value={typeof ai.epsilon==='number' ? ai.epsilon.toFixed(2) : ', '} color="#3b82f6" glow />
         <Chip label="epoch"      value={ai.epoch??0}           color="#a855f7" />
         <Chip label="handshakes" value={ai.total_handshakes??0} color="#f97316" />
         <Chip label="connects"   value={ai.total_connections??0} color="#22c55e" />
-        <Chip label="mood"       value={ai.mood||'—'}          color="#eab308" glow />
+        <Chip label="mood"       value={ai.mood||', '}          color="#eab308" glow />
       </div>
 
       {/* Bars */}

@@ -772,7 +772,7 @@ class EvolutionEngine:
 
         logger.info(
             f"🧬 Mutation SUCCESS: {skill_name} ({mutation_type}) "
-            f"— {changes_summary}"
+            f",  {changes_summary}"
             f"{' [hot-reloaded]' if hot_reloaded else ''}"
             f"{' [restart needed]' if restart_needed else ''}"
         )

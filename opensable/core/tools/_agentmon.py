@@ -36,11 +36,11 @@ _TYPE_CHART = {
 
 _GYM_ORDER = [
     {"city": "Pewter", "leader": "Brock", "type": "rock", "badge": "Boulder", "tip": "Use Water/Grass. Bulbasaur or Squirtle sweep easily. If Charmander, grind to 13 for Metal Claw."},
-    {"city": "Cerulean", "leader": "Misty", "type": "water", "badge": "Cascade", "tip": "Use Grass/Electric. Oddish or Pikachu from Viridian Forest. Starmie hits hard—be ready."},
+    {"city": "Cerulean", "leader": "Misty", "type": "water", "badge": "Cascade", "tip": "Use Grass/Electric. Oddish or Pikachu from Viridian Forest. Starmie hits hard, be ready."},
     {"city": "Vermilion", "leader": "Lt. Surge", "type": "electric", "badge": "Thunder", "tip": "Use Ground types. Diglett from Diglett Cave is perfect. Need CUT to access gym."},
     {"city": "Celadon", "leader": "Erika", "type": "grass", "badge": "Rainbow", "tip": "Use Fire/Ice/Flying. Charizard, any Fire type, or Pidgeotto work well."},
     {"city": "Fuchsia", "leader": "Koga", "type": "poison", "badge": "Soul", "tip": "Use Ground/Psychic. Dugtrio or Kadabra demolish. Bring Antidotes for Toxic."},
-    {"city": "Saffron", "leader": "Sabrina", "type": "psychic", "badge": "Marsh", "tip": "Use Bug types (Psychic is broken in Gen 1—Ghost doesn't work!). Jolteon with Pin Missile, or just overlevel."},
+    {"city": "Saffron", "leader": "Sabrina", "type": "psychic", "badge": "Marsh", "tip": "Use Bug types (Psychic is broken in Gen 1, Ghost doesn't work!). Jolteon with Pin Missile, or just overlevel."},
     {"city": "Cinnabar", "leader": "Blaine", "type": "fire", "badge": "Volcano", "tip": "Use Water/Ground/Rock. Surf makes this trivial."},
     {"city": "Viridian", "leader": "Giovanni", "type": "ground", "badge": "Earth", "tip": "Use Water/Grass/Ice. Surf + Ice Beam covers everything."},
 ]
@@ -282,7 +282,7 @@ class AgentMonToolsMixin:
         lines = [f"💾 {len(saves)} save(s):"]
         for s in saves:
             label = s.get("label", "")
-            lines.append(f"  • {s.get('id', '?')[:12]}… {f'— {label} ' if label else ''}({s.get('createdAt', '?')})")
+            lines.append(f"  • {s.get('id', '?')[:12]}… {f',  {label} ' if label else ''}({s.get('createdAt', '?')})")
         return "\n".join(lines)
 
     async def _agentmon_delete_save_tool(self, params: Dict) -> str:

@@ -2284,7 +2284,7 @@ class SableAgent:
                 "question's complexity. Casual greetings ('hey', 'how are you') get "
                 "2-3 sentences max. Deep philosophical questions get longer answers. "
                 "Your inner state context is for YOUR reference to answer authentically "
-                "— do NOT dump raw internal state unless specifically asked about it. "
+                ",  do NOT dump raw internal state unless specifically asked about it. "
                 "Be natural, not performatively introspective."
             )
             _nt_msgs = [{"role": "system", "content": _nt_system}]
@@ -3230,7 +3230,7 @@ class SableAgent:
         text = _strip_untagged_reasoning(text)
         # Replace em-dash patterns with comma
         text = text.replace("–", ", ")
-        text = text.replace("—", ", ")
+        text = text.replace(", ", ", ")
         return text
 
     # ------------------------------------------------------------------

@@ -471,7 +471,7 @@ class BusinessToolsMixin:
             for c in contacts:
                 lines.append(
                     f"  • {c['name']} @ {c.get('company', '?')} "
-                    f"— last contact: {c.get('last_contact', '?')[:10]}"
+                    f",  last contact: {c.get('last_contact', '?')[:10]}"
                 )
             return "\n".join(lines)
         except Exception as e:

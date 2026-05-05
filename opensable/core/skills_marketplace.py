@@ -1059,7 +1059,7 @@ async def main():
         source = "🌐" if registry._gateway_available else "💾"
         print(
             f"    {source} {skill.name} v{skill.version} by {skill.author} "
-            f"— ⭐ {skill.rating} ({skill.downloads} downloads)"
+            f",  ⭐ {skill.rating} ({skill.downloads} downloads)"
         )
 
     # Gateway stats

@@ -242,7 +242,7 @@ export default function App() {
           {/* Windows / Linux window controls on the RIGHT */}
           {!isMac && (
             <>
-              <button className="titlebar-btn" title="Minimize" onClick={() => api?.minimize()}>—</button>
+              <button className="titlebar-btn" title="Minimize" onClick={() => api?.minimize()}>, </button>
               <button className="titlebar-btn" title="Maximize" onClick={() => api?.maximize()}>□</button>
               <button className="titlebar-btn close" title="Close" onClick={() => api?.close()}>✕</button>
             </>

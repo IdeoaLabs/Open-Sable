@@ -117,7 +117,7 @@ export default function DisplayPanel() {
       <div style={s.header}>
         <Monitor size={15} />
         <span style={s.title}>Pi Display</span>
-        <span style={s.badge(live && !err)}>{err ? 'Offline' : live ? 'Live' : '—'}</span>
+        <span style={s.badge(live && !err)}>{err ? 'Offline' : live ? 'Live' : ', '}</span>
         <div style={s.modeRow}>
           <button style={s.modeBtn(mode === 'stream')} onClick={() => { setMode('stream'); setErr(false); }}>MJPEG</button>
           <button style={s.modeBtn(mode === 'poll')}   onClick={() => { setMode('poll');   setErr(false); }}>Snapshot</button>
