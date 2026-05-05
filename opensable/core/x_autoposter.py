@@ -859,24 +859,46 @@ class XAutonomousAgent:
 
         return False
 
+    @staticmethod
+    def _extract_topic_keywords(tweet_text: str) -> set:
+        """Extract 2-4 word key phrases from a tweet for topic deduplication."""
+        import re
+        # Strip punctuation, lowercase, split
+        words = re.sub(r'[^\w\s]', ' ', tweet_text.lower()).split()
+        # Remove stopwords
+        stop = {'the','a','an','is','are','was','were','it','its','in','on','of','to','and','or',
+                'for','with','at','by','from','this','that','be','will','not','but','if','as',
+                'what','how','why','when','who','has','have','had','do','did','i','you','he',
+                'she','we','they','so','just','get','can','my','your','our','their','no','up'}
+        kw = [w for w in words if len(w) > 3 and w not in stop]
+        return set(kw[:8])  # top 8 content words
+
     async def _do_post_original(self, mode: str):
         """Post original content,  thoughts, hot takes, questions, predictions, observations."""
         mode_info = POST_MODES.get(mode, POST_MODES["original_thought"])
 
-        # Gather recent context for original posts
-        recent_thoughts = self.mind.recall("thought", limit=3)
-        recent_posts = self.mind.recall("posted", limit=5)
+        # Gather recent context — use 15 posts to give broad anti-repetition context
+        recent_posts = self.mind.recall("posted", limit=15)
         recent_engagements = self.mind.recall("engaged", limit=5)
 
-        thoughts_text = "\n".join(
-            f"- {str(t['data'].get('thought', ''))[:150]}"
-            for t in recent_thoughts
-        ) or "(no recent reflections)"
-
         recent_posts_text = "\n".join(
-            f"- {str(p['data'].get('tweet', ''))[:120]}"
+            f"- {str(p['data'].get('tweet', ''))[:130]}"
             for p in recent_posts
         ) or "(no recent posts)"
+
+        # Extract topics already covered today — block them explicitly
+        today_str = datetime.now().date().isoformat()
+        todays_posts = [
+            p for p in recent_posts
+            if p.get('ts', '').startswith(today_str)
+        ]
+        used_today_kw: set = set()
+        for p in todays_posts:
+            used_today_kw |= self._extract_topic_keywords(str(p['data'].get('tweet', '')))
+        used_today_block = (
+            f"TOPICS ALREADY POSTED TODAY (do NOT repeat or rephrase these): "
+            + ", ".join(sorted(used_today_kw)[:20])
+        ) if used_today_kw else ""
 
         engaged_topics = "\n".join(
             f"- @{e['data'].get('user', '?')}: {str(e['data'].get('text', ''))[:100]}"
@@ -896,8 +918,9 @@ class XAutonomousAgent:
         # User prompt with rich context
         topic = random.choice(self.topics) if self.topics else "something interesting"
         user_prompt = (
-            f"Your recent posts (avoid repeating these angles):\n{recent_posts_text}\n\n"
-            f"Recent conversations you've had:\n{engaged_topics}\n\n"
+            f"Your recent posts (do NOT repeat these angles or rephrase them):\n{recent_posts_text}\n\n"
+            + (f"{used_today_block}\n\n" if used_today_block else "")
+            + f"Recent conversations you've had:\n{engaged_topics}\n\n"
             f"Focus area: {topic}\n\n"
             f"Write a single post (max 280 chars). "
             f"REQUIREMENT: Anchor to a specific number, protocol name, mechanism, or verifiable claim. "
@@ -2573,6 +2596,27 @@ class XAutonomousAgent:
         return items[:5]
 
     def _pick_story(self, stories: List[Dict]) -> Optional[Dict]:
+        """Pick a story not yet covered, deduplicating by URL AND by title keywords."""
+        # Build keyword set from already-posted story titles (today's posts from history)
+        today_str = datetime.now().date().isoformat()
+        used_kw: set = set()
+        for h in self._history:
+            if h.get('ts', '').startswith(today_str):
+                used_kw |= self._extract_topic_keywords(h.get('story', '') + ' ' + h.get('tweet', ''))
+
+        random.shuffle(stories)
+        for story in stories:
+            key = story.get("url") or story.get("title", "")
+            if not key or key in self._posted_urls:
+                continue
+            # Skip stories whose keywords heavily overlap with what we posted today
+            story_kw = self._extract_topic_keywords(story.get('title', '') + ' ' + story.get('description', '')[:200])
+            overlap = story_kw & used_kw
+            # Block if 4+ keywords overlap (same event, different article)
+            if len(overlap) >= 4:
+                continue
+            return story
+        # Fallback: no overlap filter, just URL dedup
         random.shuffle(stories)
         for story in stories:
             key = story.get("url") or story.get("title", "")
