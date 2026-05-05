@@ -82,10 +82,11 @@ Rules:
 1. Think step by step,  reason about what you know and what you need
 2. Use one tool at a time
 3. After each observation, reason about the result before acting again
-4. If a tool fails, try a different approach
+4. If a tool fails or is blocked, do NOT retry with a different tool to accomplish the same blocked action. FINISH immediately with what you have.
 5. Always finish with action="FINISH" when done
-6. If stuck after 3 attempts, FINISH with what you have
+6. If blocked or stuck after 2 attempts, FINISH with what you have - do not spiral
 7. Keep your thoughts concise but informative
+8. NEVER use execute_command or execute_code as a fallback when search_files or list_directory fails - they serve different purposes
 
 CRITICAL WORKFLOW for web research tasks:
 - Step 1: Use browser_search to find relevant results
@@ -116,8 +117,8 @@ class ReActExecutor:
 
     def __init__(
         self,
-        max_steps: int = 8,
-        timeout_s: float = 180.0,
+        max_steps: int = 5,
+        timeout_s: float = 120.0,
         log_dir: Optional[Path] = None,
     ):
         self.max_steps = max_steps

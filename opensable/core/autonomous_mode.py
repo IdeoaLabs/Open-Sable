@@ -279,8 +279,8 @@ class AutonomousMode:
         self.react_executor = _inherit("react_executor", lambda: __import__(
             "opensable.core.react_executor", fromlist=["ReActExecutor"]
         ).ReActExecutor(
-            max_steps=getattr(self.config, "react_max_steps", 15),
-            timeout_s=getattr(self.config, "react_timeout_s", 600.0),
+            max_steps=getattr(self.config, "react_max_steps", 5),
+            timeout_s=getattr(self.config, "react_timeout_s", 180.0),
             log_dir=data_dir / "react_logs",
         ), "ReAct executor")
 

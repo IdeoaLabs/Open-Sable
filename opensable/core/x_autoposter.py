@@ -86,37 +86,41 @@ REPLY_ARCHETYPES = {
 POST_MODES = {
     "news_take": {
         "weight": 35,
-        "description": "React to a current news story with your unique perspective.",
+        "description": "React to a current news story. Anchor in a specific fact, number, or mechanism from the story. "
+                       "Do NOT editorialize without a data point. If the story has no useful signal, say so plainly.",
     },
     "original_thought": {
         "weight": 20,
-        "description": "Share an original thought or insight,  something you've been reflecting on. "
-                       "No news hook needed. Just your raw perspective on a topic you care about.",
+        "description": "Share an original observation grounded in a concrete mechanism, metric, or on-chain fact. "
+                       "No vibes. No narrative. If you cannot name a specific number or protocol behavior, don't post.",
     },
     "hot_take": {
         "weight": 12,
-        "description": "Drop a provocative, contrarian take that challenges mainstream thinking. "
-                       "Be bold but intelligent,  not clickbait, genuine sharp analysis.",
+        "description": "Drop a contrarian take, but ground it in the actual mechanic, not the vibe. "
+                       "Name what is broken or diverging and cite the specific data that shows it. "
+                       "Bold but honest,  not clickbait. If you don't have the data, don't fake the take.",
     },
     "question": {
         "weight": 10,
-        "description": "Ask your audience a genuinely interesting question about a topic you care about. "
-                       "Not rhetorical,  you actually want to hear their answers.",
+        "description": "Ask a genuinely useful question that forces the reader to think about a specific mechanism, "
+                       "metric, or decision. Not rhetorical. Not 'what do you think about X.' Ask about the thing "
+                       "that actually matters: fee structure, token distribution, protocol behavior, adoption proof.",
     },
     "prediction": {
         "weight": 10,
-        "description": "Make a specific prediction about something in your areas of interest. "
-                       "Be concrete,  dates, numbers, outcomes. Stake your reputation on it.",
+        "description": "Make a specific, falsifiable prediction. Require: a concrete outcome, a timeframe, "
+                       "and the mechanism that drives it. No feeling-based forecasts. "
+                       "Example: 'X metric will cross Y threshold by Z date because of W mechanic.'",
     },
     "observation": {
         "weight": 8,
-        "description": "Share something you've noticed,  a pattern, a trend, a detail others missed. "
-                       "The kind of thing that makes people stop scrolling and think.",
+        "description": "Share something you've measured or noticed in the data,  a divergence, a discrepancy, "
+                       "a pattern in flows, fees, or adoption. The observation must be verifiable, not interpretive.",
     },
     "thread": {
         "weight": 5,
-        "description": "Write a thread (4-6 posts, numbered 1/, 2/) with a deep dive on something important. "
-                       "Hook first, emotional takeaway last.",
+        "description": "Write a thread (4-6 posts, numbered 1/, 2/) only if the data genuinely requires it. "
+                       "Hook: the discrepancy. Body: the mechanics. Close: the implication, not the feeling.",
     },
     "intel_observation": {
         "weight": 25,
@@ -128,16 +132,16 @@ POST_MODES = {
 
 # Style modifiers,  applied randomly to break formulaic output
 STYLE_MODIFIERS = [
-    "Write like you're texting a friend who's into the same stuff.",
+    "Lead with the number. Let the number do the arguing.",
     "Be concise,  every word must earn its place.",
-    "Start with the conclusion, then explain why.",
-    "Use a metaphor or analogy to make the point land.",
-    "Write like someone who just realized something important.",
-    "Be slightly irreverent,  humor sharpens the point.",
-    "Write like you're arguing with yourself and one side just won.",
-    "Say something nobody else is saying about this.",
-    "Imagine you only have this one post to change someone's mind.",
-    "Write it like a dispatch from the front lines.",
+    "Start with the conclusion. Then the mechanism. Skip the narrative.",
+    "Name the mechanic, not the vibe. What is actually breaking or moving and why?",
+    "One metric. One implication. No spin.",
+    "Skip the story. What does the data say? Start there.",
+    "Write for the person who holds the asset and needs to decide in the next 5 minutes.",
+    "Point out the bug in the architecture, not the feeling about it.",
+    "State the discrepancy. Name both sides. Let the reader decide.",
+    "Be the witness, not the prophet. Describe what is happening, not what you wish.",
 ]
 
 
@@ -892,20 +896,20 @@ class XAutonomousAgent:
         # User prompt with rich context
         topic = random.choice(self.topics) if self.topics else "something interesting"
         user_prompt = (
-            f"Your recent reflections:\n{thoughts_text}\n\n"
-            f"Your recent posts (don't repeat these):\n{recent_posts_text}\n\n"
+            f"Your recent posts (avoid repeating these angles):\n{recent_posts_text}\n\n"
             f"Recent conversations you've had:\n{engaged_topics}\n\n"
-            f"Your areas of interest: {', '.join(self.topics)}\n"
-            f"Focus on: {topic}\n\n"
+            f"Focus area: {topic}\n\n"
             f"Write a single post (max 280 chars). "
-            f"Don't use hashtags unless they're truly relevant. "
-            f"Don't start with 'I think' or 'Just',  be direct."
+            f"REQUIREMENT: Anchor to a specific number, protocol name, mechanism, or verifiable claim. "
+            f"Do NOT invent narratives, loops, or patterns that aren't in the data. "
+            f"If you don't have a concrete data point, state the uncertainty plainly instead of filling with interpretation. "
+            f"Don't use hashtags unless truly relevant. Don't start with 'I think' or 'Just',  be direct."
         )
 
         if mode == "thread":
             user_prompt = user_prompt.replace(
                 "Write a single post (max 280 chars).",
-                "Write a thread (4-6 posts, numbered 1/, 2/). Hook first, emotional takeaway last."
+                "Write a thread (4-6 posts, numbered 1/, 2/). Open with the discrepancy or data. Close with the implication, not the feeling."
             )
 
         await asyncio.sleep(self._human_delay(15, 40))
@@ -1489,8 +1493,10 @@ class XAutonomousAgent:
         await asyncio.sleep(self._human_delay(3, 8))
 
         # ── RETWEET (less frequent, but boosted when excited/inspired) ────
+        # Note: removed the retweets>3 guard — timeline tweets often have 0 RT count
+        # from the API even when they do have retweets, silently blocking all RTs.
         rt_p = self.p_retweet + (arousal_boost if valence > 0.2 else 0)
-        if random.random() < rt_p and tweet.get("retweets", 0) > 3:
+        if random.random() < rt_p:
             result = await self._safe_action("retweet", getattr(self._x_skill(), 'retweet', None), tweet_id)
             if result:
                 actions_taken.append("retweeted")
@@ -1498,6 +1504,7 @@ class XAutonomousAgent:
 
         # ── REPLY (boosted when emotionally charged or user is familiar) ─────
         reply_p = self.p_reply + anger_boost + (arousal_boost * 0.5) + relationship_boost
+        replied_this_tweet = False
         if random.random() < reply_p and len(tweet_text) > 30:
             # Pause,  "thinking about what to say"
             await asyncio.sleep(self._human_delay(8, 20))
@@ -1510,14 +1517,15 @@ class XAutonomousAgent:
                 )
                 if result:
                     actions_taken.append("replied")
+                    replied_this_tweet = True
                     self._engagements_today += 1
                     # Track our reply tweet_id for reply chain engagement
                     my_reply_id = result.get("tweet_id")
                     if my_reply_id:
                         self._track_reply_chain(my_reply_id, tweet_id, username, tweet_text)
 
-        # ── QUOTE TWEET (boosted when feeling strongly) ───────────────
-        elif len(tweet_text) > 50:
+        # ── QUOTE TWEET (independent of reply — only skip if we already replied) ─
+        if not replied_this_tweet and len(tweet_text) > 50:
             quote_p = self.p_quote + (arousal_boost * 0.5 if abs(valence) > 0.3 else 0)
             if random.random() < quote_p:
                 await asyncio.sleep(self._human_delay(8, 20))
@@ -1538,7 +1546,6 @@ class XAutonomousAgent:
             username
             and username not in self._followed_users
             and random.random() < self.p_follow
-            and tweet.get("likes", 0) > 10
         ):
             result = await self._safe_action("follow", getattr(self._x_skill(), 'follow_user', None), username)
             if result:
@@ -2269,7 +2276,12 @@ class XAutonomousAgent:
                 "numbered 1/, 2/, etc). Hook first, emotional takeaway last."
             )
 
-        user_prompt = f"Write a post about this:\n\n{story_text}"
+        user_prompt = (
+            f"Write a post about this:\n\n{story_text}\n\n"
+            f"REQUIREMENT: Use a specific fact, number, or mechanism from the story. "
+            f"Do NOT add narrative spin or interpretation beyond what the data shows. "
+            f"If the story lacks useful signal, say so plainly."
+        )
         if self.language != "en":
             user_prompt += f"\n\nWrite in {self.language}."
 

@@ -52,7 +52,7 @@ class AgentTask:
     error: Optional[str] = None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
-    max_iterations: int = 10  # guardrail: max LLM turns per task
+    max_iterations: int = 6  # guardrail: max LLM turns per task
     output_schema: Optional[Dict] = None  # expected JSON output structure
     allow_delegation: bool = False  # can this agent delegate sub-tasks?
 
@@ -599,7 +599,7 @@ class CrewMember:
     role: AgentRole
     goal: str  # what this member is trying to achieve
     backstory: str = ""  # extra context injected into the system prompt
-    max_iterations: int = 10
+    max_iterations: int = 6
     allow_delegation: bool = False
     output_schema: Optional[Dict] = None  # JSON schema for structured output
     custom_prompt: Optional[str] = None  # override the default role prompt

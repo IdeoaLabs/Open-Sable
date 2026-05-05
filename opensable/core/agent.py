@@ -1098,7 +1098,7 @@ class SableAgent:
     async def _init_react_executor(self):
         from .react_executor import ReActExecutor
         self.react_executor = ReActExecutor(
-            max_steps=getattr(self.config, "react_max_steps", 8),
+            max_steps=getattr(self.config, "react_max_steps", 5),
             timeout_s=getattr(self.config, "react_timeout_s", 180.0),
             log_dir=Path(self._data_dir) / "react_logs",
         )
