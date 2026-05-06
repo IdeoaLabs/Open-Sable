@@ -886,19 +886,15 @@ class XAutonomousAgent:
             for p in recent_posts
         ) or "(no recent posts)"
 
-        # Extract topics already covered today — block them explicitly
-        today_str = datetime.now().date().isoformat()
-        todays_posts = [
-            p for p in recent_posts
-            if p.get('ts', '').startswith(today_str)
-        ]
-        used_today_kw: set = set()
-        for p in todays_posts:
-            used_today_kw |= self._extract_topic_keywords(str(p['data'].get('tweet', '')))
+        # Extract topics from the last 10 posts (regardless of date) — block explicitly.
+        # Using 'today only' caused repetition after midnight when the blocker reset empty.
+        recent_kw: set = set()
+        for p in recent_posts[-10:]:
+            recent_kw |= self._extract_topic_keywords(str(p['data'].get('tweet', '')))
         used_today_block = (
-            f"TOPICS ALREADY POSTED TODAY (do NOT repeat or rephrase these): "
-            + ", ".join(sorted(used_today_kw)[:20])
-        ) if used_today_kw else ""
+            f"TOPICS ALREADY COVERED IN RECENT POSTS (do NOT repeat, rephrase, or revisit): "
+            + ", ".join(sorted(recent_kw)[:25])
+        ) if recent_kw else ""
 
         engaged_topics = "\n".join(
             f"- @{e['data'].get('user', '?')}: {str(e['data'].get('text', ''))[:100]}"
@@ -916,14 +912,20 @@ class XAutonomousAgent:
             system_prompt += f"\nWrite in {self.language}."
 
         # User prompt with rich context
-        topic = random.choice(self.topics) if self.topics else "something interesting"
+        # Pick a topic that isn't saturated in recent posts
+        available_topics = [
+            t for t in self.topics
+            if not any(t.lower() in kw or kw in t.lower() for kw in recent_kw)
+        ] if self.topics else []
+        topic = random.choice(available_topics) if available_topics else random.choice(self.topics) if self.topics else "something interesting"
         user_prompt = (
             f"Your recent posts (do NOT repeat these angles or rephrase them):\n{recent_posts_text}\n\n"
             + (f"{used_today_block}\n\n" if used_today_block else "")
             + f"Recent conversations you've had:\n{engaged_topics}\n\n"
             f"Focus area: {topic}\n\n"
             f"Write a single post (max 280 chars). "
-            f"REQUIREMENT: Anchor to a specific number, protocol name, mechanism, or verifiable claim. "
+            f"REQUIREMENT: This post MUST be about a completely different topic from the blocked list above. "
+            f"Anchor to a specific number, protocol name, mechanism, or verifiable claim. "
             f"Do NOT invent narratives, loops, or patterns that aren't in the data. "
             f"If you don't have a concrete data point, state the uncertainty plainly instead of filling with interpretation. "
             f"Don't use hashtags unless truly relevant. Don't start with 'I think' or 'Just',  be direct."
@@ -2597,12 +2599,11 @@ class XAutonomousAgent:
 
     def _pick_story(self, stories: List[Dict]) -> Optional[Dict]:
         """Pick a story not yet covered, deduplicating by URL AND by title keywords."""
-        # Build keyword set from already-posted story titles (today's posts from history)
-        today_str = datetime.now().date().isoformat()
+        # Build keyword set from the last 10 history entries (regardless of date).
+        # Using 'today only' caused repeated story selection right after midnight.
         used_kw: set = set()
-        for h in self._history:
-            if h.get('ts', '').startswith(today_str):
-                used_kw |= self._extract_topic_keywords(h.get('story', '') + ' ' + h.get('tweet', ''))
+        for h in self._history[-10:]:
+            used_kw |= self._extract_topic_keywords(h.get('story', '') + ' ' + h.get('tweet', ''))
 
         random.shuffle(stories)
         for story in stories:
