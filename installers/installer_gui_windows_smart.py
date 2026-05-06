@@ -879,7 +879,27 @@ class SmartWindowsInstallerEngine:
 
     def _install_node_assets(self):
         if not find_node():
-            raise RuntimeError("Node.js 20+ not available for required builds")
+            _nv_code, _nv_out = run_cmd(["node", "--version"], timeout=8)
+            _nv_str = _nv_out.strip() if _nv_code == 0 else "not found"
+            self.log(
+                f"  Node.js 20.9.0+ is required but current version is: {_nv_str}",
+                "warning",
+            )
+            if command_exists("winget") and self.config.get("install_node", True):
+                self.log("  Attempting to install/upgrade Node.js LTS automatically via winget...", "warning")
+                self._run_logged(WINGET_INSTALLS["node"], check=False)
+                refresh_windows_path()
+                add_common_node_paths()
+
+            if not find_node():
+                _nv_code2, _nv_out2 = run_cmd(["node", "--version"], timeout=8)
+                _nv_str2 = _nv_out2.strip() if _nv_code2 == 0 else "not found"
+                raise RuntimeError(
+                    f"Node.js 20.9.0+ is required (your version: {_nv_str2}).\n"
+                    "Please download and install Node.js v22 LTS (recommended) or newer from:\n"
+                    "  https://nodejs.org/en/download\n"
+                    "Then reopen the installer."
+                )
 
         if not find_npm():
             refresh_windows_path()
