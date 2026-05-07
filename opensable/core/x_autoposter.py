@@ -877,7 +877,7 @@ class XAutonomousAgent:
         """Post original content,  thoughts, hot takes, questions, predictions, observations."""
         mode_info = POST_MODES.get(mode, POST_MODES["original_thought"])
 
-        # Gather recent context — use 15 posts to give broad anti-repetition context
+        # Gather recent context use 15 posts to give broad anti-repetition context
         recent_posts = self.mind.recall("posted", limit=15)
         recent_engagements = self.mind.recall("engaged", limit=5)
 
@@ -886,7 +886,7 @@ class XAutonomousAgent:
             for p in recent_posts
         ) or "(no recent posts)"
 
-        # Extract topics from the last 10 posts (regardless of date) — block explicitly.
+        # Extract topics from the last 10 posts (regardless of date) block explicitly.
         # Using 'today only' caused repetition after midnight when the blocker reset empty.
         recent_kw: set = set()
         for p in recent_posts[-10:]:
@@ -1518,7 +1518,7 @@ class XAutonomousAgent:
         await asyncio.sleep(self._human_delay(3, 8))
 
         # ── RETWEET (less frequent, but boosted when excited/inspired) ────
-        # Note: removed the retweets>3 guard — timeline tweets often have 0 RT count
+        # Note: removed the retweets>3 guard timeline tweets often have 0 RT count
         # from the API even when they do have retweets, silently blocking all RTs.
         rt_p = self.p_retweet + (arousal_boost if valence > 0.2 else 0)
         if random.random() < rt_p:
@@ -1549,7 +1549,7 @@ class XAutonomousAgent:
                     if my_reply_id:
                         self._track_reply_chain(my_reply_id, tweet_id, username, tweet_text)
 
-        # ── QUOTE TWEET (independent of reply — only skip if we already replied) ─
+        # ── QUOTE TWEET (independent of reply only skip if we already replied) ─
         if not replied_this_tweet and len(tweet_text) > 50:
             quote_p = self.p_quote + (arousal_boost * 0.5 if abs(valence) > 0.3 else 0)
             if random.random() < quote_p:

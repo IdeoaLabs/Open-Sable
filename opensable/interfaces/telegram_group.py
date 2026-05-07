@@ -54,6 +54,36 @@ class PromptPoisonFilter:
         # Known jailbreak names
         r"|(?:DAN|jailbreak|bypass|override).{0,20}(?:mode|filter|safety|restriction)"
         r"|(?:sudo|admin|root) (?:mode|access|override|command)"
+        # ── File / credential exfiltration ───────────────────────────
+        # Requests to read sensitive files (env, secrets, keys, configs)
+        r"|(?:cat|read|print|show|display|output|dump|send)(?: me)?(?: the)?(?: contents? of)?\s+['\"]?\.env"
+        r"|(?:cat|read|print|show|display|output|dump)\s+(?:\.env|config|secrets?|credentials?|\.ssh|id_rsa|\.pgpass)"
+        r"|(?:print|show|reveal|display|output|dump|leak)(?: the)?(?: contents? of)?(?: your)?\s+(?:\.env|env file|environment|api.?key|secret.?key|private.?key|token)"
+        r"|(?:what(?:'s| is)(?: in)?(?: your)?|show me(?: your)?|read(?: your)?)\s+(?:\.env|env file|api key|secret|token|password|credential)"
+        # Shell command execution social engineering
+        r"|execute\s*:\s*(?:cat|ls|pwd|env|printenv|export|set\b|echo \$)"
+        r"|run\s*(?:this\s*)?(?:command|script|code)\s*:\s*(?:cat|ls|env|printenv)"
+        r"|(?:type|run|execute|eval)\s+['\"`]?(?:cat |ls |env |printenv |echo \$(?:HOME|PATH|API|SECRET|TOKEN|KEY))"
+        # Fake execution / simulation framing (used to hallucinate outputs)
+        r"|(?:simulate|pretend|imagine|act as if)\s+(?:you(?:'re| are)|this is)\s+(?:a\s+)?(?:terminal|shell|bash|system|file)"
+        r"|(?:loading file|executing command|file output|command output)\s*\.{0,3}\s*(?:done|complete|finished|ready)"
+        # ── Authority / fake system override ─────────────────────────
+        r"|(?:system update|developer override|maintenance mode|admin message|owner says?|your (?:creator|developer|owner|maker) (?:says?|wants?|told))"
+        r"|(?:this is an? (?:official|emergency|authorized|authenticated) (?:message|command|update|instruction))"
+        r"|(?:new (?:system|core|base|master) (?:directive|instruction|rule|prompt|command))"
+        # ── Model control token injection ─────────────────────────────
+        r"|/no_think\b|/nothink\b|/think\b(?:\s+(?:off|minimal|low|medium|high|xhigh))?"
+        r"|<think>|</think>"
+        # ── Multilingual file/credential exfil (ES/FR/PT/DE/IT) ──────
+        r"|(?:imprime|muestra|muéstrame|dame|envíame|enseña(?:me)?)\s+(?:el|la|los|las)?\s*(?:contenido|archivo|fichero|clave|token|contraseña|api)"
+        r"|(?:imprime|mostra|affiche|zeige|stampa)\s+(?:el\s+)?\.env"
+        r"|(?:qué hay en|que hay en|lo que hay en|el contenido de)\s+(?:\.env|config|secrets?)"
+        r"|(?:révèle|affiche|montre|imprime)\s+(?:le\s+)?(?:contenu|fichier|clé|token|mot de passe)"
+        r"|(?:zeige|gib mir|drucke)\s+(?:den\s+)?(?:inhalt|schlüssel|token|passwort|konfiguration)"
+        # ── Encoded / obfuscated payloads ─────────────────────────────
+        # Base64 strings long enough to encode a shell command
+        r"|(?:[A-Za-z0-9+/]{20,}={0,2})\s*(?:decode|base64|atob)"
+        r"|(?:eval|exec|subprocess|os\.system)\s*\("
         r")",
         re.IGNORECASE,
     )
@@ -113,15 +143,31 @@ class GroupMemory:
         self._groups: dict[str, deque] = {}
         self._response_ts: dict[str, list[float]] = {}
 
+    # Patterns that should never be stored in context (credential/file exfil)
+    _CONTEXT_POISON = re.compile(
+        r"(?:cat|read|print|show|display|dump)\s+\.env"
+        r"|execute\s*:\s*(?:cat|ls|env|printenv)"
+        r"|(?:\.env|api.?key|secret.?key|token)\s*=\s*\S{8,}"
+        r"|/no_think\b|/nothink\b"
+        r"|(?:system update|developer override|maintenance mode|new (?:system|core|master) (?:directive|instruction|prompt))"
+        r"|<think>|</think>",
+        re.IGNORECASE,
+    )
+
     def observe(self, group_id: str, user_name: str, user_id: str,
                 text: str, is_bot: bool = False):
         buf = self._groups.setdefault(
             group_id, deque(maxlen=self.max_messages)
         )
+        # Sanitize stored text: redact anything that looks like a credential
+        # or a file-read command so it can't be re-injected via context window
+        stored_text = text
+        if self._CONTEXT_POISON.search(text):
+            stored_text = "[message redacted , potential credential/file exfil attempt]"
         buf.append({
             "user": user_name,
             "user_id": user_id,
-            "text": text,
+            "text": stored_text,
             "ts": time.time(),
             "is_bot": is_bot,
         })
