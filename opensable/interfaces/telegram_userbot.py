@@ -5,12 +5,15 @@ Allows agent to run as your own Telegram account
 
 import logging
 import asyncio
+
+# Telethon is optional — only required for userbot (not for the aiogram bot)
 try:
     from telethon import TelegramClient, events
-except ImportError as _telethon_err:
-    raise ImportError(
-        "telethon is required for Telegram userbot. Install it: pip install telethon"
-    ) from _telethon_err
+    _TELETHON_AVAILABLE = True
+except ImportError:
+    _TELETHON_AVAILABLE = False
+    TelegramClient = None  # type: ignore
+    events = None  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +29,10 @@ class TelegramUserbot:
 
     async def start(self):
         """Start the userbot"""
+        if not _TELETHON_AVAILABLE:
+            logger.warning("Telegram userbot unavailable: telethon not installed. Run: pip install telethon")
+            return
+
         if not self.config.telegram_userbot_enabled:
             logger.info("Telegram userbot disabled")
             return
