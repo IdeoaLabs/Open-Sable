@@ -367,6 +367,7 @@ class ZunvraIntelSkill:
 
         # Remote control,  agent ↔ dashboard UI
         self.remote = RemoteControl(base_url=self.base_url)
+        await self.remote.start_heartbeat(interval=20)  # keep indicator green between intel cycles
 
         # Intelligence broadcaster,  OSINT → social media
         self.broadcaster = IntelBroadcaster(

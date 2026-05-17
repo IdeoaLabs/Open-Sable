@@ -287,13 +287,11 @@ class TelegramInterface:
         from opensable.core.heartbeat import (
             check_system_health,
             check_pending_tasks,
-            check_idle_time,
             check_supply_chain,
         )
 
         self.heartbeat.register_check(check_system_health, "System Health")
         self.heartbeat.register_check(check_pending_tasks, "Pending Goals")
-        self.heartbeat.register_check(check_idle_time, "Idle Check")
         self.heartbeat.register_check(check_supply_chain, "Supply Chain")
 
         # Wire heartbeat alerts to Telegram
