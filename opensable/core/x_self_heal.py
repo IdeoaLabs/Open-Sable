@@ -129,8 +129,8 @@ KNOWN_ERRORS: List[ErrorPattern] = [
         pattern=r"code.*226|might be automated|protect our users from spam",
         severity=Severity.CRITICAL,
         remedy="emergency_stealth",
-        params={"pause_minutes": 30, "reduce_activity": 0.3},
-        cooldown=1800,
+        params={"pause_minutes": 120, "reduce_activity": 0.3},
+        cooldown=7200,
         description="X detected us as automated (Error 226). Need to pause and reduce activity drastically.",
     ),
     ErrorPattern(
@@ -396,11 +396,12 @@ class RemedyEngine:
         agent.p_quote *= reduce
         agent.p_follow *= (reduce * 0.5)  # Extra cautious with follows
 
-        # 3. Pause posting loop
+        # 3. Pause ALL loops - including engage (likes/replies/follows must stop too)
         resume_at = datetime.now() + timedelta(minutes=pause_min)
         self._paused_loops["post"] = resume_at
         self._paused_loops["trend"] = resume_at
         self._paused_loops["mention"] = resume_at
+        self._paused_loops["engage"] = resume_at
 
         # 4. Switch UA
         new_ua = pick_user_agent(prefer_mobile=True)

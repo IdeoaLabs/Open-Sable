@@ -1722,6 +1722,9 @@ class XAutonomousAgent:
         """Reply to all queued mentions,  called at the start of every session."""
         if not self._mention_queue:
             return
+        if self._healer.remedy.is_loop_paused("mention"):
+            logger.info("⏸️ Mention queue processing skipped, self-heal pause active")
+            return
         max_replies = int(getattr(self.config, "x_max_mention_replies_per_day", 50))
         logger.info(f"📨 Processing mention queue ({len(self._mention_queue)} pending)")
         processed = []
